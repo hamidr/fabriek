@@ -56,7 +56,12 @@ role is running.
 
 **3. A clone per role, on nixcage's own storage.** Each role's clone lives
 under the state directory, which is a real Linux filesystem on both platforms,
-and is chowned to the role's uid in its entirety. Ownership is then ordinary
+is made with `--no-hardlinks`, and is chowned to the role's uid in its
+entirety. The flag is not an optimisation choice: git hardlinks objects when it
+clones from a local path on the same filesystem, and chowning a clone whose
+objects are hardlinks rewrites the ownership of the origin's objects too. That
+is measured, not feared, and it would corrupt the operator's own repository on
+Linux where both sit on one filesystem. Ownership is then ordinary
 and total: no ACL, no shared object database, no partitioned refs, and no
 dependence on any property of the operator's filesystem.
 
@@ -86,10 +91,14 @@ The mechanism no longer depends on any property of the operator's filesystem,
 so a factory works the same on Linux and on macOS. That is the point, and it is
 worth more than the elegance it costs.
 
-It costs a clone per role in disk. Git's own sharing is available if that
-becomes a problem, and it is deliberately not used here: an alternates file
-would put every role back on one object database, which is the thing that
-needed ACLs.
+It costs a full copy per role in disk, and the copy is mandatory rather than
+lazy. Git's two ways of making a local clone cheap are both unavailable: an
+alternates file puts every role back on one object database, which is the thing
+that needed ACLs, and hardlinked objects make one role's chown reach into every
+other clone and into the origin. A filesystem with copy-on-write clones would
+give the cheapness back without either hazard, and is worth revisiting only if
+the disk cost is felt, since it would make the mechanism depend on the
+operator's filesystem again.
 
 Integration becomes fetch and push rather than a local ref update. The
 supervisor still advances the operator's `main` by fast-forward and still
@@ -119,7 +128,7 @@ Measured in the VM, with the operator's checkout on the 9p share and the role's
 clone on `/var/lib/nixcage`:
 
 ```
-git clone <operator-repo> <clone>; chown -R <role_uid> <clone>
+git clone --no-hardlinks <operator-repo> <clone>; chown -R <role_uid> <clone>
 setpriv --reuid=<role_uid> ... git -C <clone> commit    # succeeds, no ACL anywhere
 git -c safe.directory=<clone> -C <clone> push <operator-repo> <role>/work
 ```
@@ -128,7 +137,12 @@ The push lands: `refs/heads/builder/work` appears in the operator's checkout on
 the share and resolves to the commit the role made. Fetching the other way
 works too, so either direction is available to the supervisor.
 
-Two things came out of measuring. The supervisor is root and the clone belongs
+A default local clone on one filesystem shares object inodes with its origin:
+link count 2, same inode, and `chown -R` on the clone moved the origin's object
+from uid 0 to 700000. With `--no-hardlinks` the inodes differ and chowning one
+clone leaves the origin alone.
+
+Two more things came out of measuring. The supervisor is root and the clone belongs
 to the role, so git's ownership check refuses to run there until the supervisor
 names the clone in `safe.directory`; without it the push fails with `detected
 dubious ownership` rather than a permission error. And git refuses to move a
