@@ -26,15 +26,19 @@ chown:   Operation not permitted
 ```
 
 virtiofs is not an alternative, because virtiofsd does not exist on a macOS
-host, which is why the module defaults to 9p. Nor is the 9p `mapped` security
-model a repair: it stores ownership as xattrs and would make `chown` work,
-while POSIX ACLs live in a namespace 9p's mapped metadata does not carry, so
-the shared object database would still have no way to admit several role uids.
+host, which is why the module defaults to 9p. The 9p `mapped` security model
+was measured rather than assumed: a share carrying it was built, the VM was
+booted on it, and on that share `chown` succeeds where it is refused on an
+ordinary one, while `setfacl` still reports `Operation not supported`. It
+virtualizes ownership into host xattrs and does not carry POSIX ACLs, so it
+fixes the half that was not blocking and leaves the half that was.
 
 The problem is not the protocol. It is that the backing store is APFS, where a
-Linux uid means nothing and the ACL model is a different one. Any design that
-requires the operator's own checkout to carry Linux ownership fails on macOS
-for reasons no amount of mount options will fix.
+Linux uid means nothing and the ACL model is a different one. Ownership can be
+virtualized on top of that, as `mapped` shows; a POSIX ACL cannot, because
+there is nothing underneath to hold it. Any design that needs several uids
+writing one object database on the operator's own checkout fails on macOS, and
+no mount option reaches it.
 
 What the design actually needs is narrower than what ADR-010 built: a role
 needs a tree it owns on a filesystem that supports ownership. It does not need
@@ -106,6 +110,13 @@ refuses anything else, so the property that a bad merge is recoverable is
 unchanged. What changes is that a role's work is not visible in the operator's
 repository until the supervisor pushes it, where before it was there as soon as
 the role committed.
+
+One option this leaves open is where a clone lives. It has to be on a
+filesystem that carries ownership, and the state directory is the obvious one,
+but a share declared with the `mapped` security model would also qualify. That
+would put a role's clone somewhere the operator can open it on the Mac, which
+is worth having and is not needed to make the mechanism work. It is recorded
+here so the choice is a choice rather than an oversight.
 
 A role cannot see another role's work directly. Everything moves through the
 supervisor, which is more traffic and one more thing to get right, and also
