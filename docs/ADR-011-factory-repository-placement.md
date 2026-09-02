@@ -1,7 +1,7 @@
 ---
 id: ADR-011
 title: A factory works a clone on nixcage's own storage, synced with the operator's checkout
-status: proposed
+status: accepted
 date: 2026-09-02
 status_date: 2026-09-02
 summary: a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout

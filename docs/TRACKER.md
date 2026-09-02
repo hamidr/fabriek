@@ -16,7 +16,7 @@ document, then regenerate.
 | --- | --- | --- | --- | --- | --- | --- |
 | [PRD-001](PRD-001-actor-mailbox.md) | A mailbox that lets project containers exchange messages | proposed | 0/4 | -- | give each project actor a durable mailbox so agents in separate containers can signal, delegate, and share findings |  |
 | [PRD-002](PRD-002-autonomous-workflow-supervisor.md) | A supervisor that runs declared workflows across cages | proposed | 0/5 | PRD-001 | declared workflows dispatch caged agent runs under gates and caps, so runs start without a human |  |
-| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implementing | 0/6 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
+| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implementing | 1/6 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
 
 ## ADRs
 
@@ -32,4 +32,4 @@ document, then regenerate.
 | [ADR-008](ADR-008-session-git-identity-and-signing.md) | Sessions commit under a declared identity and sign through the forwarded ssh-agent | implemented | -- | ADR-007 | sessions get a declared git identity and sign through the forwarded ssh-agent, holding no key of their own |  |
 | [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | accepted | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
 | [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | accepted | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
-| [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | proposed | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
+| [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | accepted | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
