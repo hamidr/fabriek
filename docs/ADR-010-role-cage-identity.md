@@ -4,7 +4,7 @@ title: A factory role cage runs under its own uid, name, and signing key
 status: proposed
 date: 2026-09-02
 status_date: 2026-09-02
-summary: factory role cages get an allocated uid and a named user, own their worktree, and reach shared objects through ACLs
+summary: factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs
 depends_on: [ADR-004, ADR-007, ADR-009]
 supersedes: []
 superseded_by: []
@@ -56,12 +56,21 @@ directory stays with the repository's owner. Those two paths are what git and
 libgit2 actually check, which was measured rather than assumed.
 
 **4. Writes reach the shared object database through ACLs.** A POSIX ACL grants
-each allocated role uid `rwX` on the repository's git directory, and a default
-ACL makes new objects and refs inherit it. A shared group cannot serve here:
+each allocated role uid `rwX` on the repository's object directory, and a
+default ACL makes new objects inherit it. A shared group cannot serve here:
 nspawn derives the gid map from the same base as the uid map (ADR-004), so a
 cage holds exactly one gid, equal to its uid, and no supplementary groups.
 
-**5. Home, skeleton, and key follow the role.** The persistent home and the
+**5. Refs are namespaced, and `main` is writable by no cage.** A role's
+branches live under `refs/heads/<role>/`, and that directory and its reflog
+directory `logs/refs/heads/<role>/` carry an ACL for the role's uid. Git
+creates a ref by writing a lock file in the ref's own parent directory, so a
+role can create and move its own branches and nothing else. `refs/heads`
+itself, `refs/heads/main`, and `packed-refs` grant no cage write access, which
+is what makes "only the supervisor advances `main`" a property of the
+filesystem rather than a rule a role follows.
+
+**6. Home, skeleton, and key follow the role.** The persistent home and the
 session rootfs skeleton are chowned to the role's uid, the home staying 0700.
 ADR-009's signing key is 0400 owned by the role's uid rather than by the
 project owner, which is what turns per-role revocation from nominal into real.
@@ -73,12 +82,17 @@ home, or worktree now requires defeating a uid boundary rather than merely
 being a process in the same factory.
 
 The object database remains shared authority, and no uid boundary changes that.
-Git's object store is content-addressed and shared by design, and refs live in
-the common directory, so any role that can write objects can also move a branch
-that is not its own, including `main`. Role isolation covers working trees,
-homes, and keys; it does not cover history. Ref-level restriction is not
-attempted here, and the run record is what makes such a move visible after the
-fact.
+Git's object store is content-addressed and shared by design, so any role can
+add objects another role will later read. That is unavoidable and mostly
+harmless: an object nothing references is garbage. What a role cannot do is
+make an object reachable outside its own namespace, because refs are
+partitioned and `main` is not writable from a cage.
+
+The partition costs a naming convention. A role's branches must live under its
+own prefix, so a role cannot create `refs/heads/hotfix` at the top level, and
+tooling that assumes flat branch names sees longer ones. Git itself does not
+care, and `packed-refs` is left to the repository owner, which means the
+operator or the supervisor packs refs, never a role.
 
 The uid range is a host resource the operator owns. On Linux it must not
 overlap real host users; on macOS it lives in the VM's own uid space. Choosing
@@ -115,7 +129,9 @@ cage does not.
 Still to measure, in the VM, before phase 1 of PRD-003:
 
 ```
-setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git
+setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/objects
+setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/refs/heads/<role>
+setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/logs/refs/heads/<role>
 # then, inside the role's cage, with no shared group:
 git -C /workspace commit -m probe
 git -C /workspace log --oneline -1
@@ -125,6 +141,13 @@ The open question is whether the default ACL survives git chmodding a new loose
 object to 0444, since git manages object permissions itself. If a role cannot
 commit through the ACL alone, the fallback is a clone per role, which shares no
 object database and needs no ACL.
+
+The ref partition needs the same probe as the object ACL, in the same run: a
+role uid can create and move `refs/heads/<role>/topic`, and cannot write
+`refs/heads/main` or `packed-refs`, with no shared group anywhere. That a
+namespaced branch touches exactly `refs/heads/<role>/` and
+`logs/refs/heads/<role>/`, and nothing at the top level, was measured on git
+2.55.0 and is why those two directories are the ones that carry an ACL.
 
 bats covers the CLI and container seam: a role's uid is stable across runs, a
 removed role's uid is not reissued, `enter` passes `--private-users` with the

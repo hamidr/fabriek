@@ -5,7 +5,7 @@ status: proposed
 date: 2026-09-02
 status_date: 2026-09-02
 summary: named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console
-depends_on: [PRD-001, PRD-002]
+depends_on: [PRD-002]
 supersedes: []
 superseded_by: []
 phases_total: 6
@@ -19,12 +19,11 @@ implementation, and design are different jobs done by the same person opening
 the same project in sequence, one after another, because there is only one of
 them and only one checkout to work in.
 
-nixcage already isolates a project. PRD-001 lets containers exchange messages.
-PRD-002 starts runs without a human typing. What none of them provides is the
-thing that makes a repository progress on several fronts at once: distinct
-workers with distinct jobs, each holding its own view of the same code, handing
-work to each other, and leaving behind a record of why the code looks the way
-it does.
+nixcage already isolates a project, and PRD-002 starts runs without a human
+typing. What neither provides is the thing that makes a repository progress on
+several fronts at once: distinct workers with distinct jobs, each holding its
+own view of the same code, handing work to each other, and leaving behind a
+record of why the code looks the way it does.
 
 Doing this by hand fails in a specific way. Two agents in one checkout corrupt
 each other's edits, so the operator serializes them and loses the parallelism.
@@ -72,14 +71,16 @@ terminal that gets closed.
   `main`; the operator publishes.
 - **More than one repository per factory.** One repository is assigned. Two
   repositories are two factories, and whether that is even wanted is left open.
-- **Cross-project delegation.** A role addresses roles in its own factory. The
-  cross-project mailbox of PRD-001 is a different capability and stays where it
-  is.
-- **Multi-machine, multi-operator.** One host, one person, as in PRD-001 and
-  PRD-002.
+- **Cross-project delegation.** A role addresses roles in its own factory.
+  Reaching another project is PRD-001's cross-project mailbox, a separate
+  capability this document neither requires nor provides.
+- **A message channel.** The factory delegates through tasks, not messages. A
+  task is addressed, owned, and stateful; a message is none of those. If
+  PRD-001 exists, roles may use it, and nothing here waits on it.
+- **Multi-machine, multi-operator.** One host, one person, as in PRD-002.
 - **Ephemeral per-task workers.** Roles are declared and long-lived. A worktree
-  per task makes addresses numerous and short-lived, which PRD-001 already
-  named as a failure of the mailbox.
+  per task makes addresses numerous and short-lived, so mail and tasks aimed at
+  a finished worker have nowhere to land.
 
 ## Success criteria
 
@@ -89,7 +90,7 @@ terminal that gets closed.
   restating it, and the creating role finds the answer against the task it
   made.
 - The operator can name what every role is doing from one screen, without
-  opening a session to find out.
+  opening a session to find out, whichever coding agent each role runs.
 - A run waiting on the operator is visibly waiting, is still waiting hours
   later, and holds no concurrency while it waits.
 - Over a week, decisions made in the factory are findable as documents in the
@@ -97,7 +98,8 @@ terminal that gets closed.
 - No run is ever started by a cage, and the record shows this rather than
   asserting it.
 - A bad merge is recoverable by the operator without anything outside the
-  machine having seen it.
+  machine having seen it, and recovery does not depend on the role that made it
+  having behaved.
 
 ## Requirements
 
@@ -132,7 +134,8 @@ terminal that gets closed.
   uid, its own worktree owned by that uid, and its own signing key readable by
   nobody else, so one role cannot read another's key, home, or working files
   (ADR-010). What the roles of a factory do share is the repository's object
-  database and its refs, which git shares by construction.
+  database, which git shares by construction. Refs are not shared: a role may
+  write only its own namespace, and `main` is writable by no cage at all.
 - Adding, removing, or changing a role is the operator's act. A role cannot
   declare another role, including itself.
 
@@ -140,9 +143,21 @@ terminal that gets closed.
 
 - The operator states a goal, and it becomes a task in the factory. Nothing
   else is required of them to start work.
-- A task carries an owning role, a state, and a link to the task it came from.
-  A task outlives any single run against it, so work that is blocked or that
-  takes several attempts has somewhere to live in between.
+- Tasks live in a store the factory owns. It survives session exit, container
+  removal, host reboot, and a rebuild, and concurrent writers neither lose nor
+  corrupt a task. This is the factory's own store, not a message channel, and
+  nothing about it waits on PRD-001.
+- A task carries an owning role, a state, the task it came from, and the
+  workflow it belongs to. A task outlives any single run against it, so work
+  that is blocked or that takes several attempts has somewhere to live in
+  between.
+- Every task belongs to exactly one workflow. A goal the operator files names
+  one, or falls to the workflow the declaration marks as the default. A task
+  created by delegation inherits its parent's workflow and cannot name another,
+  so no chain of delegation escapes the budget of the work that started it.
+- Budget is charged to that workflow. When a workflow's budget is exhausted,
+  every task belonging to it stops becoming runs, and tasks belonging to other
+  workflows are untouched.
 - A role delegates by creating a task owned by another role. Creating a task
   starts nothing; the supervisor decides when a task becomes a run, under the
   operator's declarations.
@@ -155,7 +170,13 @@ terminal that gets closed.
 ### The operator's console
 
 - The operator sees every role in one place: which are working, which are
-  waiting, which are idle, and which are done.
+  waiting on a gate, and which are idle. Those three are states the supervisor
+  can report from outside a session, so they hold for any coding agent a role
+  runs.
+- Whether a run finished is a property of its task, recorded by the supervisor,
+  not a state read out of the agent. The supervisor treats a session that has
+  gone idle as settled and records the outcome against the task; it never
+  depends on the agent announcing that it is done.
 - The operator can step into any role's session directly and take over, and
   leave again without ending the run.
 - A run stopped at a gate is visibly stopped and says what it is waiting for.
@@ -179,11 +200,20 @@ terminal that gets closed.
 ### Integration and publication
 
 - A role's work reaches the repository's `main` through the reviewer role,
-  which merges without waiting on the operator.
+  which decides what merges and does so without waiting on the operator.
+- The reviewer performs the merge in its own worktree, on its own branch. It
+  does not write `main`. Advancing `main` to the commit the reviewer produced
+  is the supervisor's act, performed on the host, and it fast-forwards or
+  fails. A merge nobody wanted is therefore always still reachable, because
+  nothing the factory does can move `main` backwards or sideways.
+- The supervisor needs no judgment to do this. Deciding what to merge reads
+  content and stays in the cage; advancing a ref to a named commit reads
+  nothing, which is what keeps the supervisor content-blind.
+- A role can write only the refs in its own namespace. `main` is not writable
+  by any cage, so the previous requirement is a property of the machine rather
+  than a rule the reviewer follows.
 - `main` never leaves the machine on the factory's initiative. Publishing to
   any remote is the operator's act.
-- A merge preserves history, so an unwanted merge is recoverable by the
-  operator.
 
 ### Limits
 
@@ -214,17 +244,19 @@ terminal that gets closed.
   attach to a pane. The supervisor owns no session machinery of its own.
 - Git refuses the same branch checked out in two worktrees. The assigned
   repository therefore has `main` checked out nowhere: every party including
-  the operator works from a worktree, and the reviewer advances `main` by
-  updating the ref.
+  the operator works from a worktree, and `main` is advanced by a ref update
+  the supervisor performs.
 - The factory works one repository. Whether a second factory can exist on the
   same machine is an operating question, not a design one, and is left open.
 
 ## Risks
 
 - **The reviewer merges with no human in the loop.** This is a deliberate
-  choice, and its containment is that `main` stays local and history is
-  preserved, so the operator can reset. If publication ever becomes automatic,
-  the containment is gone.
+  choice. Two things contain it, and neither is the reviewer's good behaviour:
+  `main` stays local, and the supervisor advances it only by fast-forward, from
+  outside every cage, so no history the operator has seen can be lost. What
+  remains is that `main` can gain commits nobody read. If publication ever
+  becomes automatic, the first containment is gone.
 - **Unattended merges sign as the operator.** ADR-008 forwards the operator's
   ssh-agent into a cage, so a reviewer's merge commit verifies as them and the
   same agent opens every host their keys reach. ADR-009 settles this: a run the
@@ -264,15 +296,24 @@ terminal that gets closed.
   outside keeps the trust boundary visually obvious.
 - How does a role know what the factory already tried? The document record
   answers this for decisions, and nothing answers it for abandoned attempts.
+- Do roles ever want messages as well as tasks? Everything here is delegation,
+  which is what a task is for. A finding worth telling every role without
+  assigning anyone work has no home, and PRD-001 is where it would live if it
+  turns out to be wanted.
+- What does the supervisor do when the reviewer's commit does not fast-forward,
+  because another merge landed first? Rejecting and recording a task back to
+  the reviewer is the obvious answer and makes the reviewer redo work under
+  contention.
 
 ## Phases
 
 Ordered so that containment exists before autonomy, and so that each phase is
 usable on its own.
 
-1. **A role runs.** One declared role, its worktree, its cage, started in a
-   pane by the operator, with its lifecycle state observed rather than guessed.
-   No tasks, no delegation.
+1. **A role runs.** One declared role, its uid, its worktree, its cage, started
+   in a pane by the operator, with its lifecycle state observed rather than
+   guessed. No tasks, no delegation. Requires ADR-010, including the ACL probe
+   it leaves open.
 2. **Tasks.** The task entity, the operator filing a goal, one role working it,
    and the outcome recorded against the task.
 3. **Delegation.** A role creates a task for another role, the supervisor turns
@@ -281,7 +322,8 @@ usable on its own.
 4. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
    the console and survive an answer that arrives hours later.
 5. **Integration.** The reviewer role, and `main` advancing without the
-   operator. Requires ADR-009.
+   operator by a fast-forward the supervisor performs. Requires ADR-009 and the
+   ref namespace of ADR-010.
 6. **Documents.** The architect refining proposals, reports reaching the
    operator, and the record that shows no run originated in a cage.
 
@@ -294,14 +336,18 @@ A Quint model covers the task and run lifecycle across roles and the
 supervisor, which is a state machine whose transitions interleave across
 process boundaries. It checks at minimum: no run proceeds past a gate that was
 never answered; delegation depth never exceeds its cap; concurrent runs never
-exceed the global cap; a role never becomes the origin of a dispatch; and every
-task reaches a terminal state or is recorded as cancelled.
+exceed the global cap; a role never becomes the origin of a dispatch; a
+workflow whose budget is exhausted starts no further run, including through a
+task delegated by one of its own runs; `main` only ever moves forward; and
+every task reaches a terminal state or is recorded as cancelled.
 
 An Alloy model covers the structural invariants that span roles, worktrees,
 branches, tasks, and runs. It checks at minimum: every role has exactly one
 worktree and every worktree exactly one role; no two roles share a branch; no
 task is owned by an undeclared role; no run exists without the task it serves;
-and `main` is checked out by no worktree.
+`main` is checked out by no worktree; every ref writable by a role lies in that
+role's own namespace; and every task belongs to exactly one workflow, the same
+one as the task it came from.
 
 PRD-001's own structural model changes with it, because addressing a role is
 not addressing a project directory.
