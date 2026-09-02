@@ -57,6 +57,35 @@
               # secretEnv.ANTHROPIC_API_KEY = "anthropic";
 
               # vm = { cpus = 8; mem = 8192; diskSize = 40960; };
+
+              ## A factory: one repository worked by several roles, each with
+              ## its own uid, its own worktree, and its own home. Uncomment to
+              ## declare one. Roles need a uid range; it must not overlap any
+              ## account that exists in the VM.
+              #
+              # supervisor = {
+              #   roleUidRange = { base = 700000; size = 64; };
+              #   ## A task that keeps failing stops instead of consuming the
+              #   ## whole factory, and a run that hangs costs one attempt.
+              #   taskAttempts = 3;
+              #   runTimeoutSeconds = 3600;
+              # };
+              #
+              # factories.acme = {
+              #   ## The repository the factory works. Roles do not touch it
+              #   ## directly: nixcage clones it and syncs the two, so this may
+              #   ## live wherever you keep your projects.
+              #   repository = "/home/me/Src/acme";
+              #
+              #   ## A command is argv, one word per element, never a shell
+              #   ## line. Which coding agent a role runs is yours to say; a
+              #   ## role that names none gets the ordinary session shell.
+              #   roles = {
+              #     architect.command = [ "claude" ];
+              #     builder.command = [ "claude" ];
+              #     reviewer.command = [ "claude" ];
+              #   };
+              # };
             };
 
             ## Uncomment on macOS (see hostSystem above).

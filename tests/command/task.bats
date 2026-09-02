@@ -78,6 +78,19 @@ teardown() {
 	assert_output --partial "task-show acme task-0001"
 }
 
+@test "running a task reaches the guest with the factory, role and id" {
+	run_nixcage task run acme builder task-0001
+	[ "$status" -eq 0 ]
+	run cat "$TEST_TEMP_DIR/ssh-calls"
+	assert_output --partial "nixcage-container role-run acme builder task-0001"
+}
+
+@test "running without all three explains itself" {
+	run_nixcage task run acme builder
+	assert_failure
+	assert_output --partial "task run <factory> <role> <id>"
+}
+
 @test "an unknown task subcommand explains itself rather than guessing" {
 	run_nixcage task frobnicate acme
 	assert_failure

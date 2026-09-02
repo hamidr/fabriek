@@ -77,3 +77,14 @@ teardown() {
 	assert_failure
 	assert_output --partial "no roles"
 }
+
+@test "the config template shows how a factory is declared" {
+	template="$NIXCAGE_ROOT/templates/config/flake.nix"
+	run grep -c "factories" "$template"
+	assert_success
+	run grep -c "roleUidRange" "$template"
+	assert_success
+	# A command is argv, and the template must not teach otherwise.
+	run grep -E 'command = \[' "$template"
+	assert_success
+}

@@ -4,7 +4,7 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-02
+**Generated:** 2026-09-03
 
 **Next PRD number:** 004
 
@@ -16,7 +16,7 @@ document, then regenerate.
 | --- | --- | --- | --- | --- | --- | --- |
 | [PRD-001](PRD-001-actor-mailbox.md) | A mailbox that lets project containers exchange messages | proposed | 0/4 | -- | give each project actor a durable mailbox so agents in separate containers can signal, delegate, and share findings |  |
 | [PRD-002](PRD-002-autonomous-workflow-supervisor.md) | A supervisor that runs declared workflows across cages | proposed | 0/5 | PRD-001 | declared workflows dispatch caged agent runs under gates and caps, so runs start without a human |  |
-| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implementing | 1/6 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
+| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implementing | 2/6 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
 
 ## ADRs
 
