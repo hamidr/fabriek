@@ -273,8 +273,24 @@ let
       ## from the caller, so a role can only ever be run against the factory it
       ## was declared in.
       cmd_role_enter() {
-        local factory="$1" role="$2"
-        shift 2 || die "usage: nixcage-container role-enter <factory> <role> [cmd...]"
+        ## Options precede the positionals exactly as in enter, so a session
+        ## command can still be anything at all and no flag can be mistaken
+        ## for part of it.
+        local -a passthrough=()
+        while [ $# -gt 0 ]; do
+          case "$1" in
+          --auth-sock)
+            passthrough+=(--auth-sock "''${2:-}")
+            shift 2
+            ;;
+          *) break ;;
+          esac
+        done
+
+        local factory="''${1:-}" role="''${2:-}"
+        [ -n "$factory" ] && [ -n "$role" ] ||
+          die "usage: nixcage-container role-enter [--auth-sock <path>] <factory> <role> [cmd...]"
+        shift 2
 
         local repo declared_cmd
         repo="$(nixcage_factory_repository "$FACTORIES_ROOT" "$factory")" || exit 1
@@ -289,7 +305,8 @@ let
           set -- "$declared_cmd"
         fi
 
-        cmd_enter --role "$role" "$factory-$role" "$worktree" "$@"
+        cmd_enter --role "$role" ''${passthrough[@]+"''${passthrough[@]}"} \
+          "$factory-$role" "$worktree" "$@"
       }
 
       cmd_list() {
@@ -311,7 +328,7 @@ let
       role-enter) cmd_role_enter "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
       esac
     '';
   };

@@ -446,6 +446,60 @@ cmd_enter() {
   fi
 }
 
+## Enter a declared factory role. Unlike enter this takes no project: the
+## repository is a property of the declaration, and the role's worktree lives
+## in nixcage's own state rather than under a workspace root, so neither the
+## flake check nor the workspace check applies here.
+cmd_role() {
+  local factory="${1:-}" role="${2:-}"
+  if [[ -z "$factory" || -z "$role" ]]; then
+    log_err "usage: nixcage role <factory> <role> [cmd...]"
+    exit 1
+  fi
+  shift 2
+
+  # Accept both 'role f r -- cmd...' and 'role f r cmd...'.
+  [[ "${1:-}" == "--" ]] && shift
+
+  # A role session signs as the operator through their agent, exactly as an
+  # ordinary session does: this is a person entering, not the supervisor
+  # dispatching, and ADR-009's cage key belongs to the run nobody watches.
+  local -a agent_fwd=()
+  if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
+    agent_fwd=(--auth-sock "$SSH_AUTH_SOCK")
+  fi
+
+  if [[ "$OS" == "linux" ]]; then
+    [[ $# -eq 0 ]] && log_info "Entering role $role of factory $factory..."
+    sudo nixcage-container role-enter "${agent_fwd[@]}" "$factory" "$role" "$@"
+    return
+  fi
+
+  ensure_vm
+
+  local remote=(sudo nixcage-container role-enter)
+  local -a ssh_fwd=()
+  # Options first, matching the guest's parsing: a flag after the positionals
+  # would be taken for part of the session command.
+  if [[ ${#agent_fwd[@]} -gt 0 ]]; then
+    ssh_fwd=(-A)
+    # shellcheck disable=SC2016  # the remote shell performs this expansion
+    remote+=(--auth-sock '"$SSH_AUTH_SOCK"')
+  fi
+  remote+=("$(printf '%q' "$factory")" "$(printf '%q' "$role")")
+  local arg
+  for arg in "$@"; do
+    remote+=("$(printf '%q' "$arg")")
+  done
+
+  if [[ $# -eq 0 ]]; then
+    log_info "Entering role $role of factory $factory..."
+    vm_ssh "${ssh_fwd[@]}" -t -- "${remote[@]}"
+  else
+    vm_ssh "${ssh_fwd[@]}" -- "${remote[@]}"
+  fi
+}
+
 require_vm_platform() {
   if [[ "$OS" == "linux" ]]; then
     log_err "No VM on Linux -- containers run on the host."
@@ -583,6 +637,8 @@ ${BOLD}Usage:${NC}
 
 ${BOLD}Commands:${NC}
   enter [-- cmd...]  Enter this project's container (macOS: starts the VM if needed)
+  role <factory> <role> [-- cmd...]
+                     Enter a declared factory role in its own worktree and uid
   rm [name]          Delete a project container and its persistent home
   status             Show container state (macOS: VM state and age public key)
   down               macOS only: stop the VM
@@ -619,6 +675,7 @@ main() {
   shift || true
   case "$command" in
   enter)   cmd_enter "$@" ;;
+  role)    cmd_role "$@" ;;
   down)    cmd_down "$@" ;;
   rebuild) cmd_rebuild "$@" ;;
   rm)      cmd_rm "$@" ;;
