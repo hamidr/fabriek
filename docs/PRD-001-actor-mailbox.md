@@ -90,9 +90,14 @@ they lack is a place to leave each other a message.
 
 ### Addressing
 
-- An actor is a project directory. Its address is stable across sessions and
-  reboots, and is the same identity nixcage already uses to keep a project's
-  home directory.
+- An actor is a project directory, or a role declared against one. A project
+  worked by a single session addresses that project; a project assigned to a
+  factory (PRD-003) has one actor per declared role instead. Both forms of
+  address are stable across sessions and reboots, and both rest on the identity
+  nixcage already uses to keep a project's home directory.
+- An address is never derived from a worktree path. Roles hold worktrees and
+  worktrees come and go, so an address that followed the path would not survive
+  the role's tree being recreated.
 - An operator can list the actors they can address without knowing how the
   address is derived.
 - Two concurrent sessions of the same project are the same actor and share one
@@ -193,12 +198,12 @@ they lack is a place to leave each other a message.
   looked at" and "refused" look identical. Revisit after real use.
 - Does a broadcast finding need any grouping (topic, project, tag), or is a
   flat stream with subjects enough at the volume one operator produces?
-- Is one mailbox per project the right granularity, or will roles within a
-  project (reviewer, builder) be wanted? Deferred, but the addressing choice
-  should not make it impossible. Git worktrees press on this: tools that give
-  each parallel agent its own worktree make every worktree a separate project
-  path, so actors become numerous and short-lived, and mail addressed to a
-  removed one has nowhere to go.
+- Roles within a project are wanted, and PRD-003 settles that they are declared
+  and long-lived rather than one per worktree. What stays open is whether a
+  project can hold both forms at once: an actor for the project itself and
+  actors for its roles, with the project address meaning "whoever is working
+  this" and the role addresses meaning specific workers. A flat rule of one or
+  the other is simpler and may lose a useful broadcast target.
 
 ## Phases
 
