@@ -77,6 +77,10 @@ terminal that gets closed.
 - **A message channel.** The factory delegates through tasks, not messages. A
   task is addressed, owned, and stateful; a message is none of those. If
   PRD-001 exists, roles may use it, and nothing here waits on it.
+- **A scheduler.** A workflow is triggered by the operator and by nothing else.
+  No timer starts work, which keeps the unattended surface exactly as wide as
+  the operator made it that day. PRD-002's open question about schedule
+  triggers stays open there and is answered no here.
 - **Multi-machine, multi-operator.** One host, one person, as in PRD-002.
 - **Ephemeral per-task workers.** Roles are declared and long-lived. A worktree
   per task makes addresses numerous and short-lived, so mail and tasks aimed at
@@ -147,8 +151,15 @@ keeping, and they are answerable from the run record and from git alone:
 - A role's address is its name, and it is stable across sessions, reboots, and
   rebuilds. Mail and tasks addressed to a declared role always have somewhere
   to land.
-- Every role holds its own worktree of the assigned repository, on its own
-  branch, so two roles working at once cannot disturb each other's files.
+- Every role holds one worktree of the assigned repository, permanently. It is
+  not created or destroyed per task, so two roles working at once cannot
+  disturb each other's files and nothing is re-owned between units of work.
+- A role checks out a fresh branch in that worktree for each task it takes,
+  named for the task inside the role's own namespace. A task awaiting review
+  then names something that stops changing, so the reviewer integrates that
+  task's work and nothing that landed after it. The branch is deleted when its
+  task reaches `done` and kept when the task `failed`, because a failed task's
+  branch is the evidence of what went wrong.
 - A role's accumulated state -- whatever it learns, installs, or keeps between
   runs -- lives in its own persistent home and is nobody else's business. The
   supervisor neither reads it nor seeds it.
@@ -169,23 +180,56 @@ keeping, and they are answerable from the run record and from git alone:
   removal, host reboot, and a rebuild, and concurrent writers neither lose nor
   corrupt a task. This is the factory's own store, not a message channel, and
   nothing about it waits on PRD-001.
-- A task carries an owning role, a state, the task it came from, and the
-  workflow it belongs to. A task outlives any single run against it, so work
-  that is blocked or that takes several attempts has somewhere to live in
-  between.
+- A workflow is a pipeline. It declares its stages in order, which role owns
+  each, where a stage fans out into several tasks, and where a gate sits. What
+  the factory can do is therefore readable from the declaration rather than
+  emergent from what a role decides at the time.
+- A task carries an owning role, a state, the task it came from, the workflow
+  it belongs to, and the stage it sits at. A task outlives any single run
+  against it, so work that is blocked or that takes several attempts has
+  somewhere to live in between.
+- A task has exactly these states: `proposed` when filed but not yet runnable,
+  `ready` when it may run, `running` while a run is active against it,
+  `blocked` while it waits on another task, `awaiting-review` when its work is
+  done and the reviewer has not integrated it, and the terminal `done`,
+  `failed`, and `cancelled`.
+- A run has its own states, because a task outlives its runs and the two
+  answer different questions: `starting`, `working`, `gated` while stopped at a
+  gate, and the terminal `settled`, `failed`, and `cancelled`. A task
+  `blocked` means the backlog is stalled; a run `gated` means the operator is
+  the bottleneck, and conflating them would hide which.
+- A task becomes `ready` when it carries the fields its workflow declares
+  required, an owner and acceptance criteria at minimum. The supervisor checks
+  they are present and non-empty and nothing more, which is a metadata check
+  and judges no content. A task with no stated finish line would otherwise
+  spend all its attempts discovering it cannot be done.
 - Every task belongs to exactly one workflow. A goal the operator files names
   one, or falls to the workflow the declaration marks as the default. A task
-  created by delegation inherits its parent's workflow and cannot name another,
-  so no chain of delegation escapes the budget of the work that started it.
-- Budget is charged to that workflow. When a workflow's budget is exhausted,
-  every task belonging to it stops becoming runs, and tasks belonging to other
-  workflows are untouched.
-- A role delegates by creating a task owned by another role. Creating a task
-  starts nothing; the supervisor decides when a task becomes a run, under the
-  operator's declarations.
+  created by a stage inherits its parent's workflow and cannot name another, so
+  no cascade escapes the budget of the work that started it.
+- Budget is charged to that workflow, in runs and, where the agent reports it,
+  in tokens. Runs are always enforced because they are observable from outside
+  a cage whatever agent a role runs; a token figure additionally bounds a
+  workflow when reported. A reported figure reaches the supervisor as a number
+  and is validated as one, so the supervisor still parses no agent prose.
+- When a workflow's budget is exhausted by either measure, every task belonging
+  to it stops becoming runs, and tasks belonging to other workflows are
+  untouched.
+- A role advances work by creating the tasks its stage's outgoing edges allow,
+  and cannot address a role the pipeline does not connect it to. Creating a
+  task starts nothing; the supervisor decides when a task becomes a run.
+- Among the tasks ready for one role, the oldest runs first. There is no
+  priority: ordering a backlog by hand is a job the operator would end up
+  doing, and the way to change what runs next is to cancel what should not.
+- A role runs one task at a time. Its worktree holds one branch, and git allows
+  no more, so this is a property rather than a declared limit. Work that must
+  happen in parallel is declared as several roles, each with its own worktree
+  and uid.
 - The role that created a task can find its outcome against that task.
-- A chain of delegation is bounded by depth counted from the originating task,
-  so a role that delegates to a role that delegates back cannot run away.
+- A pipeline is acyclic, and a declaration that is not is rejected when it is
+  read. Depth is then bounded by the number of stages rather than by a counter
+  the supervisor keeps at run time, so a cascade cannot run away by
+  construction.
 - A task that no role can own -- an undeclared role, a role since removed -- is
   refused when it is created, not when it would run.
 - A run ends settled, failed, or cancelled, and the task records which. Settled
@@ -212,9 +256,9 @@ keeping, and they are answerable from the run record and from git alone:
 ### The operator's console
 
 - The operator sees every role in one place: which are working, which are
-  waiting on a gate, and which are idle. Those three are states the supervisor
-  can report from outside a session, so they hold for any coding agent a role
-  runs.
+  waiting on a gate, and which are idle. Those three are run states the
+  supervisor can report from outside a session, so they hold for any coding
+  agent a role runs.
 - Whether a run finished is a property of its task, recorded by the supervisor,
   not a state read out of the agent. The supervisor treats a session that has
   gone idle as settled and records the outcome against the task; it never
@@ -274,9 +318,9 @@ keeping, and they are answerable from the run record and from git alone:
 
 ### Limits
 
-- The caps of PRD-002 apply unchanged and are shared across the factory: a
-  global cap on concurrent runs, a budget per workflow, and the delegation
-  depth cap above.
+- The caps of PRD-002 apply and are shared across the factory: a global cap on
+  concurrent runs, and a budget per workflow. The depth cap is satisfied by the
+  pipeline being acyclic rather than by counting at run time.
 - Two more caps are declared per workflow and are caps of the same kind: how
   long a single run may take, and how many attempts a task may have. They bound
   the two ways work fails without stopping -- a run that hangs and a task that
@@ -367,9 +411,6 @@ keeping, and they are answerable from the run record and from git alone:
 - What is the smallest useful set of roles? Architect, builder, and reviewer is
   the assumption, and it may be one too many or two too few. The declaration
   makes this cheap to change, so it is answered by use rather than by argument.
-- How does a role's branch get named and cleaned up? A branch per role is the
-  simplest rule and makes a role's work one moving target; a branch per task is
-  cleaner per unit of work and multiplies bookkeeping.
 - What does the reviewer do with work it rejects? Merge nothing and record a
   task back to the author is the obvious answer, but a rejected branch that
   nobody prunes accumulates.
@@ -421,17 +462,20 @@ process boundaries. It checks at minimum: no run proceeds past a gate that was
 never answered; delegation depth never exceeds its cap; concurrent runs never
 exceed the global cap; a role never becomes the origin of a dispatch; a
 workflow whose budget is exhausted starts no further run, including through a
-task delegated by one of its own runs; a task that has exhausted its attempts
-starts no further run; two integrations never overlap; `main` only ever moves
-forward; and every task reaches a terminal state or is recorded as cancelled.
+task one of its own runs created; a task that has exhausted its attempts starts
+no further run; a role never runs two tasks at once; two integrations never
+overlap; `main` only ever moves forward; and every task reaches a terminal
+state or is recorded as cancelled.
 
 An Alloy model covers the structural invariants that span roles, worktrees,
 branches, tasks, and runs. It checks at minimum: every role has exactly one
 worktree and every worktree exactly one role; no two roles share a branch; no
 task is owned by an undeclared role; no run exists without the task it serves;
 `main` is checked out by no worktree; every ref writable by a role lies in that
-role's own namespace; and every task belongs to exactly one workflow, the same
-one as the task it came from.
+role's own namespace; every task belongs to exactly one workflow, the same one
+as the task it came from; every task sits at a stage its workflow declares;
+every task a stage creates is owned by a role that stage has an edge to; and no
+pipeline contains a cycle.
 
 PRD-001's own structural model changes with it, because addressing a role is
 not addressing a project directory.

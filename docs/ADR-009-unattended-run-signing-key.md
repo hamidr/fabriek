@@ -1,7 +1,7 @@
 ---
 id: ADR-009
 title: Unattended runs sign with a per-role cage key, not the forwarded agent
-status: proposed
+status: accepted
 date: 2026-09-02
 status_date: 2026-09-02
 summary: a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote
