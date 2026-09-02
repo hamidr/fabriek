@@ -6,19 +6,23 @@
 // concurrency slot but NOT the role, because the role's single worktree still
 // holds that task's branch.
 module factory {
-  pure val tasks = Set("t1", "t2", "t3", "t4")
-  pure val roles = Set("builderA", "builderB", "reviewer")
+  // tc is the consult t1 may raise. It does not exist until t1 asks for it.
+  pure val tasks = Set("t1", "t2", "t3", "t4", "tc")
+  pure val roles = Set("builderA", "builderB", "reviewer", "architect")
 
   // One task per role, and one more sharing builderA, so both limits can bite:
   // t1 and t4 contend for a role, and three distinct roles can outnumber the
   // global concurrency cap. A cap at or above the role count is unreachable,
   // because one worktree per role already bounds active runs by role count.
   pure val ownerOf = Map(
-    "t1" -> "builderA", "t2" -> "builderB", "t3" -> "reviewer", "t4" -> "builderA"
+    "t1" -> "builderA", "t2" -> "builderB", "t3" -> "reviewer",
+    "t4" -> "builderA", "tc" -> "architect"
   )
 
   // Whether a task's stage declares a gate before it may finish.
-  pure val gated = Map("t1" -> true, "t2" -> false, "t3" -> false, "t4" -> true)
+  pure val gated = Map(
+    "t1" -> true, "t2" -> false, "t3" -> false, "t4" -> true, "tc" -> false
+  )
 
   pure val maxConcurrent = 2
   pure val maxAttempts = 2
@@ -40,11 +44,21 @@ module factory {
 
   val activeRuns: int = tasks.filter(t => liveRun(runState.get(t))).size()
 
+  // A role's worktree is held by a task that is running, waiting at a gate,
+  // waiting to be readmitted, or blocked on a consult. Decision deferred:
+  // whether a blocked task should free its role by committing and switching.
+  def occupies(t: str): bool = or {
+    holdsRole(runState.get(t)),
+    taskState.get(t) == "blocked",
+    taskState.get(t) == "unblocked",
+  }
+
   def roleBusy(r: str): bool =
-    tasks.exists(t => ownerOf.get(t) == r and holdsRole(runState.get(t)))
+    tasks.exists(t => ownerOf.get(t) == r and occupies(t))
 
   action init = all {
-    taskState' = tasks.mapBy(_ => "proposed"),
+    // tc does not exist until it is asked for.
+    taskState' = tasks.mapBy(t => if (t == "tc") "unborn" else "proposed"),
     runState' = tasks.mapBy(_ => "none"),
     answered' = tasks.mapBy(_ => false),
     attempts' = tasks.mapBy(_ => 0),
@@ -164,10 +178,44 @@ module factory {
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
   }
 
+  // t1 asks the architect. The consult is created, t1 blocks, and the turn
+  // that was running ends. A consult is a leaf: tc can ask nobody.
+  action askConsult(t) = all {
+    t == "t1",
+    taskState.get("t1") == "running",
+    taskState.get("tc") == "unborn",
+    taskState' = taskState.set("t1", "blocked").set("tc", "proposed"),
+    runState' = runState.set("t1", "none"),
+    answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
+    mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+  }
+
+  // The consult reached a terminal state, so the asker may go again. It is not
+  // resumed here: it released its slot while it waited, exactly as a gate does.
+  action consultResolved(t) = all {
+    t == "t1",
+    taskState.get("t1") == "blocked",
+    taskState.get("tc") == "done" or taskState.get("tc") == "failed",
+    taskState' = taskState.set("t1", "unblocked"),
+    runState' = runState, answered' = answered, attempts' = attempts,
+    runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
+    integrating' = integrating,
+  }
+
+  action readmitUnblocked(t) = all {
+    taskState.get(t) == "unblocked",
+    activeRuns < maxConcurrent,
+    taskState' = taskState.set(t, "running"),
+    runState' = runState.set(t, "working"),
+    answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
+    mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+  }
+
   action step = nondet t = tasks.oneOf() {
     any {
       markReady(t), startRun(t), work(t), hitGate(t), answerGate(t),
       settle(t), failRun(t), beginIntegrate(t), finishIntegrate(t), resume(t),
+      askConsult(t), consultResolved(t), readmitUnblocked(t),
     }
   }
 
@@ -212,7 +260,19 @@ module factory {
       (taskState.get(t) == "done" or taskState.get(t) == "failed")
         implies not(liveRun(runState.get(t))))
 
+  // A consult is a leaf, so it never waits on anything and no set of tasks can
+  // wait on each other in a cycle.
+  val consultNeverBlocks: bool =
+    taskState.get("tc") != "blocked" and taskState.get("tc") != "unblocked"
+
+  // A task that stopped being blocked is readmitted, not resumed: while it is
+  // unblocked it holds no concurrency slot.
+  val unblockedHoldsNoSlot: bool =
+    tasks.forall(t =>
+      taskState.get(t) == "unblocked" implies not(liveRun(runState.get(t))))
+
   val allInvariants: bool = and {
+    consultNeverBlocks, unblockedHoldsNoSlot,
     noSettleThroughUnansweredGate, concurrencyRespected, gateHoldsNoSlot,
     budgetRespected, attemptsRespected, oneTaskPerRole,
     integrationSerialised, mainMovesForward, terminalTaskHasNoLiveRun,

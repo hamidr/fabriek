@@ -215,6 +215,16 @@ keeping, and they are answerable from the run record and from git alone:
 - When a workflow's budget is exhausted by either measure, every task belonging
   to it stops becoming runs, and tasks belonging to other workflows are
   untouched.
+- A role's session starts once and stays live. A task admitted to that role is
+  handed to the session it already has, so a role carries what it learned into
+  the next task instead of rediscovering the repository each time. A run is
+  therefore a turn in a session rather than a process, and the caps bound a
+  turn: concurrency, budget, attempts, and the duration limit are unchanged in
+  meaning. A session is restarted when a turn fails, or when the operator says
+  so, which is what stops a session that has talked itself into something wrong
+  from carrying that into every later task.
+- A role with no work has a live session and no turn in progress. It holds no
+  concurrency, because concurrency counts turns and not sessions.
 - A role advances work by creating the tasks its stage's outgoing edges allow,
   and cannot address a role the pipeline does not connect it to. Creating a
   task starts nothing; the supervisor decides when a task becomes a run.
@@ -226,10 +236,27 @@ keeping, and they are answerable from the run record and from git alone:
   happen in parallel is declared as several roles, each with its own worktree
   and uid.
 - The role that created a task can find its outcome against that task.
-- A pipeline is acyclic, and a declaration that is not is rejected when it is
-  read. Depth is then bounded by the number of stages rather than by a counter
-  the supervisor keeps at run time, so a cascade cannot run away by
-  construction.
+- A role may also ask another role for something it needs before it can
+  continue. Who may ask whom is declared as a second graph beside the stages,
+  and unlike the pipeline it may point backwards, because the role that can
+  answer a question is usually the one that came before. Asking creates a
+  consult task owned by the answering role, and the asking task becomes
+  `blocked` until the consult reaches a terminal state.
+- A consult task creates nothing at all: no consult of its own, and no pipeline
+  work either. It answers and ends. That, rather than acyclicity, is what makes
+  waiting safe: every consult is a leaf, so no chain of roles waiting on each
+  other can close into a loop no matter what the declared graph allows.
+- A task that stops being blocked is readmitted rather than resumed, for the
+  same reason an answered gate is: it released its slot while it waited, and
+  the slot may be gone.
+- A pipeline is acyclic, and every stage is reachable from the entry stage. A
+  declaration that fails either is rejected when it is read: a cycle would let
+  work run away, and a stage nothing reaches is dead declaration that a consult
+  could nonetheless drop a task onto.
+- Depth along the pipeline is then bounded by the number of stages rather than
+  by a counter the supervisor keeps at run time. Consults sit outside that
+  bound on purpose, since asking backwards revisits a stage by definition, and
+  they are bounded instead by being leaves.
 - A task that no role can own -- an undeclared role, a role since removed -- is
   refused when it is created, not when it would run.
 - A run ends settled, failed, or cancelled, and the task records which. Settled
@@ -342,7 +369,13 @@ keeping, and they are answerable from the run record and from git alone:
   metadata, never a task body, a message body, or a document. Judgment about
   content is a role's job, performed in a cage.
 - Prompts and task bodies reach a role as data, never as part of a command line
-  a host shell parses.
+  a host shell parses. A task is written to a file the session can read and
+  only a reference to it is sent, so the body never enters the keystroke stream
+  either.
+- Handing a task to a live session must work for any coding agent. Sending text
+  to the pane and reporting lifecycle state externally does; submitting through
+  herdr's agent integration is available where herdr recognises the agent, and
+  is an optimisation rather than the mechanism.
 - The factory adds no party that can start work. Every run is started by the
   supervisor, and nothing between the operator and the cages holds more
   authority than a cage does. The architect is a role like any other: its
@@ -473,8 +506,11 @@ exceed the global cap; a role never becomes the origin of a dispatch; a
 workflow whose budget is exhausted starts no further run, including through a
 task one of its own runs created; a task that has exhausted its attempts starts
 no further run; a role never runs two tasks at once; two integrations never
-overlap; `main` only ever moves forward; and every task reaches a terminal
-state or is recorded as cancelled.
+overlap; a run whose gate was answered and a task that stopped being blocked
+are both readmitted under the concurrency cap rather than resuming through it;
+no consult task creates any task at all, so no set of tasks can wait on each
+other in a cycle; `main` only ever moves forward; and every task reaches a
+terminal state or is recorded as cancelled.
 
 `models/factory-structure.als` covers the structural invariants that span
 roles, worktrees, branches, tasks, and runs. Its facts state only what the
@@ -485,16 +521,31 @@ task is owned by an undeclared role; no run exists without the task it serves;
 `main` is checked out by no worktree; every ref writable by a role lies in that
 role's own namespace; every task belongs to exactly one workflow, the same one
 as the task it came from; every task sits at a stage its workflow declares;
-every task a stage creates is owned by a role that stage has an edge to; and no
-pipeline contains a cycle.
+every task a stage creates is owned by a role that stage has an edge to; no
+pipeline contains a cycle; every consult task is owned by a role the asking
+stage is declared to consult; no consult task has a task of its own; every
+stage is reachable from its workflow's entry stage; and the no-revisited-stage
+bound holds along pipeline edges, which is where it is claimed.
 
 PRD-001's own structural model changes with it, because addressing a role is
 not addressing a project directory.
 
-The lifecycle model found one defect before any code existed. A gate releases
+The models found three things before any code existed.
+
+The structural model rejected two claims as written. "A cascade never revisits
+a stage" is false once a consult may point backwards, so that bound is stated
+over pipeline edges and consults are bounded by being leaves instead. And a
+workflow could declare a stage unreachable from its entry that a consult could
+still drop a task onto, so reachability became a rule the declaration is
+checked against when it is read.
+
+The lifecycle model found one defect. A gate releases
 its concurrency slot while it waits, and the design said nothing about the way
 back, so a run whose gate was answered resumed straight into working and put
 the machine over its cap: with a cap of two, one run at a gate, two more
 started while the operator was away, and the answer arriving made three. The
 requirement that an answered gate is readmitted rather than resumed exists
-because of that counterexample.
+because of that counterexample, and a task that stops being blocked is
+readmitted for the same reason: it released a slot while it waited, and the
+slot may be gone. That second trace needed 200000 samples at 70 steps to
+surface, having been missed entirely at 20000.

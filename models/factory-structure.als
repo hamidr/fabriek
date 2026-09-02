@@ -23,14 +23,19 @@ one sig Main extends Ref {}
 sig Role { uid: one Uid, tree: one Worktree }
 
 sig Workflow { stages: set Stage, entry: one Stage }
-sig Stage { ownedBy: one Role, next: set Stage }
+-- next: pipeline edges, acyclic. consults: who this stage may ask, and it may
+-- point backwards, so this relation is deliberately not required acyclic.
+sig Stage { ownedBy: one Role, next: set Stage, consults: set Role }
 
 sig Task {
   workflow: one Workflow,
   stage: one Stage,
   parent: lone Task,
-  state: one TaskState
+  state: one TaskState,
+  kind: one TaskKind
 }
+abstract sig TaskKind {}
+one sig Pipelined, Consult extends TaskKind {}
 abstract sig TaskState {}
 one sig Proposed, Ready, Running, Blocked, AwaitingReview, Done, Failed, Cancelled
   extends TaskState {}
@@ -61,6 +66,9 @@ fact CommitNeedsAWritableBranch {
 fact PipelineShape {
   all w: Workflow | w.entry in w.stages
   all w: Workflow | w.stages.next in w.stages
+  -- every stage is reachable from the entry stage: a stage nothing can reach
+  -- is dead declaration, and is rejected when the declaration is read.
+  all w: Workflow | w.stages in w.entry.*next
   all s: Stage | s not in s.^next
   all s: Stage | one w: Workflow | s in w.stages
 }
@@ -69,12 +77,26 @@ fact PipelineShape {
 -- stage; a created task inherits the workflow and sits at a stage its parent's
 -- stage has an edge to. Nothing here says anything global.
 fact TaskCreation {
-  all t: Task | no t.parent implies t.stage = t.workflow.entry
-  all t: Task | some t.parent implies {
-    t.workflow = t.parent.workflow
+  all t: Task | no t.parent implies { t.stage = t.workflow.entry and t.kind = Pipelined }
+  all t: Task | some t.parent implies t.workflow = t.parent.workflow
+  -- a pipelined child moves along a declared stage edge
+  all t: Task | (some t.parent and t.kind = Pipelined) implies
     t.stage in t.parent.stage.next
+  -- a consult is owned by a role its asker's stage is declared to consult
+  all t: Task | t.kind = Consult implies {
+    some t.parent
+    t.stage in t.workflow.stages
+    t.stage.ownedBy in t.parent.stage.consults
   }
   all t: Task | t not in t.^parent
+}
+
+-- PRD-003: a consult is a leaf. It answers a question and creates nothing, not
+-- another consult and not pipeline work either. This is the whole deadlock
+-- story: waiting is bounded by depth rather than by the shape of the consult
+-- graph, which is allowed to point backwards.
+fact ConsultsAreLeaves {
+  all t: Task | t.kind = Consult implies no c: Task | c.parent = t
 }
 
 /* ---------- what the documents claim ---------- */
@@ -96,16 +118,25 @@ assert NoTwoRolesShareAWritableRef {
   all disj a, b: Role | no writable[a] & writable[b]
 }
 
--- PRD-003: "depth is bounded by the number of stages rather than by a counter
--- the supervisor keeps at run time". If true, no cascade can revisit a stage.
-assert CascadeNeverRevisitsAStage {
-  all t: Task | t.stage not in t.^parent.stage
+-- PRD-003: "depth is bounded by the number of stages rather than by a counter".
+-- True of the pipeline only. A consult deliberately points backwards, so it
+-- revisits a stage by design, and depth is bounded there by consults being
+-- leaves instead. Checked over pipelined chains.
+fun pipelinedParent: Task -> Task { { c, p: Task | c.parent = p and c.kind = Pipelined } }
+
+assert PipelinedCascadeNeverRevisitsAStage {
+  all t: Task | t.kind = Pipelined implies t.stage not in t.^pipelinedParent.stage
 }
 
--- PRD-003: a task always sits somewhere its own pipeline declares, reachable
--- from the entry stage. The creation rule is local; this is the global claim.
-assert TaskStageReachableFromEntry {
-  all t: Task | t.stage in t.workflow.entry.*next
+-- Every task sits somewhere its own workflow declares, consults included.
+assert TaskStageBelongsToItsWorkflow {
+  all t: Task | t.stage in t.workflow.stages
+}
+
+-- A pipelined task's stage is reachable from the entry stage. The creation
+-- rule is local; this is the global claim it implies.
+assert PipelinedStageReachableFromEntry {
+  all t: Task | t.kind = Pipelined implies t.stage in t.workflow.entry.*next
 }
 
 -- PRD-003: every task has a role that will run it.
@@ -113,12 +144,37 @@ assert EveryTaskHasAnOwningRole {
   all t: Task | one t.stage.ownedBy
 }
 
+-- PRD-003: "no chain of roles waiting on each other can close into a loop no
+-- matter what the declared graph allows". A task waits on the consults it
+-- created; that relation must be acyclic even though the consult GRAPH is not.
+assert WaitingNeverFormsALoop {
+  let waitsOn = { a, b: Task | b.parent = a and b.kind = Consult } |
+    no t: Task | t in t.^waitsOn
+}
+
+-- PRD-003: a consult is answered by a role the asker was declared to consult,
+-- never by one it was not.
+assert ConsultsFollowTheDeclaredGraph {
+  all t: Task | t.kind = Consult implies
+    t.stage.ownedBy in t.parent.stage.consults
+}
+
+-- The consult graph is allowed to point backwards. Confirm the model permits
+-- it, so ConsultsAreLeaves is not quietly doing the work acyclicity would.
+run ConsultCanPointBackwards {
+  some s1, s2: Stage | s1 in s2.^next and s1.ownedBy in s2.consults
+  some t: Task | t.kind = Consult
+} for 6
+
 check MainIsCheckedOutNowhere for 6
 check NoRoleCanWriteMain for 6
 check NoTwoRolesShareAWritableRef for 6
-check CascadeNeverRevisitsAStage for 6
-check TaskStageReachableFromEntry for 6
+check PipelinedCascadeNeverRevisitsAStage for 6
+check TaskStageBelongsToItsWorkflow for 6
+check PipelinedStageReachableFromEntry for 6
 check EveryTaskHasAnOwningRole for 6
+check WaitingNeverFormsALoop for 6
+check ConsultsFollowTheDeclaredGraph for 6
 
 -- Not vacuous: a factory with several roles, a real cascade, and a pipeline of
 -- more than one stage is possible.
