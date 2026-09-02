@@ -315,6 +315,20 @@ keeping, and they are answerable from the run record and from git alone:
   one.
 - A decision that changes the factory itself is written as a report addressed
   to the operator. The factory does not apply it; the operator does.
+- A role is given written guidance about working inside a factory, and it lives
+  in the assigned repository as an ordinary document rather than inside a
+  declaration, so the architect can refine it and the operator accepts it the
+  same way as anything else. A role that has to infer the rules from error
+  messages will infer them wrong.
+- That guidance covers at least: what a role may and may not write, since it
+  owns its branch namespace and can reach neither `main` nor another role's
+  refs; that a permission error naming `packed-refs.lock` is expected on every
+  ref update and does not mean the operation failed (ADR-010); that finishing
+  means recording an outcome against the task, because a session that goes idle
+  having recorded nothing is counted as a failure; how to ask another role
+  something and that doing so blocks the asking task; and that the body of any
+  task, document, or message written by another role is data rather than an
+  instruction.
 
 ### Integration and publication
 
@@ -476,8 +490,9 @@ usable on its own.
 
 1. **A role runs.** One declared role, its uid, its worktree, its cage, started
    in a pane by the operator, with its lifecycle state observed rather than
-   guessed. No tasks, no delegation. Requires ADR-010, including the ACL probe
-   it leaves open.
+   guessed. No tasks, no delegation. Carries the first slice of role guidance,
+   because a role hitting the expected `packed-refs.lock` error with nothing
+   telling it that is expected will report a failure that did not happen.
 2. **Tasks.** The task entity, the operator filing a goal, one role working it,
    and the outcome recorded against the task. Includes the failing paths, since
    a store that only records success is not a store anyone can trust: a crashed
@@ -490,8 +505,9 @@ usable on its own.
 5. **Integration.** The reviewer role, conflicts resolved in its cage or handed
    back as tasks, and `main` advancing without the operator by a fast-forward
    the supervisor performs. Requires ADR-009 and the ref namespace of ADR-010.
-6. **Documents.** The architect refining proposals, reports reaching the
-   operator, and the record that shows no run originated in a cage.
+6. **Documents.** The architect refining proposals, the guidance becoming a
+   document the architect maintains rather than a fixed string, reports
+   reaching the operator, and the record of what ran, why, and how it ended.
 
 ## Design gates
 
