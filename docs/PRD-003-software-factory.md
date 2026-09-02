@@ -97,11 +97,31 @@ terminal that gets closed.
   discovered when a budget runs out.
 - Over a week, decisions made in the factory are findable as documents in the
   repository rather than reconstructed from memory.
-- No run is ever started by a cage, and the record shows this rather than
-  asserting it.
+- No run is ever started by a cage. This is structural rather than observed:
+  no cage holds the CLI that starts runs, so the property is a fact about what
+  is in a cage. What the record shows is the weaker and still useful thing,
+  that every run has a workflow, a task, and a reason.
 - A bad merge is recoverable by the operator without anything outside the
   machine having seen it, and recovery does not depend on the role that made it
   having behaved.
+
+The criteria above say the factory works. These say whether it is worth
+keeping, and they are answerable from the run record and from git alone:
+
+- Over a month, a real share of the commits reaching `main` arrive on role
+  branches rather than from the operator's own. A factory that works but
+  produces nothing is a costume.
+- The operator's interventions per merged task -- gates answered, tasks
+  revived, conflicts handed back -- fall over time rather than holding steady.
+  If they hold steady the operator is still doing the work, through a slower
+  interface.
+- The share of integrations the operator later reverts or supersedes stays low
+  enough that reviewing after the fact is cheaper than reviewing before it. If
+  it does not, the reviewer merging freely was the wrong call and the gate
+  belongs before integration.
+- Budget spent per task that reached `main` is known, so the factory can be
+  compared against the operator doing the same work, rather than assumed to be
+  cheaper.
 
 ## Requirements
 
@@ -270,9 +290,18 @@ terminal that gets closed.
   content is a role's job, performed in a cage.
 - Prompts and task bodies reach a role as data, never as part of a command line
   a host shell parses.
-- The factory adds no trust tier. A role can do exactly what a nixcage session
-  can do today; the architect is a role like any other and holds no authority
-  over the supervisor.
+- The factory adds no party that can start work. Every run is started by the
+  supervisor, and nothing between the operator and the cages holds more
+  authority than a cage does. The architect is a role like any other: its
+  judgment about a document carries no power over dispatch, over declarations,
+  or over what gets accepted.
+- A role is not an ordinary session with a different name, and saying so would
+  be false in both directions. It holds less: no forwarded agent, so no
+  credential that reaches a remote (ADR-009), and no access to the CLI that
+  starts runs. It holds more: a uid of its own, write access by ACL into a git
+  directory it does not own, and refs it may move within its own namespace
+  (ADR-010). The comparison that matters is not with a session but with the
+  operator, and against that a role is strictly less.
 - Declarations are Nix, and the supervisor does not evaluate Nix at dispatch
   time. They are evaluated once into nixcage's own state, the way `sshPort` and
   `workspaceRoots` already are, and the supervisor reads them from there. On
@@ -285,10 +314,23 @@ terminal that gets closed.
   attach to a pane. Waiting on a state takes a timeout, so the per-run duration
   cap costs no polling loop of our own. The supervisor owns no session
   machinery of its own.
-- Git refuses the same branch checked out in two worktrees. The assigned
-  repository therefore has `main` checked out nowhere: every party including
-  the operator works from a worktree, and `main` is advanced by a ref update
-  the supervisor performs.
+- Git refuses the same branch checked out in two worktrees, so `main` is
+  checked out by nothing and exists only as a ref. That is what makes advancing
+  it a ref update the supervisor can perform rather than a merge someone has to
+  hold a working tree for.
+- The assigned repository keeps its primary working tree, the one holding
+  `.git`, and it is the operator's. It sits on a branch of the operator's own
+  rather than on `main`, so the operator works the repository the same way a
+  role does: on a branch, integrated by the same path. The repository is not
+  bare, because a cage needs a `flake.nix` at `/workspace`.
+- Ownership follows from that. The primary working tree and the common `.git`
+  belong to the operator. A role owns its worktree and its
+  `.git/worktrees/<role>` entry, and reaches the rest by ACL: the object
+  database, and its own `refs/heads/<role>/` and reflog directory (ADR-010).
+- Role worktrees live in nixcage's own state, not under a workspace root. They
+  are the supervisor's to create and remove, and putting them beside the
+  operator's projects would make them enterable by hand as if they were
+  projects of their own.
 - The factory works one repository. Whether a second factory can exist on the
   same machine is an operating question, not a design one, and is left open.
 
