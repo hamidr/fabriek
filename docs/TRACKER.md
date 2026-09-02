@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 004
 
-**Next ADR number:** 011
+**Next ADR number:** 012
 
 ## PRDs
 
@@ -31,4 +31,5 @@ document, then regenerate.
 | [ADR-007](ADR-007-worktree-git-directory-bind.md) | A linked git worktree binds its git directory into the session | implemented | -- | ADR-002 | sessions bind the git directories a linked worktree points at, so git works in a worktree instead of failing outright |  |
 | [ADR-008](ADR-008-session-git-identity-and-signing.md) | Sessions commit under a declared identity and sign through the forwarded ssh-agent | implemented | -- | ADR-007 | sessions get a declared git identity and sign through the forwarded ssh-agent, holding no key of their own |  |
 | [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | accepted | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
-| [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | accepted | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
+| [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | superseded | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
+| [ADR-011](ADR-011-role-clone-identity.md) | A factory role owns a clone on nixcage's own storage, not a worktree of the operator's repository | proposed | -- | ADR-004, ADR-009 | roles work in per-role clones on a Linux filesystem and the supervisor moves commits to and from the operator's checkout |  |
