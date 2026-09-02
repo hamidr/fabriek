@@ -232,3 +232,18 @@ past a gate that was never answered; dispatch depth never exceeds its cap;
 concurrent runs never exceed the global cap; a workflow that exhausts its
 budget starts no further run; and every dispatched run eventually records a
 result or is recorded as cancelled.
+
+The gate is not satisfied by a model of this document's own, and that is a
+deliberate skip rather than an omission. Four of the five invariants above are
+checked by `models/factory-lifecycle.qnt`, written for PRD-003: a run never
+settles through a gate that was never answered, concurrent runs never exceed
+the global cap, a workflow that has spent its budget starts nothing further,
+and a task that has exhausted its attempts starts no further run. That model
+covers a factory rather than the general supervisor, so it checks the
+supervisor as PRD-003 uses it and not as this document specifies it.
+
+What no model checks: dispatch depth against its cap, since PRD-003 replaced
+the runtime counter with an acyclic pipeline and the general case has no
+pipeline; and that every dispatched run eventually terminates, which is a
+liveness property a state invariant cannot express in any case. Both are left
+to tests and to use.

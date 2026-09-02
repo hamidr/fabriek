@@ -248,3 +248,18 @@ written and run, checking at minimum: no answer without the request it answers,
 no answer to a broadcast finding, a broadcast has no single recipient, no cycle
 in the reply relation, and no read state recorded for a message the reader
 could not see.
+
+That model is not written, and skipping it is a decision rather than an
+oversight. The reason is that the mailbox is cheap to reverse: it is a
+directory of files that starts nothing, nothing depends on it since PRD-003 was
+narrowed off it, and a store that turns out to be wrong is replaced by moving
+files rather than by unwinding anything that ran. That is the one escape the
+gate allows, and it is taken here explicitly.
+
+The invariants above therefore go unchecked, and every one of them is a way
+this can be wrong in practice: an answer whose request does not exist, an
+answer to a broadcast, a reply relation that closes into a loop, a read receipt
+for a message the reader was never a recipient of. They fall to tests at
+implementation time, which is a weaker check than a counterexample and is being
+accepted knowingly. If the mailbox ever gains a party that acts on a message
+without a human, this decision is revisited first.
