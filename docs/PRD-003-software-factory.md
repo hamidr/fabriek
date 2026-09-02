@@ -420,14 +420,21 @@ keeping, and they are answerable from the run record and from git alone:
   running a command in its pane, reading pane state, reporting state from
   outside, and closing the workspace again were all measured against 0.8.0.
 
-  Two caveats came out of measuring rather than reading. Reporting state must
+  Three caveats came out of measuring rather than reading. Reporting state must
   go to the socket as `pane.report_agent`: the `herdr pane report-agent`
-  command refuses its own required `--source` flag and cannot be used. And
-  `herdr agent wait` does not observe reported state, neither an existing one
-  nor a transition made while it waits, so waiting on a pane only works for an
-  agent herdr detects itself. A role's turn therefore ends when its outcome is
-  recorded, not when a pane goes idle; the pane state is what makes a role
-  visible, not what makes it observable. Waiting on a state takes a timeout, so the per-run duration
+  command refuses its own required `--source` flag and cannot be used. `herdr
+  agent wait` does not observe reported state, neither an existing one nor a
+  transition made while it waits, so waiting on a pane only works for an agent
+  herdr detects itself; a role's turn therefore ends when its outcome is
+  recorded, not when a pane goes idle, and pane state is what makes a role
+  visible rather than what makes it observable.
+
+  The third is a containment matter. `herdr pane run` types its words into the
+  pane's shell rather than executing them: quoting is not preserved, a literal
+  `--` arrives as a word, and whatever is sent is re-split by that shell. Only
+  fixed, already-validated words may go through it. Nothing carrying a task
+  body, a message, or any other agent-authored text ever can, which is the
+  same rule that keeps a prompt out of a command line, applied to keystrokes. Waiting on a state takes a timeout, so the per-run duration
   cap costs no polling loop of our own. The supervisor owns no session
   machinery of its own.
 - Git refuses the same branch checked out in two worktrees, so `main` is
