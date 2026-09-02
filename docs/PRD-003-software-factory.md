@@ -497,9 +497,15 @@ usable on its own.
    and the outcome recorded against the task. Includes the failing paths, since
    a store that only records success is not a store anyone can trust: a crashed
    run, a run that outlives its limit, and a task that exhausts its attempts.
-3. **Delegation.** A role creates a task for another role, the supervisor turns
-   it into a run, and depth is capped. This is the phase that makes the factory
-   more than one agent.
+3. **Delegation.** The pipeline: a role creates work along the stage edges its
+   declaration allows, a stage fans out into several tasks, and the supervisor
+   turns each into a run. Consults land here too, since a role that cannot ask
+   the role before it has to guess instead: asking creates a leaf task and
+   blocks the asker until it resolves. Nothing counts depth at run time, because
+   the declaration is checked for cycles and for unreachable stages when it is
+   read. This is the phase that makes the factory more than one agent, and the
+   phase where fan-out first shows that parallelism is a property of how many
+   roles are declared rather than of how many tasks exist.
 4. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
    the console and survive an answer that arrives hours later.
 5. **Integration.** The reviewer role, conflicts resolved in its cage or handed
