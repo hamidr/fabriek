@@ -1,13 +1,13 @@
 ---
 id: ADR-010
 title: A factory role cage runs under its own uid, name, and signing key
-status: superseded
+status: accepted
 date: 2026-09-02
 status_date: 2026-09-02
 summary: factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs
 depends_on: [ADR-004, ADR-007, ADR-009]
 supersedes: []
-superseded_by: [ADR-011]
+superseded_by: []
 ---
 
 ## Context
@@ -52,7 +52,9 @@ is a bare number, which ADR-004 already accepted for gids.
 
 **3. The role owns its checkout.** The role's worktree and its administrative
 directory `.git/worktrees/<role>` are chowned to the role's uid. The common git
-directory stays with the repository's owner. Those two paths are what git and
+directory stays with the repository's owner. Which repository that is, and
+therefore which filesystem all of this lands on, is ADR-011's decision; this one
+requires only that it carries ownership and ACLs. Those two paths are what git and
 libgit2 actually check, which was measured rather than assumed.
 
 **4. Writes reach the shared object database through ACLs.** A POSIX ACL grants

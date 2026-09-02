@@ -151,9 +151,9 @@ keeping, and they are answerable from the run record and from git alone:
 - A role's address is its name, and it is stable across sessions, reboots, and
   rebuilds. Mail and tasks addressed to a declared role always have somewhere
   to land.
-- Every role holds one worktree of the assigned repository, permanently. It is
-  not created or destroyed per task, so two roles working at once cannot
-  disturb each other's files and nothing is re-owned between units of work.
+- Every role holds one worktree of the factory's clone, permanently. It is not
+  created or destroyed per task, so two roles working at once cannot disturb
+  each other's files and nothing is re-owned between units of work.
 - A role checks out a fresh branch in that worktree for each task it takes,
   named for the task inside the role's own namespace. A task awaiting review
   then names something that stops changing, so the reviewer integrates that
@@ -338,8 +338,9 @@ keeping, and they are answerable from the run record and from git alone:
 
 ### Integration and publication
 
-- A role's work reaches the repository's `main` through the reviewer role,
-  which decides what merges and does so without waiting on the operator.
+- A role's work reaches the factory clone's `main` through the reviewer role,
+  which decides what merges and does so without waiting on the operator, and
+  reaches the operator's own checkout when the supervisor pushes it there.
 - A role may read every ref in the repository and write only its own namespace.
   The reviewer therefore sees the branches it integrates without any role being
   able to rewrite another's work.
@@ -408,14 +409,13 @@ keeping, and they are answerable from the run record and from git alone:
   directory it does not own, and refs it may move within its own namespace
   (ADR-010). The comparison that matters is not with a session but with the
   operator, and against that a role is strictly less.
-- A factory's repository must sit on a filesystem that supports ownership and
-  ACLs, which on macOS the operator's own workspace roots do not. They reach
-  the VM over 9p, where `chown` returns `Operation not permitted` and `setfacl`
-  returns `Operation not supported`, both measured. virtiofs is not an
-  alternative there, because virtiofsd does not exist on a macOS host. So
-  ADR-010's mechanism works against a repository on the Linux side and cannot
-  work against one under a workspace root on macOS. How a macOS factory gets a
-  repository it can own is unresolved and is recorded as an open question.
+- A factory does not work the operator's checkout directly. It works a clone of
+  it held on nixcage's own storage, and the supervisor syncs the two (ADR-011).
+  This is not a convenience: role ownership needs a filesystem carrying
+  ownership and ACLs, and on macOS the operator's workspace roots reach the VM
+  over 9p, where `chown` and `setfacl` both fail. Everything roles do happens
+  on the clone; the operator's checkout stays an ordinary git repository on
+  their own machine, edited with their own tools.
 - Declarations are Nix, and the supervisor does not evaluate Nix at dispatch
   time. They are evaluated once into nixcage's own state, the way `sshPort` and
   `workspaceRoots` already are, and the supervisor reads them from there. On
@@ -449,19 +449,18 @@ keeping, and they are answerable from the run record and from git alone:
   checked out by nothing and exists only as a ref. That is what makes advancing
   it a ref update the supervisor can perform rather than a merge someone has to
   hold a working tree for.
-- The assigned repository keeps its primary working tree, the one holding
-  `.git`, and it is the operator's. It sits on a branch of the operator's own
-  rather than on `main`, so the operator works the repository the same way a
-  role does: on a branch, integrated by the same path. The repository is not
-  bare, because a cage needs a `flake.nix` at `/workspace`.
-- Ownership follows from that. The primary working tree and the common `.git`
-  belong to the operator. A role owns its worktree and its
-  `.git/worktrees/<role>` entry, and reaches the rest by ACL: the object
-  database, and its own `refs/heads/<role>/` and reflog directory (ADR-010).
-- Role worktrees live in nixcage's own state, not under a workspace root. They
-  are the supervisor's to create and remove, and putting them beside the
-  operator's projects would make them enterable by hand as if they were
-  projects of their own.
+- The factory clone keeps a primary working tree, since a cage needs a
+  `flake.nix` at `/workspace`, and that tree is the supervisor's rather than
+  anyone's to edit. It sits on a branch that is not `main`, so `main` is
+  checked out by nothing there either.
+- Ownership follows from that. The clone and its common `.git` belong to the
+  supervisor. A role owns its worktree and its `.git/worktrees/<role>` entry,
+  and reaches the rest by ACL: the object database, and its own
+  `refs/heads/<role>/` and reflog directory (ADR-010).
+- The clone and every role worktree live in nixcage's own state, not under a
+  workspace root. They are the supervisor's to create and remove, and putting
+  them beside the operator's projects would make them enterable by hand as if
+  they were projects of their own.
 - The factory works one repository. Whether a second factory can exist on the
   same machine is an operating question, not a design one, and is left open.
 
@@ -509,15 +508,10 @@ keeping, and they are answerable from the run record and from git alone:
   outside keeps the trust boundary visually obvious.
 - How does a role know what the factory already tried? The document record
   answers this for decisions, and nothing answers it for abandoned attempts.
-- Where does a macOS factory's repository live? Role ownership needs a Linux
-  filesystem, and the operator's checkout is on the Mac behind a 9p share that
-  refuses both `chown` and `setfacl`. Keeping the repository inside the VM
-  works and takes it out of the operator's reach; giving each role its own
-  clone on the VM's own storage, with the operator's checkout as the origin
-  that integration pushes back to, keeps both sides but reintroduces the
-  clone-per-role shape that worktrees were chosen over. On Linux the question
-  does not arise, because the repository is already on a filesystem that
-  supports both.
+- What does the supervisor do when the operator's checkout and the factory
+  clone have diverged, because the operator rewrote history in their own
+  repository? Reconciling is not the same as fetching, and nothing says which
+  side wins or whether a role's branch survives it.
 - Do roles ever want messages as well as tasks? Everything here is delegation,
   which is what a task is for. A finding worth telling every role without
   assigning anyone work has no home, and PRD-001 is where it would live if it
