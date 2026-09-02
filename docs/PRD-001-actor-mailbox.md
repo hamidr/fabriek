@@ -98,6 +98,8 @@ they lack is a place to leave each other a message.
 - An address is never derived from a worktree path. Roles hold worktrees and
   worktrees come and go, so an address that followed the path would not survive
   the role's tree being recreated.
+- An address is an email address, because the message format is RFC 5322 and
+  inventing a second naming scheme beside it would buy nothing.
 - An operator can list the actors they can address without knowing how the
   address is derived.
 - Two concurrent sessions of the same project are the same actor and share one
@@ -163,6 +165,19 @@ they lack is a place to leave each other a message.
   project directory or in the shared host mount.
 - The message store lives in nixcage's own state, on a real Linux filesystem
   inside the VM on macOS and on the host state directory on Linux.
+- The store is one Maildir per actor and messages are RFC 5322. Nothing here is
+  invented where a format already solves it: atomic delivery under concurrent
+  writers, unread versus read, a request and its answer read as one exchange,
+  and a broadcast whose read state is per recipient are properties of Maildir
+  and of message threading rather than of code this project would write and
+  then have to get right.
+- No mail transfer agent. Delivery is the sender writing into the recipient's
+  Maildir directly. An MTA is a daemon that runs between sessions, and its
+  delivery hooks execute on arrival, which is precisely what "the mailbox never
+  executes" exists to prevent. The cost is no SMTP, which only matters off this
+  machine, and one machine is already the scope.
+- The tooling that reads and writes a Maildir joins the container profile
+  through the flake, never a host installation.
 - The channel reaches the agent as an ordinary command, so it works from a
   shell, from a script, and from any agent that can run one.
 - Whatever the store requires is added to the container userland profile
@@ -170,14 +185,19 @@ they lack is a place to leave each other a message.
 
 ## Risks
 
-- **Cross-project reads.** Every container gains read access to messages
-  addressed to every other project. This is the first shared mutable state in
-  nixcage, and it widens what a compromised or confused agent can see. Accepted
-  for a single operator; it makes the tool unsuitable for a shared host without
-  further work.
-- **Forged attribution.** A session owns its own root filesystem, so an agent
-  can present itself as another actor. The sender field is a hint. The
-  documentation must say so rather than implying provenance.
+- **Cross-actor reads, where uids do not separate actors.** Between the roles
+  of a factory the separation is real: ADR-010 gives each role its own uid, so
+  an actor's Maildir can be readable only by its owner while remaining writable
+  by every other role, and one actor cannot read another's mail. Between two
+  ordinary project actors it is not: ADR-004 maps both onto the operator's uid,
+  so they are the same principal and each can read the other's mailbox.
+  Accepted for a single operator, and it still makes the tool unsuitable for a
+  shared host.
+- **Forged attribution, on the same split.** A delivered message file is owned
+  by the uid that wrote it, so where roles have distinct uids the recipient can
+  check the real sender against the `From` header and the header stops being a
+  hint. Where actors share a uid it remains one, and the documentation has to
+  say which case a reader is in rather than implying provenance in both.
 - **Mailbox as an instruction channel.** An agent that reads a message is
   reading text written by another agent. Treating that text as an instruction
   rather than as data is the obvious failure mode, and the guidance the agent
@@ -219,10 +239,12 @@ they lack is a place to leave each other a message.
 
 ## Design gates
 
-The message store spans more than one entity (messages, read receipts, and the
+The message store spans more than one entity (messages, read state, and the
 reply relation between messages), which is a cross-entity invariant and fires
-the Formal Modeling Gate. Before implementation, a structural model under
-`models/` must be written and run, checking at minimum: no answer without the
-request it answers, no answer to a broadcast finding, a broadcast has no single
-recipient, no cycle in the reply relation, and no read receipt for a message
-the reader could not see.
+the Formal Modeling Gate. Maildir and RFC 5322 supply the mechanics and none of
+the invariants: the format will happily carry a reply to a message that does
+not exist. Before implementation, a structural model under `models/` must be
+written and run, checking at minimum: no answer without the request it answers,
+no answer to a broadcast finding, a broadcast has no single recipient, no cycle
+in the reply relation, and no read state recorded for a message the reader
+could not see.
