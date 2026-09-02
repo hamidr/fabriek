@@ -44,9 +44,11 @@ nixcage_factory_roles() {
 	printf '%s\n' "${roles[@]}"
 }
 
-## What a role's session runs. A role may declare nothing, in which case the
-## session is the ordinary one and the caller decides: which coding agent a
-## role runs is a property of its declaration, never of nixcage.
+## What a role's session runs, one argv word per line. A command is argv and
+## never a shell line, so nothing in it is re-split or expanded on the way. A
+## role may declare nothing, in which case the session is the ordinary one:
+## which coding agent a role runs is a property of its declaration, never of
+## nixcage.
 nixcage_factory_role_command() {
 	local root="$1" factory="$2" role="$3"
 	nixcage_role_name_ok "$factory" || return 1

@@ -93,6 +93,13 @@ teardown() {
 	assert_output --partial "role <factory> <role>"
 }
 
+@test "the guest forwards every option it is given, not just the agent socket" {
+	# role-enter parses options before the positionals; anything it fails to
+	# recognise is read as the factory name, which fails far from the cause.
+	run grep -n -- "--auth-sock | --task-dir" "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+}
+
 @test "on linux role goes through sudo rather than ssh" {
 	export NIXCAGE_OS=linux
 	export NIXCAGE_HOST_CONFIG="$TEST_TEMP_DIR/hostconfig"

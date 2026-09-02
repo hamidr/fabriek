@@ -12,7 +12,7 @@ setup() {
 	ROOT="$TEST_TEMP_DIR/factories"
 	mkdir -p "$ROOT/acme/roles/builder" "$ROOT/acme/roles/reviewer"
 	echo "/srv/acme" >"$ROOT/acme/repository"
-	echo "claude" >"$ROOT/acme/roles/builder/command"
+	printf 'claude\n--permission-mode\nacceptEdits\n' >"$ROOT/acme/roles/builder/command"
 	# reviewer declares no command: it gets the ordinary session shell
 }
 
@@ -39,10 +39,12 @@ teardown() {
 	assert_line --index 1 "reviewer"
 }
 
-@test "a role's command is what its declaration says" {
+@test "a role's command is what its declaration says, one word per line" {
 	run nixcage_factory_role_command "$ROOT" acme builder
 	assert_success
-	assert_output "claude"
+	assert_line --index 0 "claude"
+	assert_line --index 1 "--permission-mode"
+	assert_line --index 2 "acceptEdits"
 }
 
 @test "a role that declares no command gets none, and that is not an error" {

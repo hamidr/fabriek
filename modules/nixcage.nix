@@ -77,9 +77,9 @@ in
                 lib.types.submodule {
                   options = {
                     command = lib.mkOption {
-                      type = lib.types.nullOr lib.types.str;
+                      type = lib.types.nullOr (lib.types.listOf lib.types.str);
                       default = null;
-                      example = "claude";
+                      example = [ "claude" ];
                       description = ''
                         What this role's session runs. Which coding agent that
                         is belongs to the declaration, never to nixcage. Unset
@@ -105,6 +105,24 @@ in
     supervisor = lib.mkOption {
       type = lib.types.submodule {
         options = {
+          taskAttempts = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 3;
+            description = ''
+              How many attempts a task may have before it stops becoming runs.
+              A task that fails for a reason no retry can fix would otherwise
+              consume a whole workflow one attempt at a time.
+            '';
+          };
+          runTimeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 3600;
+            description = ''
+              How long a single run may take. Past this it is cancelled and
+              counted as a failed attempt, so a hung agent costs one attempt
+              rather than a slot held until someone notices.
+            '';
+          };
           roleUidRange = lib.mkOption {
             type = lib.types.nullOr (
               lib.types.submodule {
@@ -264,6 +282,8 @@ in
       text = ''
         ROLE_UID_BASE=${toString cfg.supervisor.roleUidRange.base}
         ROLE_UID_SIZE=${toString cfg.supervisor.roleUidRange.size}
+        TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
+        TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
       '';
     };
 
@@ -383,8 +403,10 @@ in
             ++ lib.mapAttrsToList (
               roleName: role:
               lib.mkIf (role.command != null) {
+                ## One word per line: a command is argv, never a shell line, so
+                ## nothing in it is re-split or expanded by anything.
                 "nixcage/factories/${factoryName}/roles/${roleName}/command".text =
-                  toString role.command + "\n";
+                  lib.concatMapStrings (word: word + "\n") role.command;
               }
             ) factory.roles
           ) cfg.factories

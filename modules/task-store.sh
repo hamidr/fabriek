@@ -137,3 +137,68 @@ nixcage_task_ready() {
 
 	nixcage_task_set "$root" "$factory" "$id" state ready
 }
+
+## Take an attempt at a task. Every attempt is counted before the run starts,
+## so a run that never reports back has still spent one: an attempt that only
+## counted on success would let a task that always crashes run forever.
+nixcage_task_attempt() {
+	local root="$1" factory="$2" id="$3" max="$4"
+
+	local state attempts
+	state="$(nixcage_task_get "$root" "$factory" "$id" state)" || return 1
+	if [ "$state" != "ready" ]; then
+		echo "nixcage: $id is $state, not ready" >&2
+		return 1
+	fi
+
+	attempts="$(nixcage_task_get "$root" "$factory" "$id" attempts)"
+	if [ "$attempts" -ge "$max" ]; then
+		echo "nixcage: $id has spent its $max attempts" >&2
+		nixcage_task_set "$root" "$factory" "$id" state failed
+		return 1
+	fi
+
+	nixcage_task_set "$root" "$factory" "$id" attempts "$((attempts + 1))" || return 1
+	nixcage_task_set "$root" "$factory" "$id" state running
+}
+
+## A run settled: the session went idle and the role recorded what it did.
+## An empty outcome is refused here rather than accepted as success, because a
+## session that goes idle having recorded nothing is indistinguishable from one
+## that crashed, and treating silence as completion would make a crash look
+## like finished work.
+nixcage_task_settle() {
+	local root="$1" factory="$2" id="$3" outcome="$4"
+
+	if [ -z "$outcome" ]; then
+		echo "nixcage: $id settled without recording an outcome" >&2
+		return 1
+	fi
+	nixcage_task_set "$root" "$factory" "$id" outcome "$outcome" || return 1
+	nixcage_task_set "$root" "$factory" "$id" state awaiting-review
+}
+
+## A run failed: it crashed, outlived its limit, or went idle having recorded
+## nothing. The task goes back to ready unless its attempts are gone, so work
+## blocked on something external is not silently abandoned.
+nixcage_task_failed() {
+	local root="$1" factory="$2" id="$3" reason="$4" max="$5"
+
+	nixcage_task_set "$root" "$factory" "$id" failure "$reason" || return 1
+
+	local attempts
+	attempts="$(nixcage_task_get "$root" "$factory" "$id" attempts)"
+	if [ "$attempts" -ge "$max" ]; then
+		nixcage_task_set "$root" "$factory" "$id" state failed
+	else
+		nixcage_task_set "$root" "$factory" "$id" state ready
+	fi
+}
+
+## Cancelled by the operator or by a cap. Terminal, and it records why rather
+## than leaving a task that simply stopped.
+nixcage_task_cancel() {
+	local root="$1" factory="$2" id="$3" reason="${4:-}"
+	nixcage_task_set "$root" "$factory" "$id" failure "$reason" || return 1
+	nixcage_task_set "$root" "$factory" "$id" state cancelled
+}

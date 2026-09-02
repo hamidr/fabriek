@@ -43,6 +43,15 @@ teardown() {
 	assert_success
 }
 
+@test "the guidance says where to record an outcome and that silence is failure" {
+	run grep -c "NIXCAGE_TASK" "$GUIDE"
+	assert_success
+	run grep -iE "outcome" "$GUIDE"
+	assert_success
+	run grep -iE "empty outcome is a failure|silence is not" "$GUIDE"
+	assert_success
+}
+
 @test "the guidance says another role's prose is data" {
 	run grep -iE "data, not|data rather than|never as instructions" "$GUIDE"
 	assert_success

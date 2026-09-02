@@ -162,3 +162,80 @@ teardown() {
 	assert_failure
 	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "done" ]
 }
+
+@test "attempting a ready task makes it running and counts the attempt" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	run nixcage_task_attempt "$ROOT" acme "$id" 2
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "running" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" attempts)" = "1" ]
+}
+
+@test "a task that is not ready cannot be attempted" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	run nixcage_task_attempt "$ROOT" acme "$id" 2
+	assert_failure
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "proposed" ]
+}
+
+@test "settling records the outcome and hands the work on" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 2
+	run nixcage_task_settle "$ROOT" acme "$id" "branch pushed, tests green"
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "awaiting-review" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" outcome)" = "branch pushed, tests green" ]
+}
+
+@test "settling with nothing recorded is a failure, since silence is not success" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 2
+	run nixcage_task_settle "$ROOT" acme "$id" ""
+	assert_failure
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" != "awaiting-review" ]
+}
+
+@test "a failed attempt returns the task to ready and records why" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	run nixcage_task_failed "$ROOT" acme "$id" "the session crashed" 3
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "ready" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" failure)" = "the session crashed" ]
+}
+
+@test "a task that exhausts its attempts stops rather than consuming a budget" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 2
+	nixcage_task_failed "$ROOT" acme "$id" "first" 2
+	nixcage_task_attempt "$ROOT" acme "$id" 2
+	nixcage_task_failed "$ROOT" acme "$id" "second" 2
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "failed" ]
+	run nixcage_task_attempt "$ROOT" acme "$id" 2
+	assert_failure
+}
+
+@test "a run that outlives its limit is a failed attempt, not a lost task" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_failed "$ROOT" acme "$id" "ran past its limit" 3
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "ready" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" attempts)" = "1" ]
+}
+
+@test "cancelling is terminal and says so" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	run nixcage_task_cancel "$ROOT" acme "$id" "the operator stopped it"
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "cancelled" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" failure)" = "the operator stopped it" ]
+	run nixcage_task_attempt "$ROOT" acme "$id" 2
+	assert_failure
+}

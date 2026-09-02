@@ -30,6 +30,17 @@ rather than the presence of that line. It cannot be silenced, because the only
 way to silence it would be to grant write access that would let a role redefine
 `main`.
 
+## Finishing
+
+When you are run against a task, `$NIXCAGE_TASK` names a directory. Its `brief`
+file holds the task and what counts as done for it. Write what you did into its
+`outcome` file before you stop.
+
+An empty outcome is a failure, not a success. A session that ends having
+recorded nothing looks exactly like one that crashed, so nothing can tell them
+apart and neither will be treated as finished work. Say what you did even when
+what you did was fail: a recorded failure is a result, silence is not.
+
 ## What you cannot reach
 
 You have no credential that reaches any host. You cannot push, pull a private

@@ -124,7 +124,7 @@ let
       cmd_enter() {
         ## Options precede the positional arguments so a session command can
         ## still be anything at all.
-        local auth_sock="" role=""
+        local auth_sock="" role="" task_dir=""
         while [ $# -gt 0 ]; do
           case "$1" in
           --auth-sock)
@@ -133,6 +133,10 @@ let
             ;;
           --role)
             role="''${2:-}"
+            shift 2
+            ;;
+          --task-dir)
+            task_dir="''${2:-}"
             shift 2
             ;;
           *) break ;;
@@ -236,6 +240,17 @@ let
           guidance_args+=("$guidance_line")
         done < <(nixcage_role_guidance_args "${./role-guidance.md}" "$role")
 
+        ## A task reaches the session as files rather than as arguments: the
+        ## brief is read, the outcome is written, and neither ever passes
+        ## through a command line or a keystroke stream.
+        local -a task_bind=()
+        if [ -n "$task_dir" ]; then
+          task_bind=(
+            "--bind=$task_dir:/run/nixcage/task"
+            "--setenv=NIXCAGE_TASK=/run/nixcage/task"
+          )
+        fi
+
         write_secret_env "$rootfs/etc/nixcage-env"
         ## Everything the skeleton contains was created by root and would
         ## otherwise appear as an unmapped nobody inside the container.
@@ -254,6 +269,7 @@ let
           ''${git_binds[@]+"''${git_binds[@]}"} \
           ''${agent_bind[@]+"''${agent_bind[@]}"} \
           ''${guidance_args[@]+"''${guidance_args[@]}"} \
+          ''${task_bind[@]+"''${task_bind[@]}"} \
           --chdir=/workspace \
           --setenv=HOME=/root \
           --setenv=PATH="$PROFILE/bin" \
@@ -302,8 +318,8 @@ let
         local -a passthrough=()
         while [ $# -gt 0 ]; do
           case "$1" in
-          --auth-sock)
-            passthrough+=(--auth-sock "''${2:-}")
+          --auth-sock | --task-dir)
+            passthrough+=("$1" "''${2:-}")
             shift 2
             ;;
           *) break ;;
@@ -324,8 +340,15 @@ let
 
         ## The declaration wins over anything the caller passes, because what a
         ## role runs is a property of the factory and not of whoever started it.
+        ## It arrives as argv words, one per line, so nothing in it is re-split.
         if [ -n "$declared_cmd" ]; then
-          set -- "$declared_cmd"
+          local -a declared=()
+          local word
+          while IFS= read -r word; do
+            [ -n "$word" ] || continue
+            declared+=("$word")
+          done <<<"$declared_cmd"
+          set -- "''${declared[@]}"
         fi
 
         cmd_enter --role "$role" ''${passthrough[@]+"''${passthrough[@]}"} \
@@ -372,6 +395,62 @@ let
         done
       }
 
+      ## Run one task in its role's cage. The task is handed in as files and
+      ## the outcome is read back out of one, so nothing about it is ever an
+      ## argument. Every ending is recorded: settled when the role wrote what it
+      ## did, failed when it wrote nothing, crashed, or outlived its limit.
+      cmd_role_run() {
+        local factory="$1" role="$2" id="$3"
+        [ -f "$FACTORY_CONFIG" ] ||
+          die "no factory declared: set nixcage.supervisor.roleUidRange"
+        # shellcheck disable=SC1090
+        . "$FACTORY_CONFIG"
+        local max="''${TASK_MAX_ATTEMPTS:-3}"
+        local limit="''${TASK_TIMEOUT_SECONDS:-3600}"
+
+        [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] ||
+          die "$id does not belong to role $role"
+
+        nixcage_task_attempt "$TASKS_ROOT" "$factory" "$id" "$max" || exit 1
+
+        local uid run_dir
+        uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
+          "''${ROLE_UID_BASE:?}" "''${ROLE_UID_SIZE:?}" "$role")" || exit 1
+        run_dir="$STATE_DIR/runs/$factory/$id"
+        rm -rf "$run_dir"
+        mkdir -p "$run_dir"
+        {
+          printf 'task: %s\n' "$id"
+          printf 'role: %s\n' "$role"
+          printf 'acceptance:\n%s\n' \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" acceptance)"
+          printf '\nbody:\n%s\n' \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" body)"
+        } >"$run_dir/brief"
+        : >"$run_dir/outcome"
+        chown "$uid:$uid" "$run_dir/outcome"
+        chmod 444 "$run_dir/brief"
+
+        local status=0
+        timeout "$limit" "$0" role-enter --task-dir "$run_dir" "$factory" "$role" || status=$?
+
+        local outcome
+        outcome="$(cat "$run_dir/outcome" 2>/dev/null)"
+        if [ "$status" = 124 ]; then
+          nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
+            "the run outlived its $limit second limit" "$max"
+          die "$id: run outlived its limit"
+        elif [ -n "$outcome" ]; then
+          nixcage_task_settle "$TASKS_ROOT" "$factory" "$id" "$outcome" ||
+            die "$id: could not record the outcome"
+          echo "$id: settled"
+        else
+          nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
+            "the session ended having recorded no outcome" "$max"
+          die "$id: no outcome recorded"
+        fi
+      }
+
       cmd_list() {
         [ -d "$STATE_DIR/containers" ] || return 0
         ls -1 "$STATE_DIR/containers"
@@ -389,12 +468,13 @@ let
       enter) cmd_enter "$@" ;;
       role-worktree) cmd_role_worktree "$@" ;;
       role-enter) cmd_role_enter "$@" ;;
+      role-run) cmd_role_run "$@" ;;
       task-file) cmd_task_file "$@" ;;
       task-list) cmd_task_list "$@" ;;
       task-show) cmd_task_show "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | task-file <factory> <role> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <role> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
       esac
     '';
   };
