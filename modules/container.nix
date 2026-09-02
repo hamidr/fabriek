@@ -44,8 +44,12 @@ let
       ## Sourced by store path: the file is a real shell file so shellcheck
       ## and the bats suite can read it, and the store is available here.
       . ${./git-worktree.sh}
+      . ${./role-uid.sh}
 
       STATE_DIR=/var/lib/nixcage
+      ## Rendered by the platform module from nixcage.supervisor.roleUidRange.
+      ## Absent when no factory is declared, which is the ordinary case.
+      FACTORY_CONFIG=/etc/nixcage/factory
       ## Resolve the /etc symlink to its store path: the container has its
       ## own /etc, but the store bind makes store paths valid inside.
       PROFILE="$(readlink -f /etc/nixcage/profile)"
@@ -85,17 +89,15 @@ let
       ## concurrent sessions of the same project coexist because nspawn
       ## takes an exclusive lock on its directory tree.
       make_rootfs() {
-        local root="$1"
+        local root="$1" role="''${2:-}"
         ## nspawn refuses a rootfs without /usr ("doesn't look like it has
         ## an OS tree").
         mkdir -p "$root"/{etc,usr,tmp,root,workspace,nix,proc,sys,dev,run,var/empty}
         chmod 1777 "$root/tmp"
         echo 'NAME=nixcage' >"$root/etc/os-release"
         cp /etc/resolv.conf "$root/etc/resolv.conf" 2>/dev/null || true
-        cat >"$root/etc/passwd" <<'EOF'
-      root:x:0:0:root:/root:/bin/sh
-      nobody:x:65534:65534:nobody:/var/empty:/bin/sh
-      EOF
+        nixcage_role_passwd "$role" >"$root/etc/passwd" ||
+          die "invalid role name: $role"
         cat >"$root/etc/group" <<'EOF'
       root:x:0:
       nogroup:x:65534:
@@ -110,11 +112,15 @@ let
       cmd_enter() {
         ## Options precede the positional arguments so a session command can
         ## still be anything at all.
-        local auth_sock=""
+        local auth_sock="" role=""
         while [ $# -gt 0 ]; do
           case "$1" in
           --auth-sock)
             auth_sock="''${2:-}"
+            shift 2
+            ;;
+          --role)
+            role="''${2:-}"
             shift 2
             ;;
           *) break ;;
@@ -126,12 +132,25 @@ let
         check_name "$name"
         [ -d "$project" ] || die "project directory not found: $project"
 
-        ## The container is mapped onto the project owner rather than run as
-        ## real root: nix's libgit2 refuses a repository owned by a different
-        ## uid, and every project directory belongs to the invoking user.
+        ## An ordinary session is mapped onto the project owner: nix's libgit2
+        ## refuses a repository owned by a different uid, and every project
+        ## directory belongs to the invoking user (ADR-004). A factory role
+        ## instead gets a uid of its own, because roles must be isolated from
+        ## each other and not merely from the host (ADR-010); the role owns its
+        ## worktree, so the ownership check still passes.
         local owner_uid owner_gid
-        owner_uid="$(stat -c %u "$project")"
-        owner_gid="$(stat -c %g "$project")"
+        if [ -n "$role" ]; then
+          [ -f "$FACTORY_CONFIG" ] ||
+            die "no factory declared: set nixcage.supervisor.roleUidRange"
+          # shellcheck disable=SC1090
+          . "$FACTORY_CONFIG"
+          owner_uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
+            "''${ROLE_UID_BASE:?}" "''${ROLE_UID_SIZE:?}" "$role")" || exit 1
+          owner_gid="$owner_uid"
+        else
+          owner_uid="$(stat -c %u "$project")"
+          owner_gid="$(stat -c %g "$project")"
+        fi
 
         ## A linked git worktree keeps its git directory inside the primary
         ## repository, which the project bind does not cover; without these
@@ -156,7 +175,7 @@ let
         chmod 700 "$home"
 
         local rootfs="$cdir/session-$$"
-        make_rootfs "$rootfs"
+        make_rootfs "$rootfs" "$role"
         ## Expand now: locals are out of scope when the EXIT trap fires.
         # shellcheck disable=SC2064
         trap "rm -rf '$rootfs'" EXIT

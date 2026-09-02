@@ -63,6 +63,40 @@ in
       '';
     };
 
+    supervisor = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          roleUidRange = lib.mkOption {
+            type = lib.types.nullOr (
+              lib.types.submodule {
+                options = {
+                  base = lib.mkOption {
+                    type = lib.types.ints.unsigned;
+                    example = 700000;
+                    description = "First uid a factory role may be allocated.";
+                  };
+                  size = lib.mkOption {
+                    type = lib.types.ints.positive;
+                    default = 64;
+                    description = "How many uids the range covers.";
+                  };
+                };
+              }
+            );
+            default = null;
+            description = ''
+              The uid range factory roles are allocated from (ADR-010). A role
+              keeps its number, and a forgotten role's number is never
+              reissued, so a new role cannot inherit a dead one's files. The
+              range must not overlap accounts that already exist here.
+            '';
+          };
+        };
+      };
+      default = { };
+      description = "Factory supervision. Absent unless a factory is declared.";
+    };
+
     git = lib.mkOption {
       type = lib.types.submodule {
         options = {
@@ -183,6 +217,15 @@ in
         {
           text = container.gitConfigText cfg.git;
         };
+
+    ## Rendered only when a role uid range is declared: an ordinary session
+    ## never reads it, and a role session refuses to start without it.
+    environment.etc."nixcage/factory" = lib.mkIf (cfg.supervisor.roleUidRange != null) {
+      text = ''
+        ROLE_UID_BASE=${toString cfg.supervisor.roleUidRange.base}
+        ROLE_UID_SIZE=${toString cfg.supervisor.roleUidRange.size}
+      '';
+    };
 
     environment.etc."nixcage/profile".source = container.profile;
     environment.etc."nixcage/secret-env".text = lib.concatStrings (
