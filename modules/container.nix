@@ -39,12 +39,18 @@ let
       coreutils
       systemd
       gnugrep
+      ## A role's worktree is created here and handed to its uid: git makes
+      ## the worktree, setfacl grants the uid the parts of the repository it
+      ## needs without a shared group, which a cage cannot have (ADR-010).
+      git
+      acl
     ];
     text = ''
       ## Sourced by store path: the file is a real shell file so shellcheck
       ## and the bats suite can read it, and the store is available here.
       . ${./git-worktree.sh}
       . ${./role-uid.sh}
+      . ${./role-worktree.sh}
 
       STATE_DIR=/var/lib/nixcage
       ## Rendered by the platform module from nixcage.supervisor.roleUidRange.
@@ -242,6 +248,23 @@ let
           "$PROFILE/bin/bash" -c "$shell_cmd" "$@"
       }
 
+      ## Create or repair a role's worktree and print its path. Separate from
+      ## enter because the supervisor prepares a role before it runs anything
+      ## in it, and because entering must not silently create state.
+      cmd_role_worktree() {
+        local factory="$1" role="$2" repo="$3"
+        [ -d "$repo" ] || die "repository not found: $repo"
+        [ -f "$FACTORY_CONFIG" ] ||
+          die "no factory declared: set nixcage.supervisor.roleUidRange"
+        # shellcheck disable=SC1090
+        . "$FACTORY_CONFIG"
+        local uid
+        uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
+          "''${ROLE_UID_BASE:?}" "''${ROLE_UID_SIZE:?}" "$role")" || exit 1
+        nixcage_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$repo" "$uid" ||
+          die "could not prepare the worktree for role $role"
+      }
+
       cmd_list() {
         [ -d "$STATE_DIR/containers" ] || return 0
         ls -1 "$STATE_DIR/containers"
@@ -257,9 +280,10 @@ let
       shift || true
       case "$cmd" in
       enter) cmd_enter "$@" ;;
+      role-worktree) cmd_role_worktree "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter <name> <project> [cmd...] | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
       esac
     '';
   };
