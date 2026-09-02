@@ -93,6 +93,8 @@ terminal that gets closed.
   opening a session to find out, whichever coding agent each role runs.
 - A run waiting on the operator is visibly waiting, is still waiting hours
   later, and holds no concurrency while it waits.
+- A task that cannot succeed stops on its own and says so, rather than being
+  discovered when a budget runs out.
 - Over a week, decisions made in the factory are findable as documents in the
   repository rather than reconstructed from memory.
 - No run is ever started by a cage, and the record shows this rather than
@@ -166,6 +168,26 @@ terminal that gets closed.
   so a role that delegates to a role that delegates back cannot run away.
 - A task that no role can own -- an undeclared role, a role since removed -- is
   refused when it is created, not when it would run.
+- A run ends settled, failed, or cancelled, and the task records which. Settled
+  means the session went idle and the role recorded an outcome against the
+  task. A session that goes idle having recorded nothing is a failure, not a
+  success: the supervisor cannot read intent out of an agent, and treating
+  silence as completion would make a crashed run look like finished work.
+- A run that never settles is not waited on forever. A workflow declares how
+  long one of its runs may take; past that the run is cancelled and counted as
+  a failed attempt, so a hung agent costs one attempt rather than a slot held
+  until someone notices.
+- A task counts its attempts. A workflow declares how many a task may have,
+  and a task that exhausts them stops becoming runs and is recorded as failed.
+  Reviving it is the operator's act, or a role's when it files a fresh task.
+  Without this a task that fails for a reason no retry can fix consumes the
+  whole workflow budget one attempt at a time.
+- Every attempt charges the workflow budget, including the ones that failed.
+  Retries that were free would make the budget describe successes rather than
+  spend.
+- A failed attempt records why it failed and leaves the task in the state it
+  was in, so a task blocked on something external does not silently become a
+  task that was tried and abandoned.
 
 ### The operator's console
 
@@ -201,6 +223,9 @@ terminal that gets closed.
 
 - A role's work reaches the repository's `main` through the reviewer role,
   which decides what merges and does so without waiting on the operator.
+- A role may read every ref in the repository and write only its own namespace.
+  The reviewer therefore sees the branches it integrates without any role being
+  able to rewrite another's work.
 - The reviewer performs the merge in its own worktree, on its own branch. It
   does not write `main`. Advancing `main` to the commit the reviewer produced
   is the supervisor's act, performed on the host, and it fast-forwards or
@@ -212,6 +237,18 @@ terminal that gets closed.
 - A role can write only the refs in its own namespace. `main` is not writable
   by any cage, so the previous requirement is a property of the machine rather
   than a rule the reviewer follows.
+- A conflict is content, so it is resolved in the cage or not at all. The
+  reviewer holds both sides in its own worktree and either resolves them there
+  or records the conflict back to the authoring role as a task, naming what
+  clashed. It never rewrites the authoring role's branch, which it cannot do in
+  any case.
+- One integration runs at a time per factory. Integration is the only work that
+  contends on a single ref, and serialising it costs nothing at the scale of
+  one machine while removing the race entirely.
+- If the fast-forward is refused because `main` moved anyway -- the operator
+  advanced it themselves -- the supervisor performs nothing, records the
+  refusal, and returns the task to the reviewer to redo against the new `main`.
+  A refused integration is never partially applied.
 - `main` never leaves the machine on the factory's initiative. Publishing to
   any remote is the operator's act.
 
@@ -220,7 +257,11 @@ terminal that gets closed.
 - The caps of PRD-002 apply unchanged and are shared across the factory: a
   global cap on concurrent runs, a budget per workflow, and the delegation
   depth cap above.
-- Reaching a cap stops cleanly, records why, and shows in the console.
+- Two more caps are declared per workflow and are caps of the same kind: how
+  long a single run may take, and how many attempts a task may have. They bound
+  the two ways work fails without stopping -- a run that hangs and a task that
+  cannot succeed -- which no other cap catches until the budget is gone.
+- Reaching any cap stops cleanly, records why, and shows in the console.
 
 ## Constraints
 
@@ -241,7 +282,9 @@ terminal that gets closed.
   0.8.0, which is verified to create worktree-backed workspaces, run a command
   in a pane, report and wait on agent lifecycle state (`idle`, `working`,
   `blocked`, `done`, `unknown`), accept externally reported pane state, and
-  attach to a pane. The supervisor owns no session machinery of its own.
+  attach to a pane. Waiting on a state takes a timeout, so the per-run duration
+  cap costs no polling loop of our own. The supervisor owns no session
+  machinery of its own.
 - Git refuses the same branch checked out in two worktrees. The assigned
   repository therefore has `main` checked out nowhere: every party including
   the operator works from a worktree, and `main` is advanced by a ref update
@@ -300,10 +343,6 @@ terminal that gets closed.
   which is what a task is for. A finding worth telling every role without
   assigning anyone work has no home, and PRD-001 is where it would live if it
   turns out to be wanted.
-- What does the supervisor do when the reviewer's commit does not fast-forward,
-  because another merge landed first? Rejecting and recording a task back to
-  the reviewer is the obvious answer and makes the reviewer redo work under
-  contention.
 
 ## Phases
 
@@ -315,15 +354,17 @@ usable on its own.
    guessed. No tasks, no delegation. Requires ADR-010, including the ACL probe
    it leaves open.
 2. **Tasks.** The task entity, the operator filing a goal, one role working it,
-   and the outcome recorded against the task.
+   and the outcome recorded against the task. Includes the failing paths, since
+   a store that only records success is not a store anyone can trust: a crashed
+   run, a run that outlives its limit, and a task that exhausts its attempts.
 3. **Delegation.** A role creates a task for another role, the supervisor turns
    it into a run, and depth is capped. This is the phase that makes the factory
    more than one agent.
 4. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
    the console and survive an answer that arrives hours later.
-5. **Integration.** The reviewer role, and `main` advancing without the
-   operator by a fast-forward the supervisor performs. Requires ADR-009 and the
-   ref namespace of ADR-010.
+5. **Integration.** The reviewer role, conflicts resolved in its cage or handed
+   back as tasks, and `main` advancing without the operator by a fast-forward
+   the supervisor performs. Requires ADR-009 and the ref namespace of ADR-010.
 6. **Documents.** The architect refining proposals, reports reaching the
    operator, and the record that shows no run originated in a cage.
 
@@ -338,8 +379,9 @@ process boundaries. It checks at minimum: no run proceeds past a gate that was
 never answered; delegation depth never exceeds its cap; concurrent runs never
 exceed the global cap; a role never becomes the origin of a dispatch; a
 workflow whose budget is exhausted starts no further run, including through a
-task delegated by one of its own runs; `main` only ever moves forward; and
-every task reaches a terminal state or is recorded as cancelled.
+task delegated by one of its own runs; a task that has exhausted its attempts
+starts no further run; two integrations never overlap; `main` only ever moves
+forward; and every task reaches a terminal state or is recorded as cancelled.
 
 An Alloy model covers the structural invariants that span roles, worktrees,
 branches, tasks, and runs. It checks at minimum: every role has exactly one
