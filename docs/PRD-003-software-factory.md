@@ -408,6 +408,14 @@ keeping, and they are answerable from the run record and from git alone:
   directory it does not own, and refs it may move within its own namespace
   (ADR-010). The comparison that matters is not with a session but with the
   operator, and against that a role is strictly less.
+- A factory's repository must sit on a filesystem that supports ownership and
+  ACLs, which on macOS the operator's own workspace roots do not. They reach
+  the VM over 9p, where `chown` returns `Operation not permitted` and `setfacl`
+  returns `Operation not supported`, both measured. virtiofs is not an
+  alternative there, because virtiofsd does not exist on a macOS host. So
+  ADR-010's mechanism works against a repository on the Linux side and cannot
+  work against one under a workspace root on macOS. How a macOS factory gets a
+  repository it can own is unresolved and is recorded as an open question.
 - Declarations are Nix, and the supervisor does not evaluate Nix at dispatch
   time. They are evaluated once into nixcage's own state, the way `sshPort` and
   `workspaceRoots` already are, and the supervisor reads them from there. On
@@ -501,6 +509,15 @@ keeping, and they are answerable from the run record and from git alone:
   outside keeps the trust boundary visually obvious.
 - How does a role know what the factory already tried? The document record
   answers this for decisions, and nothing answers it for abandoned attempts.
+- Where does a macOS factory's repository live? Role ownership needs a Linux
+  filesystem, and the operator's checkout is on the Mac behind a 9p share that
+  refuses both `chown` and `setfacl`. Keeping the repository inside the VM
+  works and takes it out of the operator's reach; giving each role its own
+  clone on the VM's own storage, with the operator's checkout as the origin
+  that integration pushes back to, keeps both sides but reintroduces the
+  clone-per-role shape that worktrees were chosen over. On Linux the question
+  does not arise, because the repository is already on a filesystem that
+  supports both.
 - Do roles ever want messages as well as tasks? Everything here is delegation,
   which is what a task is for. A finding worth telling every role without
   assigning anyone work has no home, and PRD-001 is where it would live if it
