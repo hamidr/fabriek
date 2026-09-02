@@ -30,6 +30,11 @@ let
   ## as one Nix-built script.
   nixcageContainer = pkgs.writeShellApplication {
     name = "nixcage-container";
+    ## The sourced helpers are store paths, which shellcheck cannot follow from
+    ## inside the build. They are real shell files and the dev shell lints them
+    ## directly, so following them here would add nothing and the unfollowable
+    ## source is what fails the build.
+    excludeShellChecks = [ "SC1091" ];
     runtimeInputs = with pkgs; [
       coreutils
       systemd
