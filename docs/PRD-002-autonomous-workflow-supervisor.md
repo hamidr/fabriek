@@ -160,12 +160,20 @@ result, with the operator setting the policy instead of executing it.
   session from outside it.
 - The system depends on a terminal multiplexer that can run headless, start a
   command in a pane, report and wait on agent lifecycle state, and accept
-  externally reported state. herdr 0.8.0 satisfies the first three, checked by
-  running them. The fourth is not usable as shipped: `herdr pane report-agent`
-  refuses its own required `--source` flag in every form, so state can be read
-  and waited on but not reported from outside. Until that is repaired, lifecycle
-  state is only available for agents herdr recognises itself, which contradicts
-  this document's constraint that no particular coding agent is assumed.
+  externally reported state. Measured against herdr 0.8.0, three of those hold
+  and one splits in two. Reporting state from outside works, but only over the
+  socket: the `pane.report_agent` method accepts a report and the console shows
+  it, while the `herdr pane report-agent` command refuses its own required
+  `--source` flag and is unusable. Waiting does not see reported state at all:
+  `herdr agent wait` ignored both an already-reported state and a transition
+  reported while it was waiting, so it tracks only sessions herdr detects
+  itself.
+
+  The consequence for this document is that a run's completion cannot be
+  learned by waiting on a pane unless herdr recognises the agent. It is learned
+  from the outcome the run records instead, which is a stronger signal anyway,
+  and the pane state is what makes the run visible rather than what makes it
+  observable.
 - Everything the supervisor knows about a run is recoverable after a restart:
   the multiplexer's sessions persist, and the record lives with the mailbox.
 

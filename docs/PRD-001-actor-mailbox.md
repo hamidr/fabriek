@@ -211,9 +211,10 @@ they lack is a place to leave each other a message.
 - How does the operator learn that a project has mail without entering it?
   A host-side listing of every actor's unread count is the minimum. A terminal
   multiplexer showing every session at once is the likely answer, and herdr
-  0.8.0 exposes a command for externally reported per-pane state, but it
-  refuses its own required `--source` flag as shipped, so that route is not
-  currently available and an unread count would have to live somewhere else.
+  0.8.0 accepts externally reported per-pane state over its socket, which is
+  measured to work and would carry an unread count. Its `herdr pane
+  report-agent` command does not: it refuses its own required `--source` flag,
+  so the report has to be written to the socket directly.
   Whether the unread count belongs there or in a plain listing is still open.
 - Should a request carry a status beyond answered/unanswered? The
   request/reply pair was chosen for simplicity, and the cost is that "not

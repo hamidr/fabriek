@@ -286,10 +286,10 @@ keeping, and they are answerable from the run record and from git alone:
   waiting on a gate, and which are idle. Those three are run states the
   supervisor can report from outside a session, so they hold for any coding
   agent a role runs.
-- Whether a run finished is a property of its task, recorded by the supervisor,
-  not a state read out of the agent. The supervisor treats a session that has
-  gone idle as settled and records the outcome against the task; it never
-  depends on the agent announcing that it is done.
+- Whether a run finished is a property of its task, not a state read out of the
+  agent. A turn ends when an outcome is recorded against the task, which works
+  whatever agent a role runs; a pane going idle is a hint the supervisor may use
+  where herdr recognises the agent, never the thing it depends on.
 - The operator can step into any role's session directly and take over, and
   leave again without ending the run.
 - A run stopped at a gate is visibly stopped and says what it is waiting for.
@@ -416,12 +416,18 @@ keeping, and they are answerable from the run record and from git alone:
 - The console and the supervisor's control plane are the same thing: herdr
   0.8.0, which is verified to create worktree-backed workspaces, run a command
   in a pane, report and wait on agent lifecycle state (`idle`, `working`,
-  `blocked`, `done`, `unknown`), and attach to a pane. Creating a workspace,
-  running a command in its pane, and reading pane state were checked by running
-  them. Reporting state from outside was not: `herdr pane report-agent` refuses
-  its own required `--source` flag as shipped in 0.8.0, so a role running an
-  agent herdr does not recognise currently has no observable lifecycle at all.
-  This is an open dependency rather than a settled one. Waiting on a state takes a timeout, so the per-run duration
+  `blocked`, `unknown`), and attach to a pane. Creating an unfocused workspace,
+  running a command in its pane, reading pane state, reporting state from
+  outside, and closing the workspace again were all measured against 0.8.0.
+
+  Two caveats came out of measuring rather than reading. Reporting state must
+  go to the socket as `pane.report_agent`: the `herdr pane report-agent`
+  command refuses its own required `--source` flag and cannot be used. And
+  `herdr agent wait` does not observe reported state, neither an existing one
+  nor a transition made while it waits, so waiting on a pane only works for an
+  agent herdr detects itself. A role's turn therefore ends when its outcome is
+  recorded, not when a pane goes idle; the pane state is what makes a role
+  visible, not what makes it observable. Waiting on a state takes a timeout, so the per-run duration
   cap costs no polling loop of our own. The supervisor owns no session
   machinery of its own.
 - Git refuses the same branch checked out in two worktrees, so `main` is
