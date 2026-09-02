@@ -268,6 +268,12 @@ keeping, and they are answerable from the run record and from git alone:
 - A run stopped at a gate is visibly stopped and says what it is waiting for.
 - The operator's answer to a gate may come hours later, and the run survives
   the wait.
+- Answering a gate does not resume the run. It records the answer and makes the
+  run eligible again; the supervisor readmits it under the same concurrency
+  check it applies to a fresh run, and charges no further budget because that
+  run was paid for when it started. A gate releases its slot while it waits, so
+  the slot may be gone when the answer arrives, and resuming without being
+  readmitted would put the machine over its cap.
 - Everything the console shows survives a restart of the console itself.
 
 ### Documents
@@ -321,6 +327,9 @@ keeping, and they are answerable from the run record and from git alone:
 - The caps of PRD-002 apply and are shared across the factory: a global cap on
   concurrent runs, and a budget per workflow. The depth cap is satisfied by the
   pipeline being acyclic rather than by counting at run time.
+- The global cap binds only when the factory has more roles than the cap
+  allows, because one worktree per role already bounds active runs by the
+  number of roles. A cap set at or above the role count constrains nothing.
 - Two more caps are declared per workflow and are caps of the same kind: how
   long a single run may take, and how many attempts a task may have. They bound
   the two ways work fails without stopping -- a run that hangs and a task that
@@ -453,12 +462,12 @@ usable on its own.
 
 ## Design gates
 
-The Formal Modeling Gate fires on two shapes, and both models are written and
-run before the implementation of the phase that needs them.
+The Formal Modeling Gate fires on two shapes. Both models are written and run,
+and both live under `models/`.
 
-A Quint model covers the task and run lifecycle across roles and the
-supervisor, which is a state machine whose transitions interleave across
-process boundaries. It checks at minimum: no run proceeds past a gate that was
+`models/factory-lifecycle.qnt` covers the task and run lifecycle across roles
+and the supervisor, which is a state machine whose transitions interleave
+across process boundaries. It checks: no run proceeds past a gate that was
 never answered; delegation depth never exceeds its cap; concurrent runs never
 exceed the global cap; a role never becomes the origin of a dispatch; a
 workflow whose budget is exhausted starts no further run, including through a
@@ -467,8 +476,10 @@ no further run; a role never runs two tasks at once; two integrations never
 overlap; `main` only ever moves forward; and every task reaches a terminal
 state or is recorded as cancelled.
 
-An Alloy model covers the structural invariants that span roles, worktrees,
-branches, tasks, and runs. It checks at minimum: every role has exactly one
+`models/factory-structure.als` covers the structural invariants that span
+roles, worktrees, branches, tasks, and runs. Its facts state only what the
+mechanism gives, so each claim below has to follow from them rather than be
+restated. It checks: every role has exactly one
 worktree and every worktree exactly one role; no two roles share a branch; no
 task is owned by an undeclared role; no run exists without the task it serves;
 `main` is checked out by no worktree; every ref writable by a role lies in that
@@ -479,3 +490,11 @@ pipeline contains a cycle.
 
 PRD-001's own structural model changes with it, because addressing a role is
 not addressing a project directory.
+
+The lifecycle model found one defect before any code existed. A gate releases
+its concurrency slot while it waits, and the design said nothing about the way
+back, so a run whose gate was answered resumed straight into working and put
+the machine over its cap: with a cap of two, one run at a gate, two more
+started while the operator was away, and the answer arriving made three. The
+requirement that an answered gate is readmitted rather than resumed exists
+because of that counterexample.
