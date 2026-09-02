@@ -1,0 +1,135 @@
+---
+id: ADR-010
+title: A factory role cage runs under its own uid, name, and signing key
+status: proposed
+date: 2026-09-02
+status_date: 2026-09-02
+summary: factory role cages get an allocated uid and a named user, own their worktree, and reach shared objects through ACLs
+depends_on: [ADR-004, ADR-007, ADR-009]
+supersedes: []
+superseded_by: []
+---
+
+## Context
+
+ADR-004 maps a cage onto the owner of the project directory. That was written
+when one project meant one cage, and the boundary that mattered was between the
+cage and the host.
+
+PRD-003 puts several role cages on one machine, working one repository at the
+same time. Under ADR-004 they all map onto the same uid, so the kernel draws no
+boundary between them at all: any role can read and write any other role's
+worktree, persistent home, and signing key. ADR-009 gives each role its own key
+precisely so unattended work is attributable and revocable on its own terms,
+and a shared uid makes every key readable by every role, so that attribution
+rests on nothing.
+
+The constraint ADR-004 discovered still binds. Nix's libgit2 refuses to open a
+repository owned by a different uid than the calling process, and ADR-004
+measured that `safe.directory` does not lift it, because libgit2 never consults
+that configuration. A cage with its own uid therefore cannot work a tree that
+belongs to someone else. What it can work is a tree that belongs to it.
+
+## Decision
+
+A factory role cage runs under its own uid, its own user name, and its own
+signing key. An ordinary project cage is unchanged, because its project
+directory is the operator's working copy and they use it from the host too.
+This amends ADR-004's scope the way ADR-004 amended ADR-003's "no user
+namespaces" clause; ADR-004 is not superseded.
+
+**1. A uid per role, from a declared range.** The Nix declaration names a base
+and a size. A role is assigned the lowest free uid in that range on first run
+and keeps it, recorded in nixcage state. A removed role's uid is not reissued,
+so a new role never inherits the file ownership of a dead one. The cage runs
+with `--private-users=<role_uid>:1` and ownership shifting off, exactly the
+mechanism ADR-004 uses, with the role's uid where the project owner's was.
+
+**2. A name inside the cage.** The session skeleton's `/etc/passwd` names uid 0
+as the role rather than as root, so the session's user, its prompt, and
+anything that resolves the uid say which role is running. On the host the uid
+is a bare number, which ADR-004 already accepted for gids.
+
+**3. The role owns its checkout.** The role's worktree and its administrative
+directory `.git/worktrees/<role>` are chowned to the role's uid. The common git
+directory stays with the repository's owner. Those two paths are what git and
+libgit2 actually check, which was measured rather than assumed.
+
+**4. Writes reach the shared object database through ACLs.** A POSIX ACL grants
+each allocated role uid `rwX` on the repository's git directory, and a default
+ACL makes new objects and refs inherit it. A shared group cannot serve here:
+nspawn derives the gid map from the same base as the uid map (ADR-004), so a
+cage holds exactly one gid, equal to its uid, and no supplementary groups.
+
+**5. Home, skeleton, and key follow the role.** The persistent home and the
+session rootfs skeleton are chowned to the role's uid, the home staying 0700.
+ADR-009's signing key is 0400 owned by the role's uid rather than by the
+project owner, which is what turns per-role revocation from nominal into real.
+
+## Consequences
+
+Roles are isolated from each other by the kernel. Reading another role's key,
+home, or worktree now requires defeating a uid boundary rather than merely
+being a process in the same factory.
+
+The object database remains shared authority, and no uid boundary changes that.
+Git's object store is content-addressed and shared by design, and refs live in
+the common directory, so any role that can write objects can also move a branch
+that is not its own, including `main`. Role isolation covers working trees,
+homes, and keys; it does not cover history. Ref-level restriction is not
+attempted here, and the run record is what makes such a move visible after the
+fact.
+
+The uid range is a host resource the operator owns. On Linux it must not
+overlap real host users; on macOS it lives in the VM's own uid space. Choosing
+it badly fails silently, by colliding with an account rather than by erroring.
+
+Losing nixcage state loses the role-to-uid map. Files then carry stale numeric
+owners, and recovery is re-chowning the role's worktree, home, and key. Not
+reissuing a freed uid keeps a removed role's leftovers from being adopted by a
+new role.
+
+ACLs bind a factory to a filesystem that supports them and add `acl` to the
+container profile. An ordinary project cage needs neither.
+
+Ordinary cages keep every property ADR-004 gave them, including files landing
+in the project owned by the user rather than by root.
+
+## Verification
+
+Measured on git 2.55.0 before this was written.
+
+With the whole common `.git` owned by another uid, both layers refuse: `git
+status` reports `detected dubious ownership`, and `nix flake metadata` fails
+with `repository path '<repo>/.git/worktrees/<role>' is not owned by current
+user (libgit2 error code = 7)`. The error names the administrative directory,
+not the common directory, which is why point 3 moves exactly that entry.
+
+With the worktree and `.git/worktrees/<role>` owned by the caller and the
+common `.git` left foreign, `git status` reports the branch and `nix flake
+metadata` resolves the revision. Committing then fails with `insufficient
+permission for adding an object to repository database`. Making the git
+directory group-writable repaired it in a shell that carried the group, which a
+cage does not.
+
+Still to measure, in the VM, before phase 1 of PRD-003:
+
+```
+setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git
+# then, inside the role's cage, with no shared group:
+git -C /workspace commit -m probe
+git -C /workspace log --oneline -1
+```
+
+The open question is whether the default ACL survives git chmodding a new loose
+object to 0444, since git manages object permissions itself. If a role cannot
+commit through the ACL alone, the fallback is a clone per role, which shares no
+object database and needs no ACL.
+
+bats covers the CLI and container seam: a role's uid is stable across runs, a
+removed role's uid is not reissued, `enter` passes `--private-users` with the
+role's uid rather than the project owner's, and an ordinary project cage still
+passes the project owner's.
+
+The decision makes no performance, storage, or capacity claim, so there is no
+measurement plan beyond the ACL probe above.

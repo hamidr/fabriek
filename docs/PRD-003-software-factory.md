@@ -128,6 +128,11 @@ terminal that gets closed.
 - A role's accumulated state -- whatever it learns, installs, or keeps between
   runs -- lives in its own persistent home and is nobody else's business. The
   supervisor neither reads it nor seeds it.
+- A role is a distinct user of the machine, not a name for one. It has its own
+  uid, its own worktree owned by that uid, and its own signing key readable by
+  nobody else, so one role cannot read another's key, home, or working files
+  (ADR-010). What the roles of a factory do share is the repository's object
+  database and its refs, which git shares by construction.
 - Adding, removing, or changing a role is the operator's act. A role cannot
   declare another role, including itself.
 
