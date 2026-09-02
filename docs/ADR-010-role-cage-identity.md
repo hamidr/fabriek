@@ -1,7 +1,7 @@
 ---
 id: ADR-010
 title: A factory role cage runs under its own uid, name, and signing key
-status: proposed
+status: accepted
 date: 2026-09-02
 status_date: 2026-09-02
 summary: factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs
@@ -106,6 +106,17 @@ new role.
 ACLs bind a factory to a filesystem that supports them and add `acl` to the
 container profile. An ordinary project cage needs neither.
 
+Every ref update a role makes prints `Unable to create packed-refs.lock:
+Permission denied` on stderr. Git takes that lock opportunistically, the
+operation succeeds anyway, and the exit status is zero. It cannot be silenced
+by configuration -- `gc.auto=0` and `maintenance.auto=false` were both tried --
+and the one thing that would silence it, granting the role write access to
+`.git` itself, is precisely what must not happen: `packed-refs` holds ref
+values, so a role able to write it could redefine `main` without ever touching
+`refs/heads/main`. The noise is therefore permanent, and the guidance a role
+receives has to say that this particular error is expected, because an agent
+reading its own stderr will otherwise conclude its commit failed.
+
 Ordinary cages keep every property ADR-004 gave them, including files landing
 in the project owned by the user rather than by root.
 
@@ -126,28 +137,43 @@ permission for adding an object to repository database`. Making the git
 directory group-writable repaired it in a shell that carried the group, which a
 cage does not.
 
-Still to measure, in the VM, before phase 1 of PRD-003:
+Measured in the nixcage VM on git 2.55.0, on the ext-backed data volume, with
+the repository owned by root, the worktree and `.git/worktrees/<role>` chowned
+to a foreign uid, ACLs on `objects`, `refs/heads/<role>` and
+`logs/refs/heads/<role>`, and no shared group anywhere:
 
 ```
 setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/objects
 setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/refs/heads/<role>
 setfacl -R -m u:<role_uid>:rwX -m d:u:<role_uid>:rwX <repo>/.git/logs/refs/heads/<role>
-# then, inside the role's cage, with no shared group:
-git -C /workspace commit -m probe
-git -C /workspace log --oneline -1
+setpriv --reuid=<role_uid> --regid=<role_uid> --clear-groups git commit ...
 ```
 
-The open question is whether the default ACL survives git chmodding a new loose
-object to 0444, since git manages object permissions itself. If a role cannot
-commit through the ACL alone, the fallback is a clone per role, which shares no
-object database and needs no ACL.
+The open question is answered: the default ACL survives git chmodding a new
+loose object. A written object is `-r--rw-r--+` carrying `user:<role_uid>:rw-`,
+git having set the classic bits to 0444 without disturbing the named entry.
+Commits by the role uid succeeded repeatedly, as did `status`, `log`, `diff`,
+creating a branch in its own namespace, and moving its own ref.
 
-The ref partition needs the same probe as the object ACL, in the same run: a
-role uid can create and move `refs/heads/<role>/topic`, and cannot write
-`refs/heads/main` or `packed-refs`, with no shared group anywhere. That a
-namespaced branch touches exactly `refs/heads/<role>/` and
-`logs/refs/heads/<role>/`, and nothing at the top level, was measured on git
-2.55.0 and is why those two directories are the ones that carry an ACL.
+The ref partition holds. `git update-ref refs/heads/master` fails with
+`Permission denied` on `refs/heads/master.lock` and the ref does not move;
+creating `refs/heads/hotfix` outside the role's namespace fails the same way;
+and the role reads every ref in the repository. That a namespaced branch
+touches exactly `refs/heads/<role>/` and `logs/refs/heads/<role>/` and nothing
+at the top level was measured separately, and is why those two directories are
+the ones that carry an ACL.
+
+ADR-004's original failure does not recur. `nix flake metadata` in the role's
+worktree resolved the flake and its revision for a uid that owns the worktree
+while root owns the common `.git`, which is the case that motivated ADR-004 in
+the first place. The uid must have a `passwd` entry for nix to run at all,
+which inside a cage it does, since the container maps the role onto uid 0 and
+names it.
+
+bats covers the CLI and container seam: a role's uid is stable across runs, a
+removed role's uid is not reissued, `enter` passes `--private-users` with the
+role's uid rather than the project owner's, and an ordinary project cage still
+passes the project owner's.
 
 bats covers the CLI and container seam: a role's uid is stable across runs, a
 removed role's uid is not reissued, `enter` passes `--private-users` with the
