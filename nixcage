@@ -450,6 +450,78 @@ cmd_enter() {
   fi
 }
 
+## Run a guest command and return its output, over whichever transport the
+## platform uses. Every word is quoted because the remote shell re-splits the
+## whole line, not only the trailing arguments.
+guest() {
+  if [[ "$OS" == "linux" ]]; then
+    sudo nixcage-container "$@"
+    return
+  fi
+  ensure_vm
+  local remote=(sudo nixcage-container) arg
+  for arg in "$@"; do
+    remote+=("$(printf '%q' "$arg")")
+  done
+  vm_ssh -- "${remote[@]}"
+}
+
+## Tasks: file a goal into a factory, and read back what is there. A task is
+## named rather than located, so none of this cares where it is run from.
+cmd_task() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+  file)
+    local factory="${1:-}" role="${2:-}"
+    if [[ -z "$factory" || -z "$role" ]]; then
+      log_err "usage: nixcage task file <factory> <role> [--workflow <name>] [--acceptance <text>]"
+      exit 1
+    fi
+    shift 2
+    ## Until workflows are declared, a goal belongs to one named default.
+    local workflow="default" acceptance=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+      --workflow)
+        workflow="${2:-}"
+        shift 2
+        ;;
+      --acceptance)
+        acceptance="${2:-}"
+        shift 2
+        ;;
+      *)
+        log_err "unknown option for task file: $1"
+        exit 1
+        ;;
+      esac
+    done
+    guest task-file "$factory" "$role" "$workflow" "$acceptance"
+    ;;
+  list)
+    local factory="${1:-}"
+    [[ -n "$factory" ]] || {
+      log_err "usage: nixcage task list <factory> [state]"
+      exit 1
+    }
+    guest task-list "$factory" "${2:-}"
+    ;;
+  show)
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: nixcage task show <factory> <id>"
+      exit 1
+    fi
+    guest task-show "$factory" "$id"
+    ;;
+  *)
+    log_err "usage: nixcage task file|list|show ..."
+    exit 1
+    ;;
+  esac
+}
+
 ## herdr's own socket. The CLI's 'pane report-agent' refuses its own required
 ## --source flag in 0.8.0, so the report is written to the socket directly.
 herdr_socket() {
@@ -722,6 +794,10 @@ ${BOLD}Commands:${NC}
   role [--pane] <factory> <role> [-- cmd...]
                      Enter a declared factory role in its own worktree and uid
                      (--pane: run it in a herdr pane of its own instead)
+  task file <factory> <role> [--workflow <n>] [--acceptance <text>]
+  task list <factory> [state]
+  task show <factory> <id>
+                     File a goal into a factory, and read back what is there
   rm [name]          Delete a project container and its persistent home
   status             Show container state (macOS: VM state and age public key)
   down               macOS only: stop the VM
@@ -759,6 +835,7 @@ main() {
   case "$command" in
   enter)   cmd_enter "$@" ;;
   role)    cmd_role "$@" ;;
+  task)    cmd_task "$@" ;;
   down)    cmd_down "$@" ;;
   rebuild) cmd_rebuild "$@" ;;
   rm)      cmd_rm "$@" ;;

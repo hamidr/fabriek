@@ -123,3 +123,42 @@ teardown() {
 	[ "$total" = "8" ]
 	[ "$distinct" = "8" ]
 }
+
+@test "a task with everything its workflow requires becomes ready" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" acceptance "tests pass"
+	run nixcage_task_ready "$ROOT" acme "$id" role acceptance
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "ready" ]
+}
+
+@test "a task with no stated finish line stays proposed and says which field" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	run nixcage_task_ready "$ROOT" acme "$id" role acceptance
+	assert_failure
+	assert_output --partial "acceptance"
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "proposed" ]
+}
+
+@test "a field present but empty does not count as present" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" acceptance ""
+	run nixcage_task_ready "$ROOT" acme "$id" role acceptance
+	assert_failure
+}
+
+@test "readiness is checked, never judged" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" acceptance "x"
+	run nixcage_task_ready "$ROOT" acme "$id" role acceptance
+	assert_success
+}
+
+@test "a task already past proposed is not dragged back to ready" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" acceptance "tests pass"
+	nixcage_task_set "$ROOT" acme "$id" state done
+	run nixcage_task_ready "$ROOT" acme "$id" role acceptance
+	assert_failure
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "done" ]
+}

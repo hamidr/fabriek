@@ -109,3 +109,31 @@ nixcage_task_list() {
 		printf '%s %s\n' "$(cat "$dir/seq" 2>/dev/null || echo 0)" "$id"
 	done | sort -n | cut -d' ' -f2
 }
+
+## A task becomes ready when it carries the fields its workflow declares
+## required. The check is presence and nothing else: whether acceptance
+## criteria are any good is a judgement, and judgement belongs in a cage.
+## A task with no stated finish line would otherwise spend all its attempts
+## discovering it cannot be done.
+nixcage_task_ready() {
+	local root="$1" factory="$2" id="$3"
+	shift 3
+
+	local state
+	state="$(nixcage_task_get "$root" "$factory" "$id" state)" || return 1
+	if [ "$state" != "proposed" ]; then
+		echo "nixcage: $id is $state, not proposed" >&2
+		return 1
+	fi
+
+	local field value
+	for field in "$@"; do
+		value="$(nixcage_task_get "$root" "$factory" "$id" "$field")" || return 1
+		if [ -z "$value" ]; then
+			echo "nixcage: $id is missing $field" >&2
+			return 1
+		fi
+	done
+
+	nixcage_task_set "$root" "$factory" "$id" state ready
+}

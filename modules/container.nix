@@ -52,6 +52,7 @@ let
       . ${./role-uid.sh}
       . ${./role-worktree.sh}
       . ${./factory-clone.sh}
+      . ${./task-store.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -331,6 +332,46 @@ let
           "$factory-$role" "$worktree" "$@"
       }
 
+      ## The tasks of every declared factory, kept beside the clones they are
+      ## worked in rather than in any repository.
+      TASKS_ROOT="$STATE_DIR/tasks"
+
+      ## File a goal. The role must be one the factory declares, so a task
+      ## cannot be filed against something nothing will ever run.
+      cmd_task_file() {
+        local factory="$1" role="$2" workflow="$3" acceptance="''${4:-}"
+        nixcage_factory_role_command "$FACTORIES_ROOT" "$factory" "$role" >/dev/null || exit 1
+        local id
+        id="$(nixcage_task_new "$TASKS_ROOT" "$factory" "$workflow" "$role")" ||
+          die "could not file a task for $role"
+        if [ -n "$acceptance" ]; then
+          nixcage_task_set "$TASKS_ROOT" "$factory" "$id" acceptance "$acceptance"
+        fi
+        ## Required fields are the workflow's to declare; until workflows exist
+        ## an owner and a stated finish line are what a task needs.
+        nixcage_task_ready "$TASKS_ROOT" "$factory" "$id" role acceptance >/dev/null 2>&1 || true
+        echo "$id"
+      }
+
+      cmd_task_list() {
+        local factory="$1" want="''${2:-}"
+        local id
+        while IFS= read -r id; do
+          [ -n "$id" ] || continue
+          printf '%s\t%s\t%s\n' "$id" \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" state)" \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)"
+        done < <(nixcage_task_list "$TASKS_ROOT" "$factory" "$want")
+      }
+
+      cmd_task_show() {
+        local factory="$1" id="$2" field
+        for field in state role workflow attempts acceptance outcome; do
+          printf '%s\t%s\n' "$field" \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" "$field")"
+        done
+      }
+
       cmd_list() {
         [ -d "$STATE_DIR/containers" ] || return 0
         ls -1 "$STATE_DIR/containers"
@@ -348,9 +389,12 @@ let
       enter) cmd_enter "$@" ;;
       role-worktree) cmd_role_worktree "$@" ;;
       role-enter) cmd_role_enter "$@" ;;
+      task-file) cmd_task_file "$@" ;;
+      task-list) cmd_task_list "$@" ;;
+      task-show) cmd_task_show "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | task-file <factory> <role> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
       esac
     '';
   };
