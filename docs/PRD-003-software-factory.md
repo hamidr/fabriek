@@ -315,11 +315,17 @@ keeping, and they are answerable from the run record and from git alone:
   one.
 - A decision that changes the factory itself is written as a report addressed
   to the operator. The factory does not apply it; the operator does.
-- A role is given written guidance about working inside a factory, and it lives
-  in the assigned repository as an ordinary document rather than inside a
-  declaration, so the architect can refine it and the operator accepts it the
-  same way as anything else. A role that has to infer the rules from error
-  messages will infer them wrong.
+- A role is given written guidance about working inside a factory. A role that
+  has to infer the rules from error messages will infer them wrong.
+- The baseline guidance ships with nixcage and is bound read-only into every
+  role session, because the rules it states are properties of the cage rather
+  than of any repository, and because a factory has to be usable before anyone
+  has written anything for it. An ordinary project session gets none: it is not
+  a role.
+- From phase 6 the assigned repository may carry its own guidance document,
+  which the architect refines and the operator accepts like anything else. That
+  document is about this factory's own conventions and sits alongside the
+  baseline rather than replacing what the cage itself enforces.
 - That guidance covers at least: what a role may and may not write, since it
   owns its branch namespace and can reach neither `main` nor another role's
   refs; that a permission error naming `packed-refs.lock` is expected on every

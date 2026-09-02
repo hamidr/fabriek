@@ -52,6 +52,7 @@ let
       . ${./role-uid.sh}
       . ${./role-worktree.sh}
       . ${./factory-config.sh}
+      . ${./role-guidance.sh}
 
       STATE_DIR=/var/lib/nixcage
       ## Rendered by the platform module from nixcage.supervisor.roleUidRange.
@@ -223,6 +224,16 @@ let
           fi
         fi
 
+        ## A role is told the rules it cannot infer from error messages: what
+        ## it may write, and that the packed-refs permission error on every ref
+        ## update is expected rather than a failed commit (ADR-010).
+        local -a guidance_args=()
+        local guidance_line
+        while IFS= read -r guidance_line; do
+          [ -n "$guidance_line" ] || continue
+          guidance_args+=("$guidance_line")
+        done < <(nixcage_role_guidance_args "${./role-guidance.md}" "$role")
+
         write_secret_env "$rootfs/etc/nixcage-env"
         ## Everything the skeleton contains was created by root and would
         ## otherwise appear as an unmapped nobody inside the container.
@@ -240,6 +251,7 @@ let
           --bind="$home:/root" \
           ''${git_binds[@]+"''${git_binds[@]}"} \
           ''${agent_bind[@]+"''${agent_bind[@]}"} \
+          ''${guidance_args[@]+"''${guidance_args[@]}"} \
           --chdir=/workspace \
           --setenv=HOME=/root \
           --setenv=PATH="$PROFILE/bin" \
