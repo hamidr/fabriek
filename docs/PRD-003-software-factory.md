@@ -222,10 +222,11 @@ terminal that gets closed.
   the containment is gone.
 - **Unattended merges sign as the operator.** ADR-008 forwards the operator's
   ssh-agent into a cage, so a reviewer's merge commit verifies as them and the
-  same agent opens every host their keys reach. PRD-002 raised a cage-only
-  signing key as an open question; with an autonomous reviewer it stops being
-  optional. This document does not decide it, and names it as the thing to
-  decide before phase 5.
+  same agent opens every host their keys reach. ADR-009 settles this: a run the
+  supervisor starts gets a per-role key and no forwarded agent, so it signs as
+  the role and holds nothing that reaches a remote. The residual risk is that
+  the reviewer still advances `main` unattended, which is a merge nobody read
+  rather than a credential nobody controls.
 - **Hard dependency on one multiplexer.** Making herdr the control plane means
   a change in its socket API is a change in the factory. The alternative was
   rebuilding session persistence, attach, and wait-for-state, which is worse.
@@ -275,7 +276,7 @@ usable on its own.
 4. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
    the console and survive an answer that arrives hours later.
 5. **Integration.** The reviewer role, and `main` advancing without the
-   operator. Requires the signing question above to be decided first.
+   operator. Requires ADR-009.
 6. **Documents.** The architect refining proposals, reports reaching the
    operator, and the record that shows no run originated in a cage.
 
