@@ -51,11 +51,14 @@ let
       . ${./git-worktree.sh}
       . ${./role-uid.sh}
       . ${./role-worktree.sh}
+      . ${./factory-config.sh}
 
       STATE_DIR=/var/lib/nixcage
       ## Rendered by the platform module from nixcage.supervisor.roleUidRange.
       ## Absent when no factory is declared, which is the ordinary case.
       FACTORY_CONFIG=/etc/nixcage/factory
+      ## One directory per declared factory, rendered by the platform module.
+      FACTORIES_ROOT=/etc/nixcage/factories
       ## Resolve the /etc symlink to its store path: the container has its
       ## own /etc, but the store bind makes store paths valid inside.
       PROFILE="$(readlink -f /etc/nixcage/profile)"
@@ -265,6 +268,30 @@ let
           die "could not prepare the worktree for role $role"
       }
 
+      ## Enter a declared role: prepare its worktree, then enter it under the
+      ## role's own uid. The repository comes from the declaration rather than
+      ## from the caller, so a role can only ever be run against the factory it
+      ## was declared in.
+      cmd_role_enter() {
+        local factory="$1" role="$2"
+        shift 2 || die "usage: nixcage-container role-enter <factory> <role> [cmd...]"
+
+        local repo declared_cmd
+        repo="$(nixcage_factory_repository "$FACTORIES_ROOT" "$factory")" || exit 1
+        declared_cmd="$(nixcage_factory_role_command "$FACTORIES_ROOT" "$factory" "$role")" || exit 1
+
+        local worktree
+        worktree="$(cmd_role_worktree "$factory" "$role" "$repo")" || exit 1
+
+        ## The declaration wins over anything the caller passes, because what a
+        ## role runs is a property of the factory and not of whoever started it.
+        if [ -n "$declared_cmd" ]; then
+          set -- "$declared_cmd"
+        fi
+
+        cmd_enter --role "$role" "$factory-$role" "$worktree" "$@"
+      }
+
       cmd_list() {
         [ -d "$STATE_DIR/containers" ] || return 0
         ls -1 "$STATE_DIR/containers"
@@ -281,9 +308,10 @@ let
       case "$cmd" in
       enter) cmd_enter "$@" ;;
       role-worktree) cmd_role_worktree "$@" ;;
+      role-enter) cmd_role_enter "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | list | rm <name>" ;;
       esac
     '';
   };

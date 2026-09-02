@@ -8,10 +8,11 @@
 ## been forgotten keeps its line under the name "-". Nothing is ever removed,
 ## because a reissued uid would hand a new role the files of a dead one.
 
-## Role names index the store and appear in paths, so anything outside a
-## conservative identifier is refused rather than escaped.
+## Role names index the store, appear in paths, and are joined into container
+## names, so they share the alphabet nixcage-container's own check_name
+## accepts. Anything outside it is refused rather than escaped.
 nixcage_role_name_ok() {
-	[[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]
+	[[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]]
 }
 
 ## mkdir is the portable atomic test-and-set; the guest has flock but the test

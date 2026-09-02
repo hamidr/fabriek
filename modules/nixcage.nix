@@ -63,6 +63,45 @@ in
       '';
     };
 
+    factories = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            repository = lib.mkOption {
+              type = lib.types.str;
+              example = "/home/me/Src/acme";
+              description = "The one git repository this factory works.";
+            };
+            roles = lib.mkOption {
+              type = lib.types.attrsOf (
+                lib.types.submodule {
+                  options = {
+                    command = lib.mkOption {
+                      type = lib.types.nullOr lib.types.str;
+                      default = null;
+                      example = "claude";
+                      description = ''
+                        What this role's session runs. Which coding agent that
+                        is belongs to the declaration, never to nixcage. Unset
+                        means the ordinary session shell.
+                      '';
+                    };
+                  };
+                }
+              );
+              default = { };
+              description = "The roles that work this factory, one worktree and one uid each.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        Factories declared on this machine (PRD-003). Each assigns one
+        repository to a set of roles. Requires supervisor.roleUidRange.
+      '';
+    };
+
     supervisor = lib.mkOption {
       type = lib.types.submodule {
         options = {
@@ -146,7 +185,8 @@ in
     };
   };
 
-  config = {
+  config = lib.mkMerge [
+    {
     assertions = [
       {
         assertion = cfg.authorizedKeys != [ ];
@@ -323,5 +363,39 @@ in
     networking.hostName = "nixcage";
 
     system.stateVersion = "24.11";
-  };
+    }
+
+    ## The declaration is rendered as a directory tree: the guest reads a value
+    ## by reading a file, which needs no parser and cannot confuse one value
+    ## with its neighbour. A role directory exists even when the role declares
+    ## no command, because the directory is what says the role was declared.
+    {
+      environment.etc = lib.mkMerge (
+        lib.concatLists (
+          lib.mapAttrsToList (
+            factoryName: factory:
+            [
+              { "nixcage/factories/${factoryName}/repository".text = factory.repository + "\n"; }
+            ]
+            ++ lib.mapAttrsToList (roleName: role: {
+              "nixcage/factories/${factoryName}/roles/${roleName}/declared".text = "";
+            }) factory.roles
+            ++ lib.mapAttrsToList (
+              roleName: role:
+              lib.mkIf (role.command != null) {
+                "nixcage/factories/${factoryName}/roles/${roleName}/command".text =
+                  toString role.command + "\n";
+              }
+            ) factory.roles
+          ) cfg.factories
+        )
+      );
+
+      ## A factory whose roles have no uid range cannot give them identities.
+      assertions = lib.mapAttrsToList (name: _: {
+        assertion = cfg.supervisor.roleUidRange != null;
+        message = "nixcage.factories.${name} needs nixcage.supervisor.roleUidRange";
+      }) cfg.factories;
+    }
+  ];
 }
