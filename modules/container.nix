@@ -51,6 +51,7 @@ let
       . ${./git-worktree.sh}
       . ${./role-uid.sh}
       . ${./role-worktree.sh}
+      . ${./factory-clone.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -266,6 +267,10 @@ let
       ## Create or repair a role's worktree and print its path. Separate from
       ## enter because the supervisor prepares a role before it runs anything
       ## in it, and because entering must not silently create state.
+      ##
+      ## The worktree is taken from the factory's own clone rather than from the
+      ## operator's repository: role ownership needs a filesystem carrying
+      ## ownership and ACLs, and the operator's may not have one (ADR-011).
       cmd_role_worktree() {
         local factory="$1" role="$2" repo="$3"
         [ -d "$repo" ] || die "repository not found: $repo"
@@ -273,10 +278,15 @@ let
           die "no factory declared: set nixcage.supervisor.roleUidRange"
         # shellcheck disable=SC1090
         . "$FACTORY_CONFIG"
+
+        local clone
+        clone="$(nixcage_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" ||
+          die "could not prepare the factory clone for $factory"
+
         local uid
         uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
           "''${ROLE_UID_BASE:?}" "''${ROLE_UID_SIZE:?}" "$role")" || exit 1
-        nixcage_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$repo" "$uid" ||
+        nixcage_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" ||
           die "could not prepare the worktree for role $role"
       }
 
