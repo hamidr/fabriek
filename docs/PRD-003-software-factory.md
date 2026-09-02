@@ -416,8 +416,12 @@ keeping, and they are answerable from the run record and from git alone:
 - The console and the supervisor's control plane are the same thing: herdr
   0.8.0, which is verified to create worktree-backed workspaces, run a command
   in a pane, report and wait on agent lifecycle state (`idle`, `working`,
-  `blocked`, `done`, `unknown`), accept externally reported pane state, and
-  attach to a pane. Waiting on a state takes a timeout, so the per-run duration
+  `blocked`, `done`, `unknown`), and attach to a pane. Creating a workspace,
+  running a command in its pane, and reading pane state were checked by running
+  them. Reporting state from outside was not: `herdr pane report-agent` refuses
+  its own required `--source` flag as shipped in 0.8.0, so a role running an
+  agent herdr does not recognise currently has no observable lifecycle at all.
+  This is an open dependency rather than a settled one. Waiting on a state takes a timeout, so the per-run duration
   cap costs no polling loop of our own. The supervisor owns no session
   machinery of its own.
 - Git refuses the same branch checked out in two worktrees, so `main` is
