@@ -150,7 +150,13 @@ Setting `git config user.name` does not change it, and a truncated id fails
 silently, which is how the first attempt attributed a builder's comment to the
 architect. The supervisor sets the full id before each write.
 
-Two operational details. git-bug builds an index under `.git/git-bug`, and a
+git-bug takes a repository lock, so two of its invocations cannot overlap. That
+is not a limitation in practice, since the supervisor is the only writer, but
+it is a trap in shell: piping one git-bug command into another runs them at the
+same time and the second fails with `the repository you want to access is
+already locked`. Anything that feeds one to another goes through a file.
+
+Three operational details. git-bug builds an index under `.git/git-bug`, and a
 partial one left by an interrupted run makes later invocations fail with
 `cannot create new index, path already exists`; it is safe to delete and is
 rebuilt on demand. And git-bug has no `-C` flag: it acts on the repository it

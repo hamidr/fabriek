@@ -512,6 +512,14 @@ cmd_task() {
     fi
     guest task-show "$factory" "$id"
     ;;
+  thread)
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: nixcage task thread <factory> <id>"
+      exit 1
+    fi
+    guest task-thread "$factory" "$id"
+    ;;
   run)
     local factory="${1:-}" role="${2:-}" id="${3:-}"
     if [[ -z "$factory" || -z "$role" || -z "$id" ]]; then
@@ -523,7 +531,7 @@ cmd_task() {
     guest role-run "$factory" "$role" "$id"
     ;;
   *)
-    log_err "usage: nixcage task file|list|show|run ..."
+    log_err "usage: nixcage task file|list|show|thread|run ..."
     exit 1
     ;;
   esac
@@ -804,6 +812,7 @@ ${BOLD}Commands:${NC}
   task file <factory> <workflow> [--acceptance <text>]
   task list <factory> [state]
   task show <factory> <id>
+  task thread <factory> <id>
   task run <factory> <role> <id>
                      File a goal into a factory, read back what is there, and
                      run one task in its role's cage

@@ -17,7 +17,7 @@ NIXCAGE_TASK_STATES="proposed ready running blocked awaiting-review done failed 
 ## The scalar fields that share one file and are therefore written together.
 ## Everything else is text written once, kept in a file of its own because a
 ## line-oriented file cannot hold a value with newlines (ADR-014).
-NIXCAGE_TASK_SCALARS="state attempts role workflow stage parent seq"
+NIXCAGE_TASK_SCALARS="state attempts role workflow stage parent seq item"
 
 nixcage_task_state_ok() {
 	local candidate="$1" state

@@ -60,6 +60,7 @@ let
       . ${./factory-clone.sh}
       . ${./task-store.sh}
       . ${./workflow-config.sh}
+      . ${./record.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -390,6 +391,17 @@ let
         if [ -n "$acceptance" ]; then
           nixcage_task_set "$TASKS_ROOT" "$factory" "$id" acceptance "$acceptance"
         fi
+
+        ## Every task opens an item in the shared record, so there is one place
+        ## the discussion of this work accumulates (ADR-013). The clone must
+        ## exist first; filing is the operator's act, so it is made here rather
+        ## than waiting for a role to run.
+        local repo clone item
+        repo="$(nixcage_factory_repository "$FACTORIES_ROOT" "$factory")" || exit 1
+        clone="$(nixcage_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" || exit 1
+        item="$(printf '%s\n\n%s\n' "$id" "$acceptance" |
+          nixcage_record_new "$clone" supervisor)"
+        [ -n "$item" ] && nixcage_task_set "$TASKS_ROOT" "$factory" "$id" item "$item"
         ## Required fields become the workflow's to declare in a later phase;
         ## an owner and a stated finish line are what a task needs today.
         nixcage_task_ready "$TASKS_ROOT" "$factory" "$id" role acceptance >/dev/null 2>&1 || true
@@ -407,9 +419,18 @@ let
         done < <(nixcage_task_list "$TASKS_ROOT" "$factory" "$want")
       }
 
+      cmd_task_thread() {
+        local factory="$1" id="$2"
+        local clone item
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        item="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" item)"
+        [ -n "$item" ] || die "$id has no item in the record"
+        nixcage_record_show "$clone" "$item"
+      }
+
       cmd_task_show() {
         local factory="$1" id="$2" field
-        for field in state role workflow stage parent attempts acceptance outcome; do
+        for field in state role workflow stage parent item attempts acceptance outcome; do
           printf '%s\t%s\n' "$field" \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" "$field")"
         done
@@ -431,7 +452,19 @@ let
         [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] ||
           die "$id does not belong to role $role"
 
+        local clone item
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        item="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" item)"
+
         nixcage_task_attempt "$TASKS_ROOT" "$factory" "$id" "$max" || exit 1
+
+        ## The supervisor writes what it did as it does it, so reading the item
+        ## top to bottom is the story of the work rather than its ending.
+        if [ -n "$item" ]; then
+          printf 'attempt %s started for %s\n' \
+            "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" attempts)" "$role" |
+            nixcage_record_comment "$clone" "$item" supervisor || true
+        fi
 
         local uid run_dir
         uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
@@ -446,19 +479,35 @@ let
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" acceptance)"
           printf '\nbody:\n%s\n' \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" body)"
+          ## What has already been said about this work. A role opens its turn
+          ## reading the discussion rather than only the goal.
+          if [ -n "$item" ]; then
+            printf '\nrecord:\n%s\n' "$(nixcage_record_show "$clone" "$item")"
+          fi
         } >"$run_dir/brief"
         : >"$run_dir/outcome"
-        chown "$uid:$uid" "$run_dir/outcome"
+        : >"$run_dir/mentions"
+        mkdir -p "$run_dir/comments"
+        chown "$uid:$uid" "$run_dir/outcome" "$run_dir/mentions" "$run_dir/comments"
         chmod 444 "$run_dir/brief"
 
         local status=0
         timeout "$limit" "$0" role-enter --task-dir "$run_dir" "$factory" "$role" || status=$?
+
+        ## Whatever the role wrote during its turn reaches the record now: it
+        ## could not write there itself, and this is the boundary where its
+        ## writing becomes visible to anyone else.
+        if [ -n "$item" ]; then
+          nixcage_record_ingest "$clone" "$run_dir" "$role" "$item" || true
+        fi
 
         local outcome
         outcome="$(cat "$run_dir/outcome" 2>/dev/null)"
         if [ "$status" = 124 ]; then
           nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
             "the run outlived its $limit second limit" "$max"
+          [ -n "$item" ] && printf 'the run outlived its %s second limit\n' "$limit" |
+            nixcage_record_comment "$clone" "$item" supervisor
           die "$id: run outlived its limit"
         elif [ -n "$outcome" ]; then
           nixcage_task_settle "$TASKS_ROOT" "$factory" "$id" "$outcome" ||
@@ -475,15 +524,39 @@ let
             child="$(nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" \
               "''${next%% *}" "''${next#* }")" || die "$id: could not advance the work"
             nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" role acceptance >/dev/null 2>&1 || true
+            ## The child opens its own item, seeded with everything said before
+            ## the hand-off. The parent is terminal from here, so the copy can
+            ## never diverge from what it was copied from (PRD-003).
+            local child_item seed
+            if [ -n "$item" ]; then
+              ## Written to a file first, then read from it. git-bug locks the
+              ## repository, so piping one git-bug command into another runs
+              ## them concurrently and the second fails on the lock.
+              seed="$run_dir/seed"
+              {
+                printf '%s\n\n' "$child"
+                printf 'inherited from %s:\n\n' "$id"
+                nixcage_record_show "$clone" "$item"
+              } >"$seed"
+              child_item="$(nixcage_record_new "$clone" supervisor <"$seed")"
+              [ -n "$child_item" ] &&
+                nixcage_task_set "$TASKS_ROOT" "$factory" "$child" item "$child_item"
+              printf 'settled; %s opened for %s\n' "$child" "''${next#* }" |
+                nixcage_record_comment "$clone" "$item" supervisor
+            fi
             echo "$id: settled, $child opened for ''${next#* }"
           else
             nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" "" ||
               die "$id: could not finish the work"
+            [ -n "$item" ] && printf 'settled; the pipeline ends here\n' |
+              nixcage_record_comment "$clone" "$item" supervisor
             echo "$id: settled, the pipeline ends here"
           fi
         else
           nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
             "the session ended having recorded no outcome" "$max"
+          [ -n "$item" ] && printf 'the session ended having recorded no outcome\n' |
+            nixcage_record_comment "$clone" "$item" supervisor
           die "$id: no outcome recorded"
         fi
       }
@@ -509,9 +582,10 @@ let
       task-file) cmd_task_file "$@" ;;
       task-list) cmd_task_list "$@" ;;
       task-show) cmd_task_show "$@" ;;
+      task-thread) cmd_task_thread "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | list | rm <name>" ;;
       esac
     '';
   };

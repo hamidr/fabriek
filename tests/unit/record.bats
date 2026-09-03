@@ -101,3 +101,59 @@ teardown() {
 	assert_success
 	assert_output ""
 }
+
+@test "a role's comment files are posted when its turn ends" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	run_dir="$TEST_TEMP_DIR/run"
+	mkdir -p "$run_dir/comments"
+	printf 'the first thing I found\n' >"$run_dir/comments/1"
+	printf 'and the second\n' >"$run_dir/comments/2"
+	run nixcage_record_ingest "$REPO" "$run_dir" builder "$id"
+	assert_success
+	run nixcage_record_show "$REPO" "$id"
+	assert_output --partial "the first thing I found"
+	assert_output --partial "and the second"
+	assert_output --partial "builder"
+}
+
+@test "a turn that wrote nothing posts nothing" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	before="$(nixcage_record_show "$REPO" "$id" | grep -c '#')"
+	run_dir="$TEST_TEMP_DIR/run"
+	mkdir -p "$run_dir/comments"
+	run nixcage_record_ingest "$REPO" "$run_dir" builder "$id"
+	assert_success
+	after="$(nixcage_record_show "$REPO" "$id" | grep -c '#')"
+	[ "$before" = "$after" ]
+}
+
+@test "the roles a turn asked for become labels" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	run_dir="$TEST_TEMP_DIR/run"
+	mkdir -p "$run_dir/comments"
+	printf 'architect\nreviewer\n' >"$run_dir/mentions"
+	nixcage_record_ingest "$REPO" "$run_dir" builder "$id"
+	run nixcage_record_needing "$REPO" architect
+	assert_output --partial "$id"
+	run nixcage_record_needing "$REPO" reviewer
+	assert_output --partial "$id"
+}
+
+@test "a role that does not exist cannot be mentioned into being" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	run_dir="$TEST_TEMP_DIR/run"
+	mkdir -p "$run_dir/comments"
+	printf '../evil\n' >"$run_dir/mentions"
+	run nixcage_record_ingest "$REPO" "$run_dir" builder "$id"
+	# The bad name is refused; the turn is not failed over it.
+	assert_success
+	run nixcage_record_show "$REPO" "$id"
+	refute_output --partial "evil"
+}
+
+@test "the supervisor narrates as itself, not as a role" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	printf 'attempt 1 started\n' | nixcage_record_comment "$REPO" "$id" supervisor
+	run nixcage_record_participants "$REPO" "$id"
+	assert_output --partial "supervisor"
+}

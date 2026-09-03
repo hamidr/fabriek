@@ -97,3 +97,32 @@ nixcage_record_needing() {
 	label="$(nixcage_record_mention_label "$role")" || return 1
 	(cd "$repo" && git-bug bug "label:$label" --format id 2>/dev/null)
 }
+
+## Take what a role wrote during its turn and put it in the record. Comments
+## are files it dropped in its run directory; mentions are a list of role
+## names. Both arrive as files because a cage cannot reach the record, and the
+## supervisor posts them as that role.
+##
+## A malformed mention is refused rather than failing the turn: the work the
+## role did is not less real because it asked for someone who does not exist.
+nixcage_record_ingest() {
+	local repo="$1" run_dir="$2" role="$3" item="$4"
+
+	local file
+	if [ -d "$run_dir/comments" ]; then
+		for file in "$run_dir/comments"/*; do
+			[ -f "$file" ] || continue
+			[ -s "$file" ] || continue
+			nixcage_record_comment "$repo" "$item" "$role" <"$file" || return 1
+		done
+	fi
+
+	if [ -f "$run_dir/mentions" ]; then
+		local mentioned
+		while IFS= read -r mentioned; do
+			[ -n "$mentioned" ] || continue
+			nixcage_record_mention "$repo" "$item" "$mentioned" ||
+				echo "nixcage: not a role, so not mentioned: $mentioned" >&2
+		done <"$run_dir/mentions"
+	fi
+}

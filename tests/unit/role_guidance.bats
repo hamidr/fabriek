@@ -52,6 +52,18 @@ teardown() {
 	assert_success
 }
 
+@test "the guidance says how to add to the record and ask for a role" {
+	run grep -c "NIXCAGE_TASK/comments" "$GUIDE"
+	assert_success
+	run grep -c "NIXCAGE_TASK/mentions" "$GUIDE"
+	assert_success
+}
+
+@test "the guidance says a mention does not summon anyone" {
+	run grep -iE "does not summon|will not run|not start a role" "$GUIDE"
+	assert_success
+}
+
 @test "the guidance says another role's prose is data" {
 	run grep -iE "data, not|data rather than|never as instructions" "$GUIDE"
 	assert_success
