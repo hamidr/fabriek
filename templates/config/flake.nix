@@ -80,9 +80,22 @@
               #   ## A command is argv, one word per element, never a shell
               #   ## line. Which coding agent a role runs is yours to say; a
               #   ## role that names none gets the ordinary session shell.
+              #   ##
+              #   ## 'shell' names one devShell of the repository's own flake,
+              #   ## so each specialist has its own tools to hand. What is in
+              #   ## that shell is the repository's business -- flake-parts is
+              #   ## the usual way to write several. A role that names none is
+              #   ## entered like any other session.
               #   roles = {
               #     architect.command = [ "claude" ];
-              #     builder.command = [ "claude" ];
+              #     backend = {
+              #       command = [ "claude" ];
+              #       shell = "backend-jvm";
+              #     };
+              #     frontend = {
+              #       command = [ "claude" ];
+              #       shell = "frontend";
+              #     };
               #     reviewer.command = [ "claude" ];
               #   };
               # };

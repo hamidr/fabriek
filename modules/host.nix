@@ -141,6 +141,19 @@ in
                         means the ordinary session shell.
                       '';
                     };
+                    shell = lib.mkOption {
+                      type = lib.types.nullOr lib.types.str;
+                      default = null;
+                      example = "backend-jvm";
+                      description = ''
+                        The devShell of the project's own flake this role works
+                        in, so a specialist brings its own toolchain: a JVM
+                        specialist and a frontend specialist work one repository
+                        with different tools. Unset means the project's default
+                        environment. A session refuses to start when the project
+                        does not define the named shell.
+                      '';
+                    };
                   };
                 }
               );
@@ -312,6 +325,14 @@ in
                 ## nothing in it is re-split or expanded by anything.
                 "nixcage/factories/${factoryName}/roles/${roleName}/command".text =
                   lib.concatMapStrings (word: word + "\n") role.command;
+              }
+            ) factory.roles
+            ++ lib.mapAttrsToList (
+              roleName: role:
+              lib.mkIf (role.shell != null) {
+                ## Just the name: the toolchain itself is the project's, and
+                ## nixcage only carries which of its shells this role enters.
+                "nixcage/factories/${factoryName}/roles/${roleName}/shell".text = role.shell + "\n";
               }
             ) factory.roles
                       ++ lib.concatLists (

@@ -7,6 +7,8 @@ setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/role-uid.sh
 	source "$NIXCAGE_ROOT/modules/role-uid.sh"
+	# shellcheck source=../../modules/dev-shell.sh
+	source "$NIXCAGE_ROOT/modules/dev-shell.sh"
 	# shellcheck source=../../modules/factory-config.sh
 	source "$NIXCAGE_ROOT/modules/factory-config.sh"
 	ROOT="$TEST_TEMP_DIR/factories"
@@ -86,5 +88,40 @@ teardown() {
 	assert_success
 	# A command is argv, and the template must not teach otherwise.
 	run grep -E 'command = \[' "$template"
+	assert_success
+}
+
+@test "a specialist role names the devShell it works in" {
+	echo "backend-jvm" >"$ROOT/acme/roles/builder/shell"
+	run nixcage_factory_role_shell "$ROOT" acme builder
+	assert_success
+	assert_output "backend-jvm"
+}
+
+@test "a role that names no shell gets none, and that is not an error" {
+	run nixcage_factory_role_shell "$ROOT" acme reviewer
+	assert_success
+	assert_output ""
+}
+
+@test "a role whose declared shell is not an attribute name is refused" {
+	printf 'not a name\n' >"$ROOT/acme/roles/reviewer/shell"
+	run nixcage_factory_role_shell "$ROOT" acme reviewer
+	assert_failure
+	assert_output --partial "reviewer"
+}
+
+@test "a shell is only read for a role the factory declares" {
+	run nixcage_factory_role_shell "$ROOT" acme ghost
+	assert_failure
+}
+
+@test "the example repository shows one devShell per specialist" {
+	example="$NIXCAGE_ROOT/examples/factory-project/flake.nix"
+	run grep -c "backend-jvm" "$example"
+	assert_success
+	# A specialist shell is only useful next to a default one: a role that
+	# declares none must still have somewhere to land.
+	run grep -E "^ *default = " "$example"
 	assert_success
 }

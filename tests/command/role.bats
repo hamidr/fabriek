@@ -120,6 +120,21 @@ teardown() {
 	[ ! -f "$TEST_TEMP_DIR/ssh-calls" ]
 }
 
+@test "a role's declared devShell reaches the session it starts" {
+	# The toolchain is a property of the declaration, like the command, so
+	# role-enter reads it and enter carries it into the container.
+	run grep -n "nixcage_factory_role_shell" "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+	run grep -n -- "--setenv=NIXCAGE_SHELL=" "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+}
+
+@test "enter parses the shell option, so role-enter cannot pass one it eats" {
+	run grep -n -B2 -A3 -- "--shell)" "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+	assert_output --partial "shell_name"
+}
+
 @test "a role worktree is reachable at the path git recorded, not only /workspace" {
 	# nix resolves a flake through libgit2, which opens a linked worktree by
 	# the absolute path stored beside it; bound at /workspace alone, every

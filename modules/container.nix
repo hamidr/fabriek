@@ -64,6 +64,7 @@ let
       . ${./caps.sh}
       . ${./signing.sh}
       . ${./integrate.sh}
+      . ${./dev-shell.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -135,7 +136,7 @@ let
       cmd_enter() {
         ## Options precede the positional arguments so a session command can
         ## still be anything at all.
-        local auth_sock="" role="" task_dir="" signing_role=""
+        local auth_sock="" role="" task_dir="" signing_role="" shell_name=""
         while [ $# -gt 0 ]; do
           case "$1" in
           --auth-sock)
@@ -154,6 +155,10 @@ let
             signing_role="''${2:-}"
             shift 2
             ;;
+          --shell)
+            shell_name="''${2:-}"
+            shift 2
+            ;;
           *) break ;;
           esac
         done
@@ -168,6 +173,17 @@ let
           die "--auth-sock and --signing-key are mutually exclusive"
         fi
         [ -d "$project" ] || die "project directory not found: $project"
+
+        ## A specialist works in one named devShell of the project's own flake.
+        ## The name is checked here as well as where it is declared, because
+        ## this is the last point before it becomes part of a flake reference
+        ## inside the session.
+        local -a shell_env=()
+        if [ -n "$shell_name" ]; then
+          nixcage_shell_name_ok "$shell_name" ||
+            die "not a usable devShell name: $shell_name"
+          shell_env=("--setenv=NIXCAGE_SHELL=$shell_name")
+        fi
 
         ## An ordinary session is mapped onto the project owner: nix's libgit2
         ## refuses a repository owned by a different uid, and every project
@@ -335,6 +351,7 @@ let
           --setenv=NIX_CONFIG='experimental-features = nix-command flakes' \
           --setenv=NIX_SSL_CERT_FILE="$PROFILE/etc/ssl/certs/ca-bundle.crt" \
           --setenv=NIXCAGE_DIRENVRC="${pkgs.nix-direnv}/share/nix-direnv/direnvrc" \
+          ''${shell_env[@]+"''${shell_env[@]}"} \
           --setenv=TERM="''${TERM:-xterm}" \
           "$PROFILE/bin/bash" -c "$shell_cmd" "$@"
       }
@@ -389,9 +406,18 @@ let
           die "usage: nixcage-container role-enter [--auth-sock <path>|--signing-key <role>] [--task-dir <path>] <factory> <role> [cmd...]"
         shift 2
 
-        local repo declared_cmd
+        local repo declared_cmd declared_shell
         repo="$(nixcage_factory_repository "$FACTORIES_ROOT" "$factory")" || exit 1
         declared_cmd="$(nixcage_factory_role_command "$FACTORIES_ROOT" "$factory" "$role")" || exit 1
+        declared_shell="$(nixcage_factory_role_shell "$FACTORIES_ROOT" "$factory" "$role")" || exit 1
+
+        ## A role's toolchain comes from its declaration for the same reason
+        ## its command does: what a specialist has to hand is a property of the
+        ## factory, not of whoever started the session.
+        local -a shell_opt=()
+        if [ -n "$declared_shell" ]; then
+          shell_opt=(--shell "$declared_shell")
+        fi
 
         local worktree
         worktree="$(cmd_role_worktree "$factory" "$role" "$repo")" || exit 1
@@ -409,7 +435,8 @@ let
           set -- "''${declared[@]}"
         fi
 
-        cmd_enter --role "$role" ''${passthrough[@]+"''${passthrough[@]}"} \
+        cmd_enter --role "$role" ''${shell_opt[@]+"''${shell_opt[@]}"} \
+          ''${passthrough[@]+"''${passthrough[@]}"} \
           "$factory-$role" "$worktree" "$@"
       }
 
@@ -786,7 +813,7 @@ let
       factory-reports) cmd_factory_reports "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | factory-reports <factory> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] [--shell <name>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | factory-reports <factory> | list | rm <name>" ;;
       esac
     '';
   };

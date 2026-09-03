@@ -4,7 +4,9 @@
 ## The declaration is a directory tree rather than a parsed format: a shell
 ## script reads a file without a parser, and a value that is its own file
 ## cannot be confused with a neighbouring one. Sourced by store path into
-## nixcage-container beside role-uid.sh, whose nixcage_role_name_ok it uses.
+## nixcage-container beside role-uid.sh, whose nixcage_role_name_ok it uses,
+## and beside dev-shell.sh, whose nixcage_shell_name_ok validates a declared
+## devShell name.
 
 ## The repository a factory works. One repository per factory, so this is a
 ## single value rather than a list.
@@ -66,4 +68,26 @@ nixcage_factory_role_command() {
 	fi
 	[ -f "$dir/command" ] || return 0
 	cat "$dir/command"
+}
+
+## The devShell a role works in, or nothing when it names none. A specialist
+## is a role with its own toolchain, and the toolchain is one devShell of the
+## project's own flake: the repository declares what a JVM specialist or a
+## frontend specialist has to hand, and nixcage only carries the name across.
+##
+## Validated here rather than where it is used. The name reaches a flake
+## reference, so a declaration mistake is refused before a session is built
+## around it.
+nixcage_factory_role_shell() {
+	local root="$1" factory="$2" role="$3"
+	nixcage_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
+	local file="$root/$factory/roles/$role/shell"
+	[ -f "$file" ] || return 0
+	local want
+	want="$(cat "$file")"
+	if ! nixcage_shell_name_ok "$want"; then
+		echo "nixcage: role $role declares an unusable devShell name: $want" >&2
+		return 1
+	fi
+	printf '%s\n' "$want"
 }
