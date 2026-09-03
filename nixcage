@@ -677,6 +677,33 @@ cmd_role() {
   fi
 }
 
+## The factory as a whole: what it is doing, handing its work to the operator,
+## and starting it again after it stopped itself.
+cmd_factory() {
+  local sub="${1:-}" factory="${2:-}"
+  if [[ -z "$sub" || -z "$factory" ]]; then
+    log_err "usage: nixcage factory status|sync|resume <factory>"
+    exit 1
+  fi
+  case "$sub" in
+  status | sync | resume)
+    guest "factory-$sub" "$factory"
+    ;;
+  integrate)
+    local commit="${3:-}"
+    [[ -n "$commit" ]] || {
+      log_err "usage: nixcage factory integrate <factory> <commit>"
+      exit 1
+    }
+    guest factory-integrate "$factory" "$commit"
+    ;;
+  *)
+    log_err "usage: nixcage factory status|sync|integrate|resume <factory>"
+    exit 1
+    ;;
+  esac
+}
+
 require_vm_platform() {
   if [[ "$OS" == "linux" ]]; then
     log_err "No VM on Linux -- containers run on the host."
@@ -823,6 +850,10 @@ ${BOLD}Commands:${NC}
   task thread <factory> <id>
   task run <factory> <role> <id>
   task answer <factory> <id> approve|reject [reason]
+  factory status|sync|resume <factory>
+  factory integrate <factory> <commit>
+                     What a factory is doing, handing its work to you, and
+                     starting it again after it stopped itself
                      File a goal into a factory, read back what is there, and
                      run one task in its role's cage
   rm [name]          Delete a project container and its persistent home
@@ -863,6 +894,7 @@ main() {
   enter)   cmd_enter "$@" ;;
   role)    cmd_role "$@" ;;
   task)    cmd_task "$@" ;;
+  factory) cmd_factory "$@" ;;
   down)    cmd_down "$@" ;;
   rebuild) cmd_rebuild "$@" ;;
   rm)      cmd_rm "$@" ;;

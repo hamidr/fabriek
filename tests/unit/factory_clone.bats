@@ -59,3 +59,35 @@ teardown() {
 	assert_success
 	assert_output --partial "safe.directory=$STATE/factories/acme"
 }
+
+@test "the clone has the shared branch locally, since the operator checks it out nowhere" {
+	origin="$TEST_TEMP_DIR/origin"
+	git init -q -b main "$origin"
+	git -C "$origin" config user.name o
+	git -C "$origin" config user.email o@x
+	git -C "$origin" config commit.gpgsign false
+	echo x >"$origin/a.txt"
+	git -C "$origin" add a.txt
+	git -C "$origin" commit -qm one
+	# main checked out by nothing, exactly as the design requires.
+	git -C "$origin" switch -q -c operator/work
+
+	path="$(nixcage_factory_clone_ensure "$STATE" acme "$origin")"
+	run git -C "$path" rev-parse --verify refs/heads/main
+	assert_success
+}
+
+@test "the clone's own tree is not on the branch it integrates" {
+	origin="$TEST_TEMP_DIR/origin2"
+	git init -q -b main "$origin"
+	git -C "$origin" config user.name o
+	git -C "$origin" config user.email o@x
+	git -C "$origin" config commit.gpgsign false
+	echo x >"$origin/a.txt"
+	git -C "$origin" add a.txt
+	git -C "$origin" commit -qm one
+	git -C "$origin" switch -q -c operator/work
+
+	path="$(nixcage_factory_clone_ensure "$STATE" acme2 "$origin")"
+	[ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$(nixcage_factory_shared_branch)" ]
+}

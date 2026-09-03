@@ -24,6 +24,12 @@ nixcage_factory_clone_branch() {
 	echo "supervisor"
 }
 
+## The branch the factory integrates into and shares with the operator. Named
+## here rather than assumed at every call site.
+nixcage_factory_shared_branch() {
+	echo "main"
+}
+
 ## --no-hardlinks is load-bearing here for the same reason it is anywhere else:
 ## git hardlinks objects when cloning from a local path on the same filesystem,
 ## and chowning anything derived from such a clone rewrites the origin's
@@ -64,6 +70,16 @@ nixcage_factory_clone_ensure() {
 		done < <(nixcage_factory_clone_args "$repo" "$path")
 		git clone --quiet "${args[@]}" || return 1
 		git -C "$path" switch --quiet -c "$branch" || return 1
+
+		## The branch the factory integrates is checked out by nothing in the
+		## operator's repository, so cloning leaves it as a remote ref only.
+		## It has to exist locally here or there is nothing to advance.
+		local shared
+		shared="$(nixcage_factory_shared_branch)"
+		if ! git -C "$path" rev-parse --verify --quiet "refs/heads/$shared" >/dev/null &&
+			git -C "$path" rev-parse --verify --quiet "refs/remotes/origin/$shared" >/dev/null; then
+			git -C "$path" branch --quiet "$shared" "origin/$shared" || return 1
+		fi
 	fi
 
 	echo "$path"

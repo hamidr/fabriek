@@ -63,6 +63,7 @@ let
       . ${./record.sh}
       . ${./caps.sh}
       . ${./signing.sh}
+      . ${./integrate.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -512,6 +513,58 @@ let
         fi
       }
 
+      ## Bring the factory and the operator's repository back into agreement,
+      ## in the only direction each is allowed to move. Divergence stops the
+      ## factory rather than being resolved: rewriting a shared branch is rare
+      ## and deliberate, and continuing on a history that no longer exists is
+      ## worse than stopping.
+      cmd_factory_sync() {
+        local factory="$1"
+        local repo clone shared
+        repo="$(nixcage_factory_repository "$FACTORIES_ROOT" "$factory")" || exit 1
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        shared="$(nixcage_factory_shared_branch)"
+        [ -d "$clone" ] || die "$factory has no clone yet"
+
+        if nixcage_integrate_diverged "$clone" "$repo" "$shared"; then
+          nixcage_integrate_halt "$STATE_DIR" "$factory" \
+            "the operator's $shared no longer contains what this factory was built on"
+          die "$factory halted: $shared has diverged"
+        fi
+
+        nixcage_integrate_publish "$clone" "$repo" "$shared" ||
+          die "$factory: could not hand $shared to the operator"
+        echo "$factory: $shared published"
+      }
+
+      ## Advance the shared branch to a commit a role produced, then hand it on.
+      ## Reading nothing: which commit is the reviewer's judgement, made in a
+      ## cage; moving a ref to a named commit is this, made outside one.
+      cmd_factory_integrate() {
+        local factory="$1" commit="$2"
+        local clone shared
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        shared="$(nixcage_factory_shared_branch)"
+        nixcage_integrate_advance "$clone" "$shared" "$commit" ||
+          die "$factory: $commit does not fast-forward $shared"
+        cmd_factory_sync "$factory"
+      }
+
+      cmd_factory_resume() {
+        local factory="$1"
+        nixcage_integrate_resume "$STATE_DIR" "$factory"
+        echo "$factory: resumed"
+      }
+
+      cmd_factory_status() {
+        local factory="$1" halted
+        if halted="$(nixcage_integrate_halted "$STATE_DIR" "$factory")"; then
+          printf 'halted\t%s\n' "$halted"
+        else
+          printf 'running\t\n'
+        fi
+      }
+
       cmd_task_thread() {
         local factory="$1" id="$2"
         local clone item
@@ -541,6 +594,11 @@ let
         . "$FACTORY_CONFIG"
         local max="''${TASK_MAX_ATTEMPTS:-3}"
         local limit="''${TASK_TIMEOUT_SECONDS:-3600}"
+
+        local halted
+        if halted="$(nixcage_integrate_halted "$STATE_DIR" "$factory")"; then
+          die "$factory is halted: $halted"
+        fi
 
         [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] ||
           die "$id does not belong to role $role"
@@ -686,9 +744,13 @@ let
       task-show) cmd_task_show "$@" ;;
       task-thread) cmd_task_thread "$@" ;;
       task-answer) cmd_task_answer "$@" ;;
+      factory-sync) cmd_factory_sync "$@" ;;
+      factory-integrate) cmd_factory_integrate "$@" ;;
+      factory-resume) cmd_factory_resume "$@" ;;
+      factory-status) cmd_factory_status "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | list | rm <name>" ;;
       esac
     '';
   };
