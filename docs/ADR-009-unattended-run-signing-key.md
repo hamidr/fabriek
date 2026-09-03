@@ -94,6 +94,16 @@ Signature verification inside a cage works for role signatures, which ADR-008
 left broken for every signature. The user's own key is still absent from the
 rendered `allowed_signers` unless they declare it.
 
+The operator's own repository cannot verify a role's signature out of the box,
+and this was measured rather than anticipated: a commit published to their
+checkout carries its `gpgsig` header and reads `signature: N` with
+`allowedSignersFile needs to be configured`, because that file lives in
+nixcage's state and their git does not know about it. Pointing their config at
+it turns the same commit into `signature: G builder@factory.invalid`. The
+signature is real either way; being able to check it is a line of configuration
+the operator has to add, and saying so here is better than leaving them to
+conclude the work is unsigned.
+
 ## Verification
 
 The assumption the whole decision rests on is that git signs from a key file

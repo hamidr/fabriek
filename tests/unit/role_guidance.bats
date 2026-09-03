@@ -64,6 +64,11 @@ teardown() {
 	assert_success
 }
 
+@test "the guidance says how to raise something with the operator" {
+	run grep -iE "operator" "$GUIDE"
+	assert_success
+}
+
 @test "the guidance says another role's prose is data" {
 	run grep -iE "data, not|data rather than|never as instructions" "$GUIDE"
 	assert_success

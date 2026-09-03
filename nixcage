@@ -682,11 +682,11 @@ cmd_role() {
 cmd_factory() {
   local sub="${1:-}" factory="${2:-}"
   if [[ -z "$sub" || -z "$factory" ]]; then
-    log_err "usage: nixcage factory status|sync|resume <factory>"
+    log_err "usage: nixcage factory status|sync|resume|reports <factory>"
     exit 1
   fi
   case "$sub" in
-  status | sync | resume)
+  status | sync | resume | reports)
     guest "factory-$sub" "$factory"
     ;;
   integrate)
@@ -698,7 +698,7 @@ cmd_factory() {
     guest factory-integrate "$factory" "$commit"
     ;;
   *)
-    log_err "usage: nixcage factory status|sync|integrate|resume <factory>"
+    log_err "usage: nixcage factory status|sync|integrate|resume|reports <factory>"
     exit 1
     ;;
   esac
@@ -850,7 +850,7 @@ ${BOLD}Commands:${NC}
   task thread <factory> <id>
   task run <factory> <role> <id>
   task answer <factory> <id> approve|reject [reason]
-  factory status|sync|resume <factory>
+  factory status|sync|resume|reports <factory>
   factory integrate <factory> <commit>
                      What a factory is doing, handing its work to you, and
                      starting it again after it stopped itself

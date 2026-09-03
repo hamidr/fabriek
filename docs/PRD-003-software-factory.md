@@ -1,7 +1,7 @@
 ---
 id: PRD-003
 title: A software factory of caged roles working one repository
-status: implementing
+status: implemented
 date: 2026-09-02
 status_date: 2026-09-03
 summary: named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console
@@ -9,7 +9,7 @@ depends_on: [PRD-002]
 supersedes: []
 superseded_by: []
 phases_total: 7
-phases_done: 6
+phases_done: 7
 ---
 
 ## Problem

@@ -556,6 +556,21 @@ let
         echo "$factory: resumed"
       }
 
+      ## What roles have raised for the operator. The same mechanism a role
+      ## uses to ask another role, pointed at the one participant who is not a
+      ## role, so there is one way to ask for attention rather than two.
+      cmd_factory_reports() {
+        local factory="$1"
+        local clone item
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        [ -d "$clone" ] || return 0
+        while IFS= read -r item; do
+          [ -n "$item" ] || continue
+          printf '%s\t%s\n' "''${item:0:8}" \
+            "$(nixcage_record_show "$clone" "$item" | head -1)"
+        done < <(nixcage_record_needing "$clone" operator)
+      }
+
       cmd_factory_status() {
         local factory="$1" halted
         if halted="$(nixcage_integrate_halted "$STATE_DIR" "$factory")"; then
@@ -649,6 +664,15 @@ let
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" acceptance)"
           printf '\nbody:\n%s\n' \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" body)"
+          ## The conventions of this factory, which the repository carries and
+          ## the architect maintains. The baseline nixcage ships states
+          ## properties of the cage; this states how this project works.
+          local own_guidance
+          own_guidance="$(nixcage_factory_guidance "$clone")"
+          if [ -n "$own_guidance" ]; then
+            printf '\nthis factory:\n%s\n' "$own_guidance"
+          fi
+
           ## What has already been said about this work. A role opens its turn
           ## reading the discussion rather than only the goal, and is told
           ## which part of it is new since it last looked -- replaying
@@ -748,9 +772,10 @@ let
       factory-integrate) cmd_factory_integrate "$@" ;;
       factory-resume) cmd_factory_resume "$@" ;;
       factory-status) cmd_factory_status "$@" ;;
+      factory-reports) cmd_factory_reports "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | factory-reports <factory> | list | rm <name>" ;;
       esac
     '';
   };

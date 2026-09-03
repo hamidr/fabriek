@@ -91,3 +91,26 @@ teardown() {
 	path="$(nixcage_factory_clone_ensure "$STATE" acme2 "$origin")"
 	[ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$(nixcage_factory_shared_branch)" ]
 }
+
+@test "a repository may carry its own guidance for the roles working it" {
+	repo="$TEST_TEMP_DIR/guided"
+	mkdir -p "$repo/docs"
+	printf 'in this factory, ADRs are immutable.\n' >"$repo/docs/factory-guidance.md"
+	run nixcage_factory_guidance "$repo"
+	assert_success
+	assert_output --partial "ADRs are immutable"
+}
+
+@test "a repository that carries none is not an error" {
+	repo="$TEST_TEMP_DIR/unguided"
+	mkdir -p "$repo"
+	run nixcage_factory_guidance "$repo"
+	assert_success
+	assert_output ""
+}
+
+@test "guidance is read from the factory's own clone, not from anywhere else" {
+	run nixcage_factory_guidance_path "$STATE/factories/acme"
+	assert_success
+	assert_output "$STATE/factories/acme/docs/factory-guidance.md"
+}

@@ -206,3 +206,21 @@ teardown() {
 	assert_success
 	assert_output ""
 }
+
+@test "a report for the operator is found the same way a mention is" {
+	id="$(printf 'the flow is wrong\n\nhere is why\n' | nixcage_record_new "$REPO" architect)"
+	nixcage_record_mention "$REPO" "$id" operator
+	run nixcage_record_needing "$REPO" operator
+	assert_success
+	assert_output --partial "$id"
+}
+
+@test "the operator's reports are not mixed in with a role's" {
+	a="$(printf 'for you\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	b="$(printf 'for the builder\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	nixcage_record_mention "$REPO" "$a" operator
+	nixcage_record_mention "$REPO" "$b" builder
+	run nixcage_record_needing "$REPO" operator
+	assert_output --partial "$a"
+	refute_output --partial "$b"
+}
