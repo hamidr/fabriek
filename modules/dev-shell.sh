@@ -54,10 +54,17 @@ nixcage_has_dev_shell() {
 nixcage_seed_direnvrc() {
 	local rc="$HOME/.config/direnv/direnvrc" line="source $NIXCAGE_DIRENVRC"
 	[ -n "${NIXCAGE_DIRENVRC:-}" ] || return 0
-	if [ ! -f "$rc" ] || ! grep -qF "$line" "$rc"; then
-		mkdir -p "$(dirname "$rc")"
-		echo "$line" >>"$rc"
+	## Matched in bash rather than with grep: the base container userland is a
+	## shell, nix, git and little else, and a missing grep here would report
+	## the line absent every time and append it on every session.
+	if [ -f "$rc" ]; then
+		local existing
+		while IFS= read -r existing || [ -n "$existing" ]; do
+			[ "$existing" = "$line" ] && return 0
+		done <"$rc"
 	fi
+	mkdir -p "$(dirname "$rc")"
+	echo "$line" >>"$rc"
 }
 
 ## Enter the project through its own .envrc, as the host shell would.
