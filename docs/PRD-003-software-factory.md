@@ -8,7 +8,7 @@ summary: named roles in cages work one assigned repository, delegating tasks thr
 depends_on: [PRD-002]
 supersedes: []
 superseded_by: []
-phases_total: 6
+phases_total: 7
 phases_done: 2
 ---
 
@@ -285,6 +285,43 @@ keeping, and they are answerable from the run record and from git alone:
   was in, so a task blocked on something external does not silently become a
   task that was tried and abandoned.
 
+### The shared record
+
+- The factory keeps a record that roles and the operator both read and write:
+  what a task is for, what a role concluded, what someone asked, and what
+  happened. A task cannot carry it, because a task has one owner and a
+  lifecycle and a discussion has neither.
+- The record lives in the repository the factory works and travels with it, so
+  reading it needs nothing but the repository and the operator can read it on
+  their own machine with their own tools (ADR-013).
+- Every entry is attributed to whoever wrote it, and entries are never edited
+  or removed. A record that can be rewritten is not worth reading back.
+- A role's own writing reaches the record when its turn ends. A role cannot
+  reach the record directly; it writes what it wants recorded and the
+  supervisor puts it there, which is the same path an outcome already takes.
+  Two roles therefore cannot converse inside one turn: this is a record that
+  accumulates rather than a conversation held live.
+- The supervisor writes what it did as it does it -- an attempt started, no
+  outcome recorded, work settled and moved on -- into the same record, so
+  reading one item top to bottom is the story of that work.
+- Everything a role should read is put in front of it when its turn begins,
+  marked as new since it last ran. The supervisor keeps what each role has
+  already seen; nothing asks a role to remember.
+
+### Asking for someone's attention
+
+- A role can mark an item for another role in its workflow. The mark is
+  metadata, never prose: the supervisor acts on it without reading anything an
+  agent wrote, which is the same rule that keeps a task body out of a command
+  line.
+- A mark does not start anything. The marked role finds it when it next runs,
+  and if it has no other work it does not run, so the mark waits. This is a
+  real limitation rather than an oversight, and the guidance a role receives
+  has to say so or roles will assume otherwise.
+- Turning a mark into work is what a consult does, and a consult is a task.
+  There is no third mechanism: anything that must cause a run is a task,
+  because a task is what becomes one.
+
 ### The operator's console
 
 - The operator sees every role in one place: which are working, which are
@@ -517,10 +554,10 @@ keeping, and they are answerable from the run record and from git alone:
   clone have diverged, because the operator rewrote history in their own
   repository? Reconciling is not the same as fetching, and nothing says which
   side wins or whether a role's branch survives it.
-- Do roles ever want messages as well as tasks? Everything here is delegation,
-  which is what a task is for. A finding worth telling every role without
-  assigning anyone work has no home, and PRD-001 is where it would live if it
-  turns out to be wanted.
+- Do roles ever want messages as well as tasks? Delegation is what a task is
+  for, and the shared record now carries discussion about work that exists. A
+  finding worth telling every role without assigning anyone work still has no
+  home, and PRD-001 is where it would live if it turns out to be wanted.
 
 ## Phases
 
@@ -550,9 +587,13 @@ usable on its own.
 5. **Integration.** The reviewer role, conflicts resolved in its cage or handed
    back as tasks, and `main` advancing without the operator by a fast-forward
    the supervisor performs. Requires ADR-009 and the ref namespace of ADR-010.
-6. **Documents.** The architect refining proposals, the guidance becoming a
-   document the architect maintains rather than a fixed string, reports
-   reaching the operator, and the record of what ran, why, and how it ended.
+6. **The record.** The shared record roles and the operator write into,
+   attention marks that arrive with a role's next turn, and the supervisor
+   narrating what it did. Sequenced here because it is the first thing that
+   makes a role's turn depend on what another role wrote.
+7. **Documents.** The architect refining proposals, the guidance becoming a
+   document the architect maintains rather than a fixed string, and reports
+   reaching the operator.
 
 ## Design gates
 
