@@ -45,6 +45,7 @@ nixcage_role_acl_targets() {
 ## uid write objects and its own refs with no shared group (ADR-010).
 nixcage_role_worktree_ensure() {
 	local state="$1" factory="$2" role="$3" repo="$4" uid="$5"
+	local dataset_root="${6:-}" quota="${7:-}"
 
 	local path branch gitdir target
 	path="$(nixcage_role_worktree_path "$state" "$factory" "$role")" || return 1
@@ -52,7 +53,14 @@ nixcage_role_worktree_ensure() {
 
 	gitdir="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" || return 1
 
-	if [ ! -d "$path" ]; then
+	## Where nixcage's state is on ZFS the worktree is a dataset of its own,
+	## so what a role writes can be bounded and an unclean shutdown cannot
+	## leave its files truncated (ADR-017). Creating it mounts the directory,
+	## which is why the worktree is recognised by its pointer rather than by
+	## the directory existing.
+	nixcage_storage_ensure_worktree "$dataset_root" "$factory" "$role" "$path" "$quota" || return 1
+
+	if [ ! -e "$path/.git" ]; then
 		mkdir -p "$(dirname "$path")"
 		## A worktree the repository still has registered but that is no longer
 		## on disk blocks the add outright. That is the state a role is left in

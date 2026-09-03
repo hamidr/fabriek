@@ -56,6 +56,7 @@ let
       ## and the bats suite can read it, and the store is available here.
       . ${./git-worktree.sh}
       . ${./role-uid.sh}
+      . ${./storage.sh}
       . ${./role-worktree.sh}
       . ${./factory-clone.sh}
       . ${./task-store.sh}
@@ -378,7 +379,14 @@ let
         local uid
         uid="$(nixcage_role_uid "$STATE_DIR/role-uids" \
           "''${ROLE_UID_BASE:?}" "''${ROLE_UID_SIZE:?}" "$role")" || exit 1
-        nixcage_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" ||
+        ## STORAGE_DATASET and ROLE_QUOTA come from the same declaration file
+        ## as the uid range and are empty where nixcage's state is not on ZFS,
+        ## in which case the worktree is an ordinary directory (ADR-017). zfs
+        ## itself is taken from the system rather than pinned here: the tools
+        ## have to match the kernel module of the machine running them, which
+        ## on Linux is the admin's and not ours.
+        nixcage_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" \
+          "''${STORAGE_DATASET:-}" "''${ROLE_QUOTA:-}" ||
           die "could not prepare the worktree for role $role"
       }
 
