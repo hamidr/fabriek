@@ -72,6 +72,61 @@ in
               example = "/home/me/Src/acme";
               description = "The one git repository this factory works.";
             };
+            workflows = lib.mkOption {
+              type = lib.types.attrsOf (
+                lib.types.submodule {
+                  options = {
+                    stages = lib.mkOption {
+                      type = lib.types.listOf (
+                        lib.types.submodule {
+                          options = {
+                            role = lib.mkOption {
+                              type = lib.types.str;
+                              description = "The role that owns this stage.";
+                            };
+                            fanOut = lib.mkOption {
+                              type = lib.types.bool;
+                              default = false;
+                              description = ''
+                                Whether this stage may produce several tasks
+                                for the next one rather than a single task.
+                              '';
+                            };
+                            gate = lib.mkOption {
+                              type = lib.types.nullOr lib.types.str;
+                              default = null;
+                              description = "Name of the gate that stops a run at this stage.";
+                            };
+                          };
+                        }
+                      );
+                      default = [ ];
+                      description = ''
+                        The stages this workflow runs, in order. A list rather
+                        than a graph, so a pipeline cannot contain a cycle and
+                        every stage is reachable from the first.
+                      '';
+                    };
+                    consults = lib.mkOption {
+                      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+                      default = { };
+                      example = {
+                        builder = [ "architect" ];
+                      };
+                      description = ''
+                        Who may ask whom, keyed by the asking role. Unlike the
+                        pipeline this may point backwards, because the role
+                        that can answer a question is usually the one before.
+                        A consult creates a leaf task, so no chain of roles
+                        waiting on each other can close into a loop.
+                      '';
+                    };
+                  };
+                }
+              );
+              default = { };
+              description = "The pipelines this factory can run.";
+            };
             roles = lib.mkOption {
               type = lib.types.attrsOf (
                 lib.types.submodule {
@@ -409,6 +464,41 @@ in
                   lib.concatMapStrings (word: word + "\n") role.command;
               }
             ) factory.roles
+                      ++ lib.concatLists (
+            lib.mapAttrsToList (
+              workflowName: workflow:
+              (lib.imap0 (i: stage: {
+                "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                  lib.fixedWidthNumber 2 i
+                }/role".text = stage.role + "\n";
+              }) workflow.stages)
+              ++ (lib.imap0 (
+                i: stage:
+                lib.mkIf stage.fanOut {
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                    lib.fixedWidthNumber 2 i
+                  }/fanout".text = "";
+                }
+              ) workflow.stages)
+              ++ (lib.imap0 (
+                i: stage:
+                lib.mkIf (stage.gate != null) {
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                    lib.fixedWidthNumber 2 i
+                  }/gate".text = stage.gate + "\n";
+                }
+              ) workflow.stages)
+              ++ lib.concatLists (
+                lib.mapAttrsToList (
+                  asker: targets:
+                  map (target: {
+                    "nixcage/factories/${factoryName}/workflows/${workflowName}/consults/${asker}/${target}".text =
+                      "";
+                  }) targets
+                ) workflow.consults
+              )
+            ) factory.workflows
+          )
           ) cfg.factories
         )
       );
