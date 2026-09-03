@@ -61,6 +61,7 @@ let
       . ${./task-store.sh}
       . ${./workflow-config.sh}
       . ${./record.sh}
+      . ${./caps.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -455,9 +456,28 @@ let
         [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] ||
           die "$id does not belong to role $role"
 
-        local clone item
+        local clone item workflow
         clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
         item="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" item)"
+        workflow="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
+
+        ## The caps are checked before anything is spent, and in this order:
+        ## the machine before the workflow, because a slot refused costs
+        ## nothing while a budget charged and then abandoned does not come
+        ## back. Reaching either stops cleanly and says which one it was.
+        local concurrency budget_runs
+        concurrency="''${RUN_CONCURRENCY:-0}"
+        budget_runs="$(nixcage_workflow_budget "$FACTORIES_ROOT" "$factory" "$workflow" runs)"
+
+        nixcage_cap_claim "$STATE_DIR" "$factory" "$id" "$concurrency" || exit 1
+        # shellcheck disable=SC2064
+        trap "nixcage_cap_release '$STATE_DIR' '$factory' '$id'" EXIT
+
+        if ! nixcage_cap_spend "$STATE_DIR" "$factory" "$workflow" runs 1 "$budget_runs"; then
+          [ -n "$item" ] && printf 'stopped: %s has spent its run budget\n' "$workflow" |
+            nixcage_record_comment "$clone" "$item" supervisor
+          exit 1
+        fi
 
         nixcage_task_attempt "$TASKS_ROOT" "$factory" "$id" "$max" || exit 1
 

@@ -79,6 +79,34 @@ in
                         every stage is reachable from the first.
                       '';
                     };
+                    budget = lib.mkOption {
+                      type = lib.types.submodule {
+                        options = {
+                          runs = lib.mkOption {
+                            type = lib.types.ints.unsigned;
+                            default = 0;
+                            description = ''
+                              How many runs this workflow may start. Zero is
+                              unbounded. Runs are what can be counted from
+                              outside a cage whatever agent a role runs, which
+                              is why they are the measure that always applies.
+                            '';
+                          };
+                          tokens = lib.mkOption {
+                            type = lib.types.ints.unsigned;
+                            default = 0;
+                            description = ''
+                              How many tokens this workflow may spend, where
+                              the agent reports them. Zero is unbounded. This
+                              bounds a workflow in addition to its runs, never
+                              instead of them.
+                            '';
+                          };
+                        };
+                      };
+                      default = { };
+                      description = "What this workflow may spend before it stops.";
+                    };
                     consults = lib.mkOption {
                       type = lib.types.attrsOf (lib.types.listOf lib.types.str);
                       default = { };
@@ -132,6 +160,17 @@ in
     supervisor = lib.mkOption {
       type = lib.types.submodule {
         options = {
+          concurrency = lib.mkOption {
+            type = lib.types.ints.unsigned;
+            default = 0;
+            example = 3;
+            description = ''
+              How many agent sessions may run at once on this machine, across
+              every factory. Zero is unbounded. Note that one worktree per role
+              already bounds active runs by the number of declared roles, so a
+              cap at or above that count constrains nothing.
+            '';
+          };
           taskAttempts = lib.mkOption {
             type = lib.types.ints.positive;
             default = 3;
@@ -232,6 +271,7 @@ in
         ROLE_UID_SIZE=${toString cfg.supervisor.roleUidRange.size}
         TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
         TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
+        RUN_CONCURRENCY=${toString cfg.supervisor.concurrency}
       '';
     };
 
@@ -307,6 +347,14 @@ in
                   }) targets
                 ) workflow.consults
               )
+              ++ [
+                {
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/budget-runs".text =
+                    toString workflow.budget.runs + "\n";
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/budget-tokens".text =
+                    toString workflow.budget.tokens + "\n";
+                }
+              ]
             ) factory.workflows
           )
           ) cfg.factories

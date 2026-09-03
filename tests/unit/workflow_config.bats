@@ -97,3 +97,16 @@ teardown() {
 	assert_failure
 	assert_output --partial "no stages"
 }
+
+@test "a workflow declares what it may spend" {
+	printf '40\n' >"$W/budget-runs"
+	printf '2000000\n' >"$W/budget-tokens"
+	[ "$(nixcage_workflow_budget "$ROOT" acme ship runs)" = "40" ]
+	[ "$(nixcage_workflow_budget "$ROOT" acme ship tokens)" = "2000000" ]
+}
+
+@test "a workflow that declares no budget is unbounded rather than forbidden" {
+	run nixcage_workflow_budget "$ROOT" acme ship runs
+	assert_success
+	assert_output "0"
+}

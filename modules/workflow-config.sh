@@ -91,3 +91,16 @@ nixcage_workflow_may_consult() {
 	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -e "$dir/consults/$asker/$target" ]
 }
+
+## What a workflow may spend, by kind. Absent means unbounded: a workflow
+## nobody has bounded yet is not a workflow that may not run.
+nixcage_workflow_budget() {
+	local root="$1" factory="$2" workflow="$3" kind="$4"
+	local dir
+	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	if [ -f "$dir/budget-$kind" ]; then
+		cat "$dir/budget-$kind"
+	else
+		echo 0
+	fi
+}
