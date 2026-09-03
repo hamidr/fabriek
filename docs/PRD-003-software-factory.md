@@ -461,6 +461,14 @@ keeping, and they are answerable from the run record and from git alone:
   the two ways work fails without stopping -- a run that hangs and a task that
   cannot succeed -- which no other cap catches until the budget is gone.
 - Reaching any cap stops cleanly, records why, and shows in the console.
+- Disk is a cap like the others: a role may be given a bound on what its
+  worktree holds, so an agent in a build loop cannot take the volume from every
+  other role and the supervisor with it. Where the machine cannot enforce one,
+  the factory still runs and says nothing false about being bounded (ADR-017).
+- Work a role has done survives the machine stopping without warning. A stop
+  that leaves a role's files present but empty is indistinguishable from a role
+  that produced nothing, and it costs the operator a repair rather than a
+  retry.
 
 ## Constraints
 

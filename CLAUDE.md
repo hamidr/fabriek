@@ -25,6 +25,8 @@ The primary use case is running AI coding agents in isolation. Architecture:
   session by store path: direnv when the project has an `.envrc`, else the
   devShell, else the base userland. A shell file rather than an inline string
   so shellcheck reads it and bats sources it.
+- `modules/storage.sh` -- the dataset a role's worktree lives on and the quota
+  it carries, where nixcage's state is on ZFS; a no-op where it is not.
 - `modules/git-worktree.sh` -- resolution of the git directories a linked
   worktree points at, sourced by store path into `nixcage-container`. A shell
   file for the same reason `dev-shell.sh` is one.
@@ -102,6 +104,14 @@ rendered to `/etc/nixcage/gitconfig`, and signing goes through the user's
 ssh-agent: `enter` forwards `SSH_AUTH_SOCK` (`ssh -A` on macOS, an explicit
 `--auth-sock` past sudo on Linux) and the guest binds it at
 `/run/ssh-agent.sock`. No key material enters a container (ADR-008).
+
+**Storage** -- the VM keeps `/var/lib/nixcage` on a ZFS pool of its own
+(`nixcage-pool.img`, created on first boot by `nixcage-storage.service`), with
+one dataset per role worktree so a role can carry a `refquota` and an unclean
+stop cannot truncate its work (ADR-017). `acltype=posixacl` and `xattr=sa` are
+load-bearing: without them ZFS refuses the ACLs ADR-010 grants. On Linux the
+admin says whether there is a dataset (`nixcage.storage.dataset`); unset means
+ordinary directories.
 
 **Secrets** -- sops-nix in the user's config flake; age key generated on the
 VM data volume at first boot; `nixcage.secretEnv` maps env vars to secret
