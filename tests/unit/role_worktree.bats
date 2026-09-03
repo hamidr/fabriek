@@ -11,6 +11,10 @@ setup() {
 	# shellcheck source=../../modules/role-worktree.sh
 	source "$NIXCAGE_ROOT/modules/role-worktree.sh"
 	STATE="$TEST_TEMP_DIR/state"
+	STUB_DIR="$TEST_TEMP_DIR/bin"
+	mkdir -p "$STUB_DIR"
+	PATH="$STUB_DIR:$PATH"
+	export PATH
 }
 
 teardown() {
@@ -81,4 +85,33 @@ teardown() {
 @test "an invalid role cannot be given an ACL" {
 	run nixcage_role_acl_targets /repo/.git "../../.."
 	assert_failure
+}
+
+# chown and setfacl need root, and neither is what these tests are about.
+stub_privileged_tools() {
+	local tool
+	for tool in chown setfacl; do
+		printf '#!/usr/bin/env bash\nexit 0\n' >"$STUB_DIR/$tool"
+		chmod +x "$STUB_DIR/$tool"
+	done
+}
+
+make_repo() {
+	local repo="$TEST_TEMP_DIR/repo"
+	mkdir -p "$repo"
+	git -C "$repo" init -q -b main
+	git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m first
+	echo "$repo"
+}
+
+@test "a role whose worktree was removed gets it back" {
+	# Removing the tree leaves the repository still holding a registration
+	# for it, which blocks the add until it is pruned.
+	stub_privileged_tools
+	repo="$(make_repo)"
+	nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	rm -rf "$STATE/worktrees/acme/builder"
+	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	[ -e "$STATE/worktrees/acme/builder/.git" ]
 }

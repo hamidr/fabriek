@@ -54,6 +54,11 @@ nixcage_role_worktree_ensure() {
 
 	if [ ! -d "$path" ]; then
 		mkdir -p "$(dirname "$path")"
+		## A worktree the repository still has registered but that is no longer
+		## on disk blocks the add outright. That is the state a role is left in
+		## whenever its tree is removed from under it, and repairing it is what
+		## this function is for.
+		git -C "$repo" worktree prune
 		if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
 			git -C "$repo" worktree add --quiet "$path" "$branch" || return 1
 		else
