@@ -411,6 +411,15 @@ keeping, and they are answerable from the run record and from git alone:
   A refused integration is never partially applied.
 - `main` never leaves the machine on the factory's initiative. Publishing to
   any remote is the operator's act.
+- If the factory's clone no longer descends from the operator's own history --
+  because they rewrote it -- the factory stops. It starts no further run for
+  that repository, records why, and changes nothing: no branch is rebased, no
+  task is discarded, and no work is built on a history that no longer exists.
+  Rewriting a shared branch is rare and deliberate, so stopping costs little
+  and lands exactly when something unusual was done.
+- Resuming is the operator's act and an explicit one. A factory that halted
+  must be startable again by a command rather than by deleting state by hand,
+  or the safe behaviour becomes the one people work around.
 
 ### Limits
 
@@ -550,10 +559,6 @@ keeping, and they are answerable from the run record and from git alone:
   outside keeps the trust boundary visually obvious.
 - How does a role know what the factory already tried? The document record
   answers this for decisions, and nothing answers it for abandoned attempts.
-- What does the supervisor do when the operator's checkout and the factory
-  clone have diverged, because the operator rewrote history in their own
-  repository? Reconciling is not the same as fetching, and nothing says which
-  side wins or whether a role's branch survives it.
 - When do consults land? A role can mark work for another role, and that mark
   waits until the marked role runs for some other reason. Turning a mark into a
   run is a consult, which is a task, and it was deliberately deferred out of
