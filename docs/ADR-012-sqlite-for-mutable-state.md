@@ -4,7 +4,7 @@ title: A factory's mutable state lives in SQLite; the declaration stays files
 status: proposed
 date: 2026-09-03
 status_date: 2026-09-03
-summary: tasks, threads, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree
+summary: tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree
 depends_on: [ADR-011]
 supersedes: []
 superseded_by: []
@@ -20,8 +20,8 @@ generation, and a shell script reads a value by reading a file with no parser
 and no client library between them.
 
 The same shape was then used for state that is none of those things. Tasks,
-their threads, run records and the role-to-uid map are mutable, written
-concurrently, related to one another, and read together. The argument that
+run records and the role-to-uid map are mutable, written concurrently, related
+to one another, and read together. The argument that
 carried the declaration was reused without being re-examined, and it does not
 carry here.
 
@@ -38,8 +38,8 @@ timeout. It works, and it is a mutex written by hand around a problem every
 database solves.
 
 Reads are file walks. Listing the ready tasks of a factory opens every task
-directory and reads a file from each. Once a brief carries a thread, building
-one costs a read per entry, for what is one join.
+directory and reads a file from each, which is a query written by hand over a
+tree that has no index.
 
 There is a fourth, quieter argument. The Alloy model checks that no task is
 owned by an undeclared role, that a task sits at a stage its workflow declares,
@@ -52,8 +52,16 @@ two places rather than the model saying it alone.
 A factory's mutable state lives in one SQLite database; the declaration stays a
 directory tree.
 
-**1. What moves.** Tasks, task threads, run records, and the role-to-uid
-allocation. These are written, related, and read together.
+**1. What moves.** Tasks, run records, the role-to-uid allocation, and the
+markers saying what each role has already seen. These are written, related, and
+read together.
+
+Discussion is not among them. ADR-013 puts issues and comments in git-bug,
+which carries attribution, identity and merge, so this store holds the
+supervisor's mechanics rather than the shared record. That removes one of the
+arguments made below -- building a brief with its thread is no longer a join
+here -- and leaves the others untouched. The one that decides it, that taking
+an attempt must be atomic, is unaffected.
 
 **2. What does not.** Everything under `/etc/nixcage`, which the platform
 module renders from Nix: the factory declaration, role commands, workflow
@@ -99,8 +107,8 @@ tool for the reporting PRD-003 asks for -- the share of `main` arriving on role
 branches, interventions per merged task, revert rate, budget per merged task --
 read over the record rather than owning it.
 
-`sqlite-vec` is packaged and is not adopted here. Searching threads and
-outcomes by meaning is plausible later, and choosing SQLite keeps that possible
+`sqlite-vec` is packaged and is not adopted here. Searching outcomes and the
+record by meaning is plausible later, and choosing SQLite keeps that possible
 while choosing files would have closed it. Nothing is built for it now, and no
 embedding model is introduced.
 

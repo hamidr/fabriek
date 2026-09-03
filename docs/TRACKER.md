@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 004
 
-**Next ADR number:** 013
+**Next ADR number:** 014
 
 ## PRDs
 
@@ -33,4 +33,5 @@ document, then regenerate.
 | [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | accepted | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
 | [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | accepted | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
 | [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | accepted | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
-| [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | proposed | -- | ADR-011 | tasks, threads, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
+| [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | proposed | -- | ADR-011 | tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
+| [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | proposed | -- | ADR-011, ADR-012 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
