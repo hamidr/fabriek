@@ -373,6 +373,9 @@ let
       ## The tasks of every declared factory, kept beside the clones they are
       ## worked in rather than in any repository.
       TASKS_ROOT="$STATE_DIR/tasks"
+      ## How much of each item each role has been shown. The supervisor's
+      ## bookkeeping, not part of the shared record.
+      SEEN_ROOT="$STATE_DIR/seen"
 
       ## File a goal. It enters at the workflow's first stage and is owned by
       ## that stage's role, so the operator names what should happen rather
@@ -480,9 +483,21 @@ let
           printf '\nbody:\n%s\n' \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" body)"
           ## What has already been said about this work. A role opens its turn
-          ## reading the discussion rather than only the goal.
+          ## reading the discussion rather than only the goal, and is told
+          ## which part of it is new since it last looked -- replaying
+          ## everything as though it were new is how a record stops being read.
           if [ -n "$item" ]; then
+            local seen fresh
+            seen="$(nixcage_record_seen "$SEEN_ROOT" "$factory" "$role" "$item")"
+            fresh="$(nixcage_record_since "$clone" "$item" "$seen")"
             printf '\nrecord:\n%s\n' "$(nixcage_record_show "$clone" "$item")"
+            if [ -n "$fresh" ]; then
+              printf '\nnew since you last looked:\n%s\n' "$fresh"
+            else
+              printf '\nnew since you last looked:\n  nothing\n'
+            fi
+            nixcage_record_mark_seen "$SEEN_ROOT" "$factory" "$role" "$item" \
+              "$(nixcage_record_count "$clone" "$item")"
           fi
         } >"$run_dir/brief"
         : >"$run_dir/outcome"

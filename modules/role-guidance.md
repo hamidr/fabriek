@@ -47,6 +47,10 @@ The `record:` section of your brief is the discussion of this work so far, with
 who said what. Read it before you start: it is why you are not being told the
 goal alone.
 
+The `new since you last looked:` section is the part that arrived since your
+previous turn. The record above it is the whole story and is there for context;
+that section is what you have not seen.
+
 To add to it, drop a file into `$NIXCAGE_TASK/comments/`. Anything you put
 there is posted under your own name when your turn ends. Write what you found,
 what you decided and why, and what you are unsure about -- the next role to

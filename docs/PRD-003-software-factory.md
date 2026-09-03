@@ -9,7 +9,7 @@ depends_on: [PRD-002]
 supersedes: []
 superseded_by: []
 phases_total: 7
-phases_done: 2
+phases_done: 4
 ---
 
 ## Problem
@@ -554,6 +554,11 @@ keeping, and they are answerable from the run record and from git alone:
   clone have diverged, because the operator rewrote history in their own
   repository? Reconciling is not the same as fetching, and nothing says which
   side wins or whether a role's branch survives it.
+- When do consults land? A role can mark work for another role, and that mark
+  waits until the marked role runs for some other reason. Turning a mark into a
+  run is a consult, which is a task, and it was deliberately deferred out of
+  the delegation phase rather than dropped. Until it exists, a question asked of
+  an idle role is a question that waits.
 - Do roles ever want messages as well as tasks? Delegation is what a task is
   for, and the shared record now carries discussion about work that exists. A
   finding worth telling every role without assigning anyone work still has no
@@ -575,22 +580,21 @@ usable on its own.
    run, a run that outlives its limit, and a task that exhausts its attempts.
 3. **Delegation.** The pipeline: a role creates work along the stage edges its
    declaration allows, a stage fans out into several tasks, and the supervisor
-   turns each into a run. Consults land here too, since a role that cannot ask
-   the role before it has to guess instead: asking creates a leaf task and
-   blocks the asker until it resolves. Nothing counts depth at run time, because
-   the declaration is checked for cycles and for unreachable stages when it is
+   turns each into a run. Nothing counts depth at run time, because the
+   declaration is checked for cycles and for unreachable stages when it is
    read. This is the phase that makes the factory more than one agent, and the
    phase where fan-out first shows that parallelism is a property of how many
    roles are declared rather than of how many tasks exist.
-4. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
+4. **The record.** The shared record roles and the operator write into,
+   attention marks that arrive with a role's next turn, and the supervisor
+   narrating what it did. Sequenced before the caps because it adds no autonomy
+   -- it changes what a role knows, not what it may do -- and because it is the
+   first thing that makes a role's turn depend on what another role wrote.
+5. **Gates and limits.** Concurrency, budget, and gates that show as blocked in
    the console and survive an answer that arrives hours later.
-5. **Integration.** The reviewer role, conflicts resolved in its cage or handed
+6. **Integration.** The reviewer role, conflicts resolved in its cage or handed
    back as tasks, and `main` advancing without the operator by a fast-forward
    the supervisor performs. Requires ADR-009 and the ref namespace of ADR-010.
-6. **The record.** The shared record roles and the operator write into,
-   attention marks that arrive with a role's next turn, and the supervisor
-   narrating what it did. Sequenced here because it is the first thing that
-   makes a role's turn depend on what another role wrote.
 7. **Documents.** The architect refining proposals, the guidance becoming a
    document the architect maintains rather than a fixed string, and reports
    reaching the operator.

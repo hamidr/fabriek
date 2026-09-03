@@ -126,3 +126,46 @@ nixcage_record_ingest() {
 		done <"$run_dir/mentions"
 	fi
 }
+
+## How much of an item a role has already been shown. Markers are the
+## supervisor's bookkeeping rather than part of the record: what a role has
+## read is nobody else's business and does not belong in a shared history.
+nixcage_record_seen() {
+	local root="$1" factory="$2" role="$3" item="$4"
+	nixcage_role_name_ok "$factory" || return 1
+	nixcage_role_name_ok "$role" || return 1
+	local file="$root/$factory/$role/$item"
+	if [ -f "$file" ]; then
+		cat "$file"
+	else
+		echo 0
+	fi
+}
+
+nixcage_record_mark_seen() {
+	local root="$1" factory="$2" role="$3" item="$4" count="$5"
+	nixcage_role_name_ok "$factory" || return 1
+	nixcage_role_name_ok "$role" || return 1
+	local dir="$root/$factory/$role"
+	mkdir -p "$dir"
+	local tmp="$dir/.$item.$$"
+	printf '%s' "$count" >"$tmp" && mv "$tmp" "$dir/$item"
+}
+
+## The number of comments on an item, which is what a marker counts.
+nixcage_record_count() {
+	local repo="$1" item="$2"
+	nixcage_record_show "$repo" "$item" | grep -cE '^ *[0-9a-f]{7} #[0-9]+ ' || true
+}
+
+## Only what arrived after the first n comments. A role opening its turn is
+## shown the whole item for context and this for attention, because replaying
+## everything as though it were new is how a record stops being read.
+nixcage_record_since() {
+	local repo="$1" item="$2" skip="$3"
+	nixcage_record_show "$repo" "$item" |
+		awk -v skip="$skip" '
+			/^ *[0-9a-f]{7} #[0-9]+ / { seen++; show = (seen > skip) }
+			show { print }
+		'
+}

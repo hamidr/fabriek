@@ -157,3 +157,52 @@ teardown() {
 	run nixcage_record_participants "$REPO" "$id"
 	assert_output --partial "supervisor"
 }
+
+@test "a role that has never seen an item has seen nothing of it" {
+	run nixcage_record_seen "$TEST_TEMP_DIR/seen" acme builder abc123
+	assert_success
+	assert_output "0"
+}
+
+@test "what a role has seen is remembered across invocations" {
+	nixcage_record_mark_seen "$TEST_TEMP_DIR/seen" acme builder abc123 4
+	run nixcage_record_seen "$TEST_TEMP_DIR/seen" acme builder abc123
+	assert_output "4"
+}
+
+@test "two roles keep their own place in the same item" {
+	nixcage_record_mark_seen "$TEST_TEMP_DIR/seen" acme builder abc123 4
+	nixcage_record_mark_seen "$TEST_TEMP_DIR/seen" acme architect abc123 1
+	[ "$(nixcage_record_seen "$TEST_TEMP_DIR/seen" acme builder abc123)" = "4" ]
+	[ "$(nixcage_record_seen "$TEST_TEMP_DIR/seen" acme architect abc123)" = "1" ]
+}
+
+@test "a role name that could escape the marker directory is refused" {
+	run nixcage_record_mark_seen "$TEST_TEMP_DIR/seen" acme "../../etc" abc123 1
+	assert_failure
+}
+
+@test "an item's comments can be counted" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	one="$(nixcage_record_count "$REPO" "$id")"
+	printf 'another\n' | nixcage_record_comment "$REPO" "$id" builder
+	two="$(nixcage_record_count "$REPO" "$id")"
+	[ "$two" -eq $((one + 1)) ]
+}
+
+@test "only what arrived since a role last looked is new to it" {
+	id="$(printf 'ship it\n\nthe original body\n' | nixcage_record_new "$REPO" architect)"
+	seen="$(nixcage_record_count "$REPO" "$id")"
+	printf 'this arrived afterwards\n' | nixcage_record_comment "$REPO" "$id" builder
+	run nixcage_record_since "$REPO" "$id" "$seen"
+	assert_success
+	assert_output --partial "this arrived afterwards"
+	refute_output --partial "the original body"
+}
+
+@test "nothing is new to a role that is up to date" {
+	id="$(printf 'ship it\n\nbody\n' | nixcage_record_new "$REPO" architect)"
+	run nixcage_record_since "$REPO" "$id" "$(nixcage_record_count "$REPO" "$id")"
+	assert_success
+	assert_output ""
+}

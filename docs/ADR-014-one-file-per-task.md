@@ -1,7 +1,7 @@
 ---
 id: ADR-014
 title: A task's mutable fields live in one file, written by rename
-status: proposed
+status: accepted
 date: 2026-09-03
 status_date: 2026-09-03
 summary: every mutable field of a task is written together in one file, so a change cannot half-happen without a database

@@ -1,7 +1,7 @@
 ---
 id: ADR-013
 title: The factory's shared record is git-bug, carried in the repository it works
-status: proposed
+status: accepted
 date: 2026-09-03
 status_date: 2026-09-03
 summary: issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database
