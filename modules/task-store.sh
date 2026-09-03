@@ -14,10 +14,23 @@
 ## about what a session is doing; that is the run's own machine.
 NIXCAGE_TASK_STATES="proposed ready running blocked awaiting-review done failed cancelled"
 
+## The scalar fields that share one file and are therefore written together.
+## Everything else is text written once, kept in a file of its own because a
+## line-oriented file cannot hold a value with newlines (ADR-014).
+NIXCAGE_TASK_SCALARS="state attempts role workflow stage parent seq"
+
 nixcage_task_state_ok() {
 	local candidate="$1" state
 	for state in $NIXCAGE_TASK_STATES; do
 		[ "$state" = "$candidate" ] && return 0
+	done
+	return 1
+}
+
+nixcage_task_scalar() {
+	local candidate="$1" field
+	for field in $NIXCAGE_TASK_SCALARS; do
+		[ "$field" = "$candidate" ] && return 0
 	done
 	return 1
 }
@@ -35,9 +48,31 @@ nixcage_task_dir() {
 	echo "$root/$factory/$id"
 }
 
-## Ids are allocated strictly increasing and never reissued: a reused id would
-## attach a new task to whatever the old one left behind, in a record whose
-## whole purpose is saying what happened.
+## Rewrite the scalar file whole, through a temporary and a rename, so a reader
+## sees either every field from before the change or every field after it and
+## never one from each.
+nixcage_task_put_scalars() {
+	local dir="$1"
+	shift
+	local tmp="$dir/.fields.$$"
+	printf '%s\n' "$@" >"$tmp" && mv "$tmp" "$dir/fields"
+}
+
+nixcage_task_read_scalar() {
+	local dir="$1" field="$2"
+	[ -f "$dir/fields" ] || return 0
+	local line
+	while IFS= read -r line; do
+		if [ "${line%%=*}" = "$field" ]; then
+			echo "${line#*=}"
+			return 0
+		fi
+	done <"$dir/fields"
+}
+
+## Ids are allocated by creating the directory: mkdir either succeeds or it
+## does not, which is the atomic test-and-set a lock was previously wrapped
+## around. A losing racer retries with the next number rather than waiting.
 nixcage_task_new() {
 	local root="$1" factory="$2" workflow="$3" role="$4" stage="${5:-}"
 
@@ -48,23 +83,37 @@ nixcage_task_new() {
 	local base="$root/$factory"
 	mkdir -p "$base"
 
-	nixcage_role_lock "$base/.seq" || return 1
-	trap 'nixcage_role_unlock "$base/.seq"' RETURN
+	local next id dir attempt=0
+	while :; do
+		next=1
+		local path n
+		for path in "$base"/task-*; do
+			[ -d "$path" ] || continue
+			n="$(basename "$path")"
+			n="${n#task-}"
+			n=$((10#$n + 1))
+			[ "$n" -gt "$next" ] && next="$n"
+		done
+		id="$(printf 'task-%04d' "$next")"
+		dir="$base/$id"
+		if mkdir "$dir" 2>/dev/null; then
+			break
+		fi
+		attempt=$((attempt + 1))
+		if [ "$attempt" -gt 1000 ]; then
+			echo "nixcage: could not allocate a task id under $base" >&2
+			return 1
+		fi
+	done
 
-	local next=1
-	[ -f "$base/.seq" ] && next="$(cat "$base/.seq")"
-	printf '%s' "$((next + 1))" >"$base/.seq"
-
-	local id
-	id="$(printf 'task-%04d' "$next")"
-	local dir="$base/$id"
-	mkdir -p "$dir"
-	printf '%s' "proposed" >"$dir/state"
-	printf '%s' "$role" >"$dir/role"
-	printf '%s' "$workflow" >"$dir/workflow"
-	printf '%s' "0" >"$dir/attempts"
-	printf '%s' "$next" >"$dir/seq"
-	[ -n "$stage" ] && printf '%s' "$stage" >"$dir/stage"
+	nixcage_task_put_scalars "$dir" \
+		"state=proposed" \
+		"attempts=0" \
+		"role=$role" \
+		"workflow=$workflow" \
+		"stage=$stage" \
+		"parent=" \
+		"seq=$next" || return 1
 	echo "$id"
 }
 
@@ -74,22 +123,67 @@ nixcage_task_get() {
 	local dir
 	dir="$(nixcage_task_dir "$root" "$factory" "$id")" || return 1
 	[ -d "$dir" ] || return 1
+	if nixcage_task_scalar "$field"; then
+		nixcage_task_read_scalar "$dir" "$field"
+		return 0
+	fi
 	[ -f "$dir/$field" ] || return 0
 	cat "$dir/$field"
 }
 
+## Set one or more fields. Scalars are written together in one rename, which is
+## what makes a change unable to half-happen; text is written to its own file.
 nixcage_task_set() {
-	local root="$1" factory="$2" id="$3" field="$4" value="$5"
-	nixcage_task_field_ok "$field" || return 1
-	if [ "$field" = "state" ] && ! nixcage_task_state_ok "$value"; then
-		echo "nixcage: not a task state: $value" >&2
-		return 1
-	fi
+	local root="$1" factory="$2" id="$3"
+	shift 3
+
 	local dir
 	dir="$(nixcage_task_dir "$root" "$factory" "$id")" || return 1
 	[ -d "$dir" ] || return 1
-	local tmp="$dir/.$field.$$"
-	printf '%s' "$value" >"$tmp" && mv "$tmp" "$dir/$field"
+
+	local -a pending=()
+	local field value
+	while [ $# -gt 0 ]; do
+		field="$1"
+		value="$2"
+		shift 2
+		nixcage_task_field_ok "$field" || return 1
+		if [ "$field" = "state" ] && ! nixcage_task_state_ok "$value"; then
+			echo "nixcage: not a task state: $value" >&2
+			return 1
+		fi
+		if nixcage_task_scalar "$field"; then
+			case "$value" in
+			*$'\n'*)
+				echo "nixcage: $field cannot contain a newline" >&2
+				return 1
+				;;
+			esac
+			pending+=("$field" "$value")
+		else
+			local tmp="$dir/.$field.$$"
+			printf '%s' "$value" >"$tmp" && mv "$tmp" "$dir/$field" || return 1
+		fi
+	done
+
+	[ "${#pending[@]}" -eq 0 ] && return 0
+
+	## Read every scalar, replace the ones being set, write the file once.
+	local -a out=()
+	local current i replaced
+	for field in $NIXCAGE_TASK_SCALARS; do
+		current="$(nixcage_task_read_scalar "$dir" "$field")"
+		replaced=""
+		for ((i = 0; i < ${#pending[@]}; i += 2)); do
+			if [ "${pending[i]}" = "$field" ]; then
+				current="${pending[i + 1]}"
+				replaced=yes
+			fi
+		done
+		: "$replaced"
+		out+=("$field=$current")
+	done
+	nixcage_task_put_scalars "$dir" "${out[@]}"
 }
 
 ## Oldest first, because ordering is FIFO and the way to change what runs next
@@ -105,9 +199,9 @@ nixcage_task_list() {
 		[ -d "$dir" ] || continue
 		id="$(basename "$dir")"
 		if [ -n "$want" ]; then
-			[ "$(cat "$dir/state" 2>/dev/null)" = "$want" ] || continue
+			[ "$(nixcage_task_read_scalar "$dir" state)" = "$want" ] || continue
 		fi
-		printf '%s %s\n' "$(cat "$dir/seq" 2>/dev/null || echo 0)" "$id"
+		printf '%s %s\n' "$(nixcage_task_read_scalar "$dir" seq)" "$id"
 	done | sort -n | cut -d' ' -f2
 }
 
@@ -159,8 +253,12 @@ nixcage_task_attempt() {
 		return 1
 	fi
 
-	nixcage_task_set "$root" "$factory" "$id" attempts "$((attempts + 1))" || return 1
-	nixcage_task_set "$root" "$factory" "$id" state running
+	## The count and the state move together. Two writes here is the defect
+	## this store was reshaped to remove: a crash between them would leave an
+	## attempt spent with the task still ready to take another (ADR-014).
+	nixcage_task_set "$root" "$factory" "$id" \
+		attempts "$((attempts + 1))" \
+		state running
 }
 
 ## A run settled: the session went idle and the role recorded what it did.
@@ -234,5 +332,6 @@ nixcage_task_advance() {
 	nixcage_task_set "$root" "$factory" "$child" acceptance \
 		"$(nixcage_task_get "$root" "$factory" "$id" acceptance)" || return 1
 	nixcage_task_set "$root" "$factory" "$id" state "done" || return 1
+
 	echo "$child"
 }

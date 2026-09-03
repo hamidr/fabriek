@@ -291,3 +291,70 @@ teardown() {
 	assert_output ""
 	[ "$(nixcage_task_get "$ROOT" acme "$a" state)" = "done" ]
 }
+
+@test "scalars share one file, so a change to several is one write" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	[ -f "$ROOT/acme/$id/fields" ]
+	# state must not also exist as its own file, or it is two writes again.
+	[ ! -e "$ROOT/acme/$id/state" ]
+	[ ! -e "$ROOT/acme/$id/attempts" ]
+}
+
+@test "text keeps its own file, since a line-oriented one cannot hold newlines" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" acceptance "$(printf 'one\ntwo')"
+	[ -f "$ROOT/acme/$id/acceptance" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" acceptance)" = "$(printf 'one\ntwo')" ]
+}
+
+@test "a scalar carrying a newline is refused rather than corrupting the file" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	run nixcage_task_set "$ROOT" acme "$id" stage "$(printf '01\nrole=evil')"
+	assert_failure
+	[ "$(nixcage_task_get "$ROOT" acme "$id" role)" = "builder" ]
+}
+
+@test "a reader never sees one field from a write and another from the write before" {
+	# stage and parent are written together and held equal, so any reader that
+	# observes them differing has seen a torn write. A spent attempt with a
+	# ready state is NOT the defect -- a failed attempt leaves exactly that.
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" stage 0 parent 0
+
+	(
+		for i in $(seq 1 150); do
+			nixcage_task_set "$ROOT" acme "$id" stage "$i" parent "$i"
+		done
+	) &
+	writer=$!
+
+	# One read of the file, both fields from that snapshot. Two separate reads
+	# would let the writer advance between them and would test nothing.
+	torn=0
+	for _ in $(seq 1 150); do
+		snapshot="$(cat "$ROOT/acme/$id/fields")"
+		a="$(printf '%s\n' "$snapshot" | sed -n 's/^stage=//p')"
+		b="$(printf '%s\n' "$snapshot" | sed -n 's/^parent=//p')"
+		[ "$a" = "$b" ] || torn=$((torn + 1))
+	done
+	wait "$writer"
+	[ "$torn" -eq 0 ]
+}
+
+@test "taking an attempt writes the count and the state together" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	before="$(cat "$ROOT/acme/$id/fields")"
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	after="$(cat "$ROOT/acme/$id/fields")"
+	[ "$before" != "$after" ]
+	# Both changed in that one file, not one of them in some other file.
+	echo "$after" | grep -q '^attempts=1$'
+	echo "$after" | grep -q '^state=running$'
+}
+
+@test "id allocation needs no lock and leaves none behind" {
+	nixcage_task_new "$ROOT" acme ship builder >/dev/null
+	[ ! -e "$ROOT/acme/.seq" ]
+	[ ! -e "$ROOT/acme/.seq.lock" ]
+}

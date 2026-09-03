@@ -42,10 +42,18 @@ window where half of it is visible, and no ordering anyone has to remember.
 succeeds or fails, which is the atomic test-and-set the previous lock was
 wrapped around. The lock goes, and with it the retry loop and its timeout.
 
-**3. Immutable facts stay their own files.** What a task is for -- its
-acceptance criteria and its body -- is written once when it is filed and never
-rewritten, so it does not belong in the file that changes. Keeping it out also
-keeps the mutable file small enough to rewrite freely.
+**3. Text stays in its own file; the file that changes holds scalars.** The
+shared file is line-oriented, so a value containing newlines cannot live in it
+without an encoding, and the values that do -- acceptance criteria, a task
+body, an outcome a role wrote, a failure reason -- are each written once and
+never paired with anything. Only scalars share the file: state, attempts,
+stage, role, workflow, parent and the sequence number.
+
+That is enough, because the pairing that matters is scalar. The forbidden
+outcome is an attempt counted without the state change that goes with it, and
+both are scalars in the one file. An outcome written just before a state change
+that does not land leaves a task still running with an outcome the next attempt
+overwrites, which is untidy and not a state the design forbids.
 
 **4. The store stays the supervisor's.** No cage reaches it, and the record
 roles write into is git-bug (ADR-013). Task state governs dispatch, and putting
@@ -86,10 +94,13 @@ and tabs round-trips, twenty four concurrent filings produce twenty four
 distinct ids -- and are expected to pass unaltered. That is what they were
 written for.
 
-One property becomes testable that was not expressible before: a task is never
-observed with a spent attempt and a `ready` state, because the two are written
-together. A test asserts the pairing directly, and a second reads the file
-while attempts are being taken concurrently and finds no half-written state.
+One property becomes testable that was not expressible before: a reader never
+sees a torn write. Note that a spent attempt with a `ready` state is not itself
+the defect -- that is exactly what a failed attempt leaves behind, and it is
+legal. The defect is a reader seeing one field from a write and another field
+from the write before it. The test writes two scalars that must always be
+equal, hammers them concurrently, and asserts no reader ever observes them
+differing.
 
 Measured on the VM's own filesystem rather than the developer's machine, since
 that is where the rename and the directory allocation actually run.
