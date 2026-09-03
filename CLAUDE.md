@@ -38,6 +38,8 @@ The primary use case is running AI coding agents in isolation. Architecture:
   `~/.config/nixcage` (their VM configuration; sops-nix wired in).
 - `examples/project/` -- an ordinary project flake showing the devShell
   interface.
+- `examples/factory-project/` -- a repository worked by a factory: one devShell
+  per specialist, which is what a role's `shell` names (ADR-016).
 - `flake.nix` -- packages nixcage, exports `nixosModules.nixcage` and
   `templates.config`, defines the dev shell.
 - `docs/` -- ADRs and generated TRACKER.md.

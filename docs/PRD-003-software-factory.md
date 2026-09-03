@@ -171,6 +171,19 @@ keeping, and they are answerable from the run record and from git alone:
   write only its own namespace, and `main` is writable by no cage at all.
 - Adding, removing, or changing a role is the operator's act. A role cannot
   declare another role, including itself.
+- A role is a specialist, and its declaration says which devShell of the
+  assigned repository it works in. Several specialists working one repository
+  then have different tools to hand -- a backend specialist, a frontend
+  specialist and a data analyst are not one shell holding the union of three
+  toolchains (ADR-016). What is in a shell is the repository's to say; the
+  declaration only names which one.
+- A role declared for a devShell the repository does not define is refused with
+  the shells it does define, rather than being given the default one. A
+  specialist working with somebody else's tools fails later and further from
+  the cause.
+- A role that names no devShell is entered exactly as any project session is,
+  so a factory whose roles all share one environment stays as simple to declare
+  as it was.
 
 ### Work and delegation
 

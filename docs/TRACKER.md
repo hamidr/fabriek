@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 004
 
-**Next ADR number:** 016
+**Next ADR number:** 017
 
 ## PRDs
 
@@ -37,3 +37,4 @@ document, then regenerate.
 | [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | implemented | -- | ADR-011, ADR-014 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
 | [ADR-014](ADR-014-one-file-per-task.md) | A task's mutable fields live in one file, written by rename | implemented | -- | ADR-011 | every mutable field of a task is written together in one file, so a change cannot half-happen without a database |  |
 | [ADR-015](ADR-015-capabilities-and-stage-policies.md) | A stage needs a capability and states its own policy; roles provide capabilities | proposed | -- | ADR-010, ADR-011 | stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy |  |
+| [ADR-016](ADR-016-specialist-toolchains.md) | A specialist role works in a devShell the project's own flake names | implemented | -- | ADR-005, ADR-010, ADR-015 | a role declares which devShell of the assigned repository it enters, so specialists get different toolchains |  |
