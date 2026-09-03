@@ -127,6 +127,22 @@ vm_read_cache() {
 vm_pid_file() { echo "$STATE_DIR/vm.pid"; }
 vm_virtiofsd_pid_file() { echo "$STATE_DIR/virtiofsd.pid"; }
 
+# How long to wait for the guest to shut itself down before signalling qemu,
+# and then for qemu to exit before killing it. Overridable because the test
+# suite drives them with stubs and must not sit out the real waits.
+VM_SHUTDOWN_TIMEOUT="${NIXCAGE_SHUTDOWN_TIMEOUT:-30}"
+VM_KILL_TIMEOUT="${NIXCAGE_KILL_TIMEOUT:-10}"
+
+# Wait up to $2 seconds for process $1 to disappear. Answers whether it did.
+vm_wait_for_exit() {
+  local pid="$1" deadline=$((SECONDS + $2))
+  while [[ $SECONDS -lt $deadline ]]; do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 1
+  done
+  ! kill -0 "$pid" 2>/dev/null
+}
+
 # The pid must both be alive and still look like the VM runner: after a
 # host reboot the state file survives and the pid can be reused by an
 # unrelated process, which 'down' would otherwise kill.
@@ -723,18 +739,26 @@ cmd_down() {
   local pid
   pid="$(cat "$(vm_pid_file)")"
 
-  log_info "Stopping VM (pid $pid)..."
-  kill "$pid" 2>/dev/null || true
+  log_info "Shutting the VM down (pid $pid)..."
 
-  local deadline=$((SECONDS + 10))
-  while [[ $SECONDS -lt $deadline ]]; do
-    kill -0 "$pid" 2>/dev/null || break
-    sleep 1
-  done
+  # Ask the guest to power itself off, so its filesystems are unmounted and
+  # everything written is on disk before qemu goes. Killing qemu instead
+  # leaves the last seconds of writes in the guest's page cache, which on ext4
+  # cost whole worktrees and still costs those seconds on ZFS.
+  #
+  # The connection dies with the guest, so ssh reports failure whether the
+  # shutdown worked or not. Only the process disappearing answers that.
+  if [[ -f "$CACHE_FILE" ]]; then
+    vm_ssh -- sudo poweroff >/dev/null 2>&1 || true
+  fi
 
-  if kill -0 "$pid" 2>/dev/null; then
-    log_warn "VM did not stop gracefully; forcing kill."
-    kill -9 "$pid" 2>/dev/null || true
+  if ! vm_wait_for_exit "$pid" "$VM_SHUTDOWN_TIMEOUT"; then
+    log_warn "The VM did not shut down; stopping qemu."
+    kill "$pid" 2>/dev/null || true
+    if ! vm_wait_for_exit "$pid" "$VM_KILL_TIMEOUT"; then
+      log_warn "VM did not stop gracefully; forcing kill."
+      kill -9 "$pid" 2>/dev/null || true
+    fi
   fi
 
   rm -f "$(vm_pid_file)"
