@@ -246,9 +246,14 @@ keeping, and they are answerable from the run record and from git alone:
   work either. It answers and ends. That, rather than acyclicity, is what makes
   waiting safe: every consult is a leaf, so no chain of roles waiting on each
   other can close into a loop no matter what the declared graph allows.
+- A blocked task keeps its role. Nothing is committed and no branch is
+  switched, so a role's worktree always holds exactly the task it is working
+  and the role takes no other work until the consult resolves. The cost is idle
+  time rather than a new way to fail, and idle time is measurable: if roles are
+  seen waiting, freeing them becomes a change made on evidence.
 - A task that stops being blocked is readmitted rather than resumed, for the
-  same reason an answered gate is: it released its slot while it waited, and
-  the slot may be gone.
+  same reason an answered gate is: it released its concurrency slot while it
+  waited, and the slot may be gone. It never released its role.
 - A pipeline is acyclic, and every stage is reachable from the entry stage. A
   declaration that fails either is rejected when it is read: a cycle would let
   work run away, and a stage nothing reaches is dead declaration that a consult

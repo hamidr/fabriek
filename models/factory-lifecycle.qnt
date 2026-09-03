@@ -45,8 +45,11 @@ module factory {
   val activeRuns: int = tasks.filter(t => liveRun(runState.get(t))).size()
 
   // A role's worktree is held by a task that is running, waiting at a gate,
-  // waiting to be readmitted, or blocked on a consult. Decision deferred:
-  // whether a blocked task should free its role by committing and switching.
+  // waiting to be readmitted, or blocked on a consult. A blocked task keeps
+  // its role rather than freeing it: nothing is committed and nothing switches
+  // branches, so a role's worktree always holds exactly the task it is
+  // working. The cost is idle time, which is measurable, rather than a new
+  // failure mode, which would not be.
   def occupies(t: str): bool = or {
     holdsRole(runState.get(t)),
     taskState.get(t) == "blocked",
