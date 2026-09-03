@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 004
 
-**Next ADR number:** 015
+**Next ADR number:** 016
 
 ## PRDs
 
@@ -16,7 +16,7 @@ document, then regenerate.
 | --- | --- | --- | --- | --- | --- | --- |
 | [PRD-001](PRD-001-actor-mailbox.md) | A mailbox that lets project containers exchange messages | proposed | 0/4 | -- | give each project actor a durable mailbox so agents in separate containers can signal, delegate, and share findings |  |
 | [PRD-002](PRD-002-autonomous-workflow-supervisor.md) | A supervisor that runs declared workflows across cages | proposed | 0/5 | PRD-001 | declared workflows dispatch caged agent runs under gates and caps, so runs start without a human |  |
-| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implemented | 7/7 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
+| [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implementing | 7/8 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
 
 ## ADRs
 
@@ -36,3 +36,4 @@ document, then regenerate.
 | [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | withdrawn | -- | ADR-011 | tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
 | [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | implemented | -- | ADR-011, ADR-014 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
 | [ADR-014](ADR-014-one-file-per-task.md) | A task's mutable fields live in one file, written by rename | implemented | -- | ADR-011 | every mutable field of a task is written together in one file, so a change cannot half-happen without a database |  |
+| [ADR-015](ADR-015-capabilities-and-stage-policies.md) | A stage needs a capability and states its own policy; roles provide capabilities | proposed | -- | ADR-010, ADR-011 | stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy |  |

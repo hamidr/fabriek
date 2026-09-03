@@ -1,14 +1,14 @@
 ---
 id: PRD-003
 title: A software factory of caged roles working one repository
-status: implemented
+status: implementing
 date: 2026-09-02
 status_date: 2026-09-03
 summary: named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console
 depends_on: [PRD-002]
 supersedes: []
 superseded_by: []
-phases_total: 7
+phases_total: 8
 phases_done: 7
 ---
 
@@ -180,10 +180,24 @@ keeping, and they are answerable from the run record and from git alone:
   removal, host reboot, and a rebuild, and concurrent writers neither lose nor
   corrupt a task. This is the factory's own store, not a message channel, and
   nothing about it waits on PRD-001.
-- A workflow is a pipeline. It declares its stages in order, which role owns
-  each, where a stage fans out into several tasks, and where a gate sits. What
-  the factory can do is therefore readable from the declaration rather than
-  emergent from what a role decides at the time.
+- A workflow is a pipeline. It declares its stages in order, what kind of
+  worker each needs, where a stage fans out into several tasks, and where a
+  gate sits. What the factory can do is therefore readable from the declaration
+  rather than emergent from what a role decides at the time.
+- A stage names a capability rather than a role, and a role declares the
+  capabilities it provides (ADR-015). A column in the flow and a worker doing
+  the work are different things: capacity at a stage is added by declaring
+  another role, not by editing the pipeline, and a stage that fans out is
+  worked by as many capable roles as are idle rather than queued behind one.
+- A task sticks to the role that took it. Every later attempt goes to that
+  role, so a retry continues the first attempt's commits and the branch stays
+  in the namespace of the role allowed to write it. A busy role holds its own
+  retries and its peers stay free for new work.
+- A stage states what a task must carry before it may be taken, and that is
+  checked and refused with the missing field named. It also states what
+  finishing means at that stage, and that is handed to the role in its brief
+  rather than checked, because judging whether work meets a bar is reading
+  content and belongs in a cage.
 - A task carries an owning role, a state, the task it came from, the workflow
   it belongs to, and the stage it sits at. A task outlives any single run
   against it, so work that is blocked or that takes several attempts has
@@ -198,7 +212,7 @@ keeping, and they are answerable from the run record and from git alone:
   gate, and the terminal `settled`, `failed`, and `cancelled`. A task
   `blocked` means the backlog is stalled; a run `gated` means the operator is
   the bottleneck, and conflating them would hide which.
-- A task becomes `ready` when it carries the fields its workflow declares
+- A task becomes `ready` when it carries the fields its stage declares
   required, an owner and acceptance criteria at minimum. The supervisor checks
   they are present and non-empty and nothing more, which is a metadata check
   and judges no content. A task with no stated finish line would otherwise
@@ -548,6 +562,12 @@ keeping, and they are answerable from the run record and from git alone:
 - What is the smallest useful set of roles? Architect, builder, and reviewer is
   the assumption, and it may be one too many or two too few. The declaration
   makes this cheap to change, so it is answered by use rather than by argument.
+  What each is for is no longer nixcage's business: a stage says what finishing
+  means there, so a builder is whatever its stage's exit policy says.
+- Does taking the first idle capable role in declaration order skew the work?
+  It will: the first role does most of it while any peer is idle. Accepted for
+  now, because the alternative is a scheduling policy nothing yet needs, and
+  every such policy is easier to add than to remove.
 - What does the reviewer do with work it rejects? Merge nothing and record a
   task back to the author is the obvious answer, but a rejected branch that
   nobody prunes accumulates.
@@ -603,6 +623,11 @@ usable on its own.
 7. **Documents.** The architect refining proposals, the guidance becoming a
    document the architect maintains rather than a fixed string, and reports
    reaching the operator.
+8. **Roles as a team rather than a pipeline.** Stages needing capabilities,
+   roles providing them, work sticking to whoever took it, and each stage
+   stating its own entry and exit policy (ADR-015). Sequenced last because it
+   is a refinement of a factory that already runs, and because the queueing it
+   removes was only visible once one did.
 
 ## Design gates
 
