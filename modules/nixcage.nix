@@ -10,6 +10,14 @@
 let
   cfg = config.nixcage;
   container = import ./container.nix { inherit pkgs; };
+
+  ## Where everything nixcage keeps in the VM lives: the factory clones, the
+  ## role worktrees, the session homes, the age identity. One name because
+  ## the storage service, the volumes and the guest script must agree on it.
+  stateDir = "/var/lib/nixcage";
+
+  ## The dataset mounted there, and the parent of every per-role dataset.
+  stateDataset = "nixcage/state";
 in
 {
   options.nixcage = {
@@ -230,6 +238,18 @@ in
               rather than a slot held until someone notices.
             '';
           };
+          roleQuota = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "20G";
+            description = ''
+              How much a single role's worktree may hold, as a ZFS size. It
+              bounds what one agent can write: a build loop that fills the
+              volume otherwise stops every other role and the supervisor with
+              it. Null leaves a role bounded only by the pool. Ignored where
+              nixcage's state is not on a dataset.
+            '';
+          };
           roleUidRange = lib.mkOption {
             type = lib.types.nullOr (
               lib.types.submodule {
@@ -307,6 +327,36 @@ in
         default = 20480;
         description = "Size in MiB of each persistent volume (Nix store overlay and container data).";
       };
+      hostId = lib.mkOption {
+        type = lib.types.strMatching "[0-9a-f]{8}";
+        default = "6e697863";
+        description = ''
+          The host id ZFS requires, as eight hex digits. It exists to stop two
+          machines importing the same pool; this pool is a file only this VM
+          ever opens, so the default is fine and is only an option because a
+          fixed value would be wrong to hard-code.
+        '';
+      };
+      zfsArcMax = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 512;
+        description = ''
+          Ceiling in MiB on the ZFS cache. Unbounded it would take half the
+          VM's memory, which belongs to the builds and agents the VM exists to
+          run.
+        '';
+      };
+      legacyDataVolume = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Keep the ext4 volume nixcage stored its state on before ADR-017 and
+          copy its contents into the pool on first boot. Set false once the
+          migration has happened -- the message naming what was copied is
+          printed by the storage service -- and the old image can then be
+          deleted from the state directory.
+        '';
+      };
     };
   };
 
@@ -339,11 +389,23 @@ in
           size = cfg.vm.diskSize;
         }
         {
-          image = "nixcage-data.img";
-          mountPoint = "/var/lib/nixcage";
+          ## The pool device, unmounted here and taken over by the storage
+          ## service. microvm.nix makes a filesystem on every volume it
+          ## creates and has no mkfs.zfs to make one with, so the image
+          ## arrives carrying an ext4 superblock that zpool overwrites. It is
+          ## found by serial because a drive letter moves when the volume list
+          ## changes.
+          image = "nixcage-pool.img";
+          mountPoint = null;
+          serial = "nixcage-pool";
           size = cfg.vm.diskSize;
         }
-      ];
+      ]
+      ++ lib.optional cfg.vm.legacyDataVolume {
+        image = "nixcage-data.img";
+        mountPoint = "/var/lib/nixcage.legacy";
+        size = cfg.vm.diskSize;
+      };
 
       shares = lib.imap0 (i: root: {
         tag = "ws${toString i}";
@@ -392,6 +454,8 @@ in
         TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
         TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
         RUN_CONCURRENCY=${toString cfg.supervisor.concurrency}
+        STORAGE_DATASET=${stateDataset}
+        ROLE_QUOTA=${lib.optionalString (cfg.supervisor.roleQuota != null) cfg.supervisor.roleQuota}
       '';
     };
 
@@ -399,6 +463,93 @@ in
     environment.etc."nixcage/secret-env".text = lib.concatStrings (
       lib.mapAttrsToList (var: secret: "${var}=${secret}\n") cfg.secretEnv
     );
+
+    ## Storage (ADR-017). Everything the factory keeps -- the clone, every
+    ## role worktree, every session home, the tasks -- lives on a ZFS pool of
+    ## the VM's own. ext4 was losing whole files when the VM was stopped
+    ## without a clean shutdown, and it cannot bound what one role writes.
+    boot = {
+      supportedFilesystems.zfs = true;
+      ## ZFS tracks kernel releases behind the newest one, and a VM that fails
+      ## to build is worse than a VM one release back. mkDefault, so a config
+      ## flake that knows better can say so.
+      kernelPackages = lib.mkDefault pkgs.linuxPackages;
+      ## Uncapped, the ARC would take half of a VM whose memory belongs to the
+      ## builds and agents it exists to run.
+      kernelParams = [ "zfs.zfs_arc_max=${toString (cfg.vm.zfsArcMax * 1048576)}" ];
+    };
+    networking.hostId = cfg.vm.hostId;
+
+    systemd.services.nixcage-storage = {
+      description = "Import or create the nixcage ZFS pool";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "systemd-modules-load.service"
+      ] ++ lib.optional cfg.vm.legacyDataVolume "var-lib-nixcage.legacy.mount";
+      requires = lib.optional cfg.vm.legacyDataVolume "var-lib-nixcage.legacy.mount";
+      before = [
+        "nixcage-age-key.service"
+        "sshd.service"
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [
+        config.boot.zfs.package
+        pkgs.coreutils
+        pkgs.util-linux
+      ];
+      script = ''
+        set -eu
+        device=/dev/disk/by-id/virtio-nixcage-pool
+
+        if ! zpool list -H nixcage >/dev/null 2>&1; then
+          if ! zpool import -N -d /dev/disk/by-id nixcage >/dev/null 2>&1; then
+            ## A pool that is there and will not import is a fault to look at,
+            ## never a device to reformat: zpool create would take the state
+            ## of every role with it.
+            if zdb -l "$device" >/dev/null 2>&1; then
+              echo "nixcage: a pool exists on $device but will not import; refusing to recreate it" >&2
+              exit 1
+            fi
+            ## posixacl and xattr=sa are not tuning: a role reaches the
+            ## repository's objects through a POSIX ACL (ADR-010), and ZFS
+            ## rejects setfacl without them.
+            zpool create -f \
+              -o ashift=12 \
+              -O compression=zstd \
+              -O atime=off \
+              -O acltype=posixacl \
+              -O xattr=sa \
+              -O mountpoint=none \
+              nixcage "$device"
+          fi
+        fi
+
+        if ! zfs list -H nixcage/state >/dev/null 2>&1; then
+          zfs create -o mountpoint=${stateDir} nixcage/state
+        fi
+        zfs mount -a
+        mountpoint -q ${stateDir}
+        chmod 0755 ${stateDir}
+      ''
+      + lib.optionalString cfg.vm.legacyDataVolume ''
+
+        ## One-way migration off the ext4 volume, once. An empty pool beside a
+        ## volume with contents is the only state this can act on, so a later
+        ## boot cannot copy over work the roles have since done.
+        legacy=${stateDir}.legacy
+        if [ -d "$legacy" ] &&
+          [ -z "$(ls -A ${stateDir})" ] &&
+          [ -n "$(ls -A "$legacy")" ]; then
+          echo "nixcage: migrating state from the ext4 volume into the pool"
+          cp -a "$legacy"/. ${stateDir}/
+          echo "nixcage: migrated $(ls -A ${stateDir} | tr '\n' ' ')"
+          echo "nixcage: set nixcage.vm.legacyDataVolume = false to drop the old volume"
+        fi
+      '';
+    };
 
     ## Generate the age identity on the data volume at first boot so the
     ## user can read the public key (nixcage status) before declaring any
@@ -411,8 +562,8 @@ in
       ## and is shadowed once the volume mounts (observed as an empty
       ## age.key). -s, not -f: an empty file from such a race must not
       ## satisfy the guard.
-      after = [ "var-lib-nixcage.mount" ];
-      requires = [ "var-lib-nixcage.mount" ];
+      after = [ "nixcage-storage.service" ];
+      requires = [ "nixcage-storage.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -430,8 +581,8 @@ in
     ## the data volume mount or the first boot serves a throwaway tmpfs key
     ## and every later boot fails host key verification.
     systemd.services.sshd = {
-      after = [ "var-lib-nixcage.mount" ];
-      requires = [ "var-lib-nixcage.mount" ];
+      after = [ "nixcage-storage.service" ];
+      requires = [ "nixcage-storage.service" ];
     };
 
     nix = {

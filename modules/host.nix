@@ -170,6 +170,28 @@ in
       '';
     };
 
+    storage = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          dataset = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "tank/nixcage";
+            description = ''
+              The ZFS dataset mounted at /var/lib/nixcage, if this host keeps
+              nixcage's state on one. Set it and every role worktree becomes a
+              child dataset, which is what makes a per-role quota possible and
+              what keeps an unclean shutdown from truncating a role's work.
+              Left null, nixcage uses ordinary directories and behaves exactly
+              as before; nothing here requires ZFS of a Linux host (ADR-017).
+            '';
+          };
+        };
+      };
+      default = { };
+      description = "Where nixcage keeps its state on this host.";
+    };
+
     supervisor = lib.mkOption {
       type = lib.types.submodule {
         options = {
@@ -200,6 +222,18 @@ in
               How long a single run may take. Past this it is cancelled and
               counted as a failed attempt, so a hung agent costs one attempt
               rather than a slot held until someone notices.
+            '';
+          };
+          roleQuota = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "20G";
+            description = ''
+              How much a single role's worktree may hold, as a ZFS size. It
+              bounds what one agent can write: a build loop that fills the
+              volume otherwise stops every other role and the supervisor with
+              it. Null leaves a role bounded only by the pool. Ignored where
+              nixcage's state is not on a dataset.
             '';
           };
           roleUidRange = lib.mkOption {
@@ -285,6 +319,8 @@ in
         TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
         TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
         RUN_CONCURRENCY=${toString cfg.supervisor.concurrency}
+        STORAGE_DATASET=${lib.optionalString (cfg.storage.dataset != null) cfg.storage.dataset}
+        ROLE_QUOTA=${lib.optionalString (cfg.supervisor.roleQuota != null) cfg.supervisor.roleQuota}
       '';
     };
 

@@ -58,6 +58,12 @@
 
               # vm = { cpus = 8; mem = 8192; diskSize = 40960; };
 
+              ## The VM keeps its state on a ZFS pool of its own (ADR-017).
+              ## Once the first boot has copied the old ext4 volume's contents
+              ## into it -- the storage service says when it has -- set this
+              ## false and delete nixcage-data.img from the state directory.
+              # vm.legacyDataVolume = false;
+
               ## A factory: one repository worked by several roles, each with
               ## its own uid, its own worktree, and its own home. Uncomment to
               ## declare one. Roles need a uid range; it must not overlap any
@@ -69,6 +75,9 @@
               #   ## whole factory, and a run that hangs costs one attempt.
               #   taskAttempts = 3;
               #   runTimeoutSeconds = 3600;
+              #   ## What one role's worktree may hold. A role that runs out
+              #   ## fails on its own instead of stopping the whole factory.
+              #   roleQuota = "20G";
               # };
               #
               # factories.acme = {
