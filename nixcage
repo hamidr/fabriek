@@ -473,20 +473,17 @@ cmd_task() {
   shift || true
   case "$sub" in
   file)
-    local factory="${1:-}" role="${2:-}"
-    if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: nixcage task file <factory> <role> [--workflow <name>] [--acceptance <text>]"
+    local factory="${1:-}" workflow="${2:-}"
+    if [[ -z "$factory" || -z "$workflow" ]]; then
+      log_err "usage: nixcage task file <factory> <workflow> [--acceptance <text>]"
       exit 1
     fi
     shift 2
-    ## Until workflows are declared, a goal belongs to one named default.
-    local workflow="default" acceptance=""
+    ## A goal names what should happen. Who does it is the workflow's first
+    ## stage, so the operator never picks a role by hand.
+    local acceptance=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
-      --workflow)
-        workflow="${2:-}"
-        shift 2
-        ;;
       --acceptance)
         acceptance="${2:-}"
         shift 2
@@ -497,7 +494,7 @@ cmd_task() {
         ;;
       esac
     done
-    guest task-file "$factory" "$role" "$workflow" "$acceptance"
+    guest task-file "$factory" "$workflow" "$acceptance"
     ;;
   list)
     local factory="${1:-}"
@@ -804,7 +801,7 @@ ${BOLD}Commands:${NC}
   role [--pane] <factory> <role> [-- cmd...]
                      Enter a declared factory role in its own worktree and uid
                      (--pane: run it in a herdr pane of its own instead)
-  task file <factory> <role> [--workflow <n>] [--acceptance <text>]
+  task file <factory> <workflow> [--acceptance <text>]
   task list <factory> [state]
   task show <factory> <id>
   task run <factory> <role> <id>

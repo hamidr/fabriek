@@ -239,3 +239,55 @@ teardown() {
 	run nixcage_task_attempt "$ROOT" acme "$id" 2
 	assert_failure
 }
+
+@test "a task remembers which stage it sits at" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder 01)"
+	[ "$(nixcage_task_get "$ROOT" acme "$id" stage)" = "01" ]
+}
+
+@test "advancing creates the next stage's task and finishes this one" {
+	a="$(nixcage_task_new "$ROOT" acme ship architect 00)"
+	nixcage_task_set "$ROOT" acme "$a" state awaiting-review
+	b="$(nixcage_task_advance "$ROOT" acme "$a" 01 builder)"
+	[ "$(nixcage_task_get "$ROOT" acme "$a" state)" = "done" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$b" state)" = "proposed" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$b" stage)" = "01" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$b" role)" = "builder" ]
+}
+
+@test "a task created by a stage inherits the workflow it came from" {
+	a="$(nixcage_task_new "$ROOT" acme ship architect 00)"
+	nixcage_task_set "$ROOT" acme "$a" state awaiting-review
+	b="$(nixcage_task_advance "$ROOT" acme "$a" 01 builder)"
+	[ "$(nixcage_task_get "$ROOT" acme "$b" workflow)" = "ship" ]
+}
+
+@test "a created task names the task it came from" {
+	a="$(nixcage_task_new "$ROOT" acme ship architect 00)"
+	nixcage_task_set "$ROOT" acme "$a" state awaiting-review
+	b="$(nixcage_task_advance "$ROOT" acme "$a" 01 builder)"
+	[ "$(nixcage_task_get "$ROOT" acme "$b" parent)" = "$a" ]
+}
+
+@test "the acceptance criteria travel with the work" {
+	a="$(nixcage_task_new "$ROOT" acme ship architect 00)"
+	nixcage_task_set "$ROOT" acme "$a" acceptance "ship the change"
+	nixcage_task_set "$ROOT" acme "$a" state awaiting-review
+	b="$(nixcage_task_advance "$ROOT" acme "$a" 01 builder)"
+	[ "$(nixcage_task_get "$ROOT" acme "$b" acceptance)" = "ship the change" ]
+}
+
+@test "a task that has not been worked cannot be advanced" {
+	a="$(nixcage_task_new "$ROOT" acme ship architect 00)"
+	run nixcage_task_advance "$ROOT" acme "$a" 01 builder
+	assert_failure
+}
+
+@test "finishing the last stage ends the work rather than inventing a stage" {
+	a="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$a" state awaiting-review
+	run nixcage_task_advance "$ROOT" acme "$a" "" ""
+	assert_success
+	assert_output ""
+	[ "$(nixcage_task_get "$ROOT" acme "$a" state)" = "done" ]
+}

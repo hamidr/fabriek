@@ -44,6 +44,9 @@ let
       ## needs without a shared group, which a cage cannot have (ADR-010).
       git
       acl
+      ## The ownership check on a session's home walks it, so find has to be on
+      ## the script's own PATH rather than only on the system's.
+      findutils
     ];
     text = ''
       ## Sourced by store path: the file is a real shell file so shellcheck
@@ -53,6 +56,7 @@ let
       . ${./role-worktree.sh}
       . ${./factory-clone.sh}
       . ${./task-store.sh}
+      . ${./workflow-config.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -186,8 +190,15 @@ let
         local home="$STATE_DIR/homes/$name"
         mkdir -p "$cdir" "$home"
         ## The home is the container's /root and holds whatever the session
-        ## writes there, so it is private to the mapped user.
-        chown "$owner_uid:$owner_gid" "$home"
+        ## writes there, so it is private to the mapped user. If its contents
+        ## belong to someone else the whole tree is re-owned rather than left
+        ## unusable: a role's uid can change when nixcage state is lost and
+        ## reallocated, and a home the session cannot write fails far from that
+        ## cause, as a read-only database deep inside a flake evaluation.
+        if [ "$(stat -c %u "$home")" != "$owner_uid" ] ||
+          [ -n "$(find "$home" ! -uid "$owner_uid" -print -quit 2>/dev/null)" ]; then
+          chown -R "$owner_uid:$owner_gid" "$home"
+        fi
         chmod 700 "$home"
 
         local rootfs="$cdir/session-$$"
@@ -359,19 +370,25 @@ let
       ## worked in rather than in any repository.
       TASKS_ROOT="$STATE_DIR/tasks"
 
-      ## File a goal. The role must be one the factory declares, so a task
-      ## cannot be filed against something nothing will ever run.
+      ## File a goal. It enters at the workflow's first stage and is owned by
+      ## that stage's role, so the operator names what should happen rather
+      ## than who should do it.
       cmd_task_file() {
-        local factory="$1" role="$2" workflow="$3" acceptance="''${4:-}"
+        local factory="$1" workflow="$2" acceptance="''${3:-}"
+        local entry stage role
+        entry="$(nixcage_workflow_entry "$FACTORIES_ROOT" "$factory" "$workflow")" || exit 1
+        stage="''${entry%% *}"
+        role="''${entry#* }"
         nixcage_factory_role_command "$FACTORIES_ROOT" "$factory" "$role" >/dev/null || exit 1
+
         local id
-        id="$(nixcage_task_new "$TASKS_ROOT" "$factory" "$workflow" "$role")" ||
+        id="$(nixcage_task_new "$TASKS_ROOT" "$factory" "$workflow" "$role" "$stage")" ||
           die "could not file a task for $role"
         if [ -n "$acceptance" ]; then
           nixcage_task_set "$TASKS_ROOT" "$factory" "$id" acceptance "$acceptance"
         fi
-        ## Required fields are the workflow's to declare; until workflows exist
-        ## an owner and a stated finish line are what a task needs.
+        ## Required fields become the workflow's to declare in a later phase;
+        ## an owner and a stated finish line are what a task needs today.
         nixcage_task_ready "$TASKS_ROOT" "$factory" "$id" role acceptance >/dev/null 2>&1 || true
         echo "$id"
       }
@@ -389,7 +406,7 @@ let
 
       cmd_task_show() {
         local factory="$1" id="$2" field
-        for field in state role workflow attempts acceptance outcome; do
+        for field in state role workflow stage parent attempts acceptance outcome; do
           printf '%s\t%s\n' "$field" \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" "$field")"
         done
@@ -443,7 +460,24 @@ let
         elif [ -n "$outcome" ]; then
           nixcage_task_settle "$TASKS_ROOT" "$factory" "$id" "$outcome" ||
             die "$id: could not record the outcome"
-          echo "$id: settled"
+
+          ## The work moves along the declared edge, or the pipeline ends here.
+          ## A role creates nothing itself: what follows a stage is the
+          ## declaration's business, not the role's.
+          local workflow stage next child
+          workflow="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
+          stage="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
+          next="$(nixcage_workflow_next "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")"
+          if [ -n "$next" ]; then
+            child="$(nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" \
+              "''${next%% *}" "''${next#* }")" || die "$id: could not advance the work"
+            nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" role acceptance >/dev/null 2>&1 || true
+            echo "$id: settled, $child opened for ''${next#* }"
+          else
+            nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" "" ||
+              die "$id: could not finish the work"
+            echo "$id: settled, the pipeline ends here"
+          fi
         else
           nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
             "the session ended having recorded no outcome" "$max"
@@ -474,7 +508,7 @@ let
       task-show) cmd_task_show "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <role> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | list | rm <name>" ;;
       esac
     '';
   };

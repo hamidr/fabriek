@@ -39,7 +39,7 @@ nixcage_task_dir() {
 ## attach a new task to whatever the old one left behind, in a record whose
 ## whole purpose is saying what happened.
 nixcage_task_new() {
-	local root="$1" factory="$2" workflow="$3" role="$4"
+	local root="$1" factory="$2" workflow="$3" role="$4" stage="${5:-}"
 
 	nixcage_role_name_ok "$factory" || return 1
 	nixcage_role_name_ok "$workflow" || return 1
@@ -64,6 +64,7 @@ nixcage_task_new() {
 	printf '%s' "$workflow" >"$dir/workflow"
 	printf '%s' "0" >"$dir/attempts"
 	printf '%s' "$next" >"$dir/seq"
+	[ -n "$stage" ] && printf '%s' "$stage" >"$dir/stage"
 	echo "$id"
 }
 
@@ -201,4 +202,37 @@ nixcage_task_cancel() {
 	local root="$1" factory="$2" id="$3" reason="${4:-}"
 	nixcage_task_set "$root" "$factory" "$id" failure "$reason" || return 1
 	nixcage_task_set "$root" "$factory" "$id" state cancelled
+}
+
+## Move the work to the next stage. The finished task ends as done and the
+## created one starts at the stage the pipeline puts it in, owned by that
+## stage's role, carrying the workflow and the acceptance criteria it came
+## with. A created task inherits its parent's workflow and cannot name
+## another, so no cascade escapes the budget of the work that started it.
+##
+## The end of the pipeline is not a stage: reaching it finishes the work and
+## creates nothing, which is why an empty next stage is a success.
+nixcage_task_advance() {
+	local root="$1" factory="$2" id="$3" next_stage="$4" next_role="$5"
+
+	local state
+	state="$(nixcage_task_get "$root" "$factory" "$id" state)" || return 1
+	if [ "$state" != "awaiting-review" ]; then
+		echo "nixcage: $id is $state, not awaiting-review" >&2
+		return 1
+	fi
+
+	if [ -z "$next_stage" ]; then
+		nixcage_task_set "$root" "$factory" "$id" state "done" || return 1
+		return 0
+	fi
+
+	local workflow child
+	workflow="$(nixcage_task_get "$root" "$factory" "$id" workflow)" || return 1
+	child="$(nixcage_task_new "$root" "$factory" "$workflow" "$next_role" "$next_stage")" || return 1
+	nixcage_task_set "$root" "$factory" "$child" parent "$id" || return 1
+	nixcage_task_set "$root" "$factory" "$child" acceptance \
+		"$(nixcage_task_get "$root" "$factory" "$id" acceptance)" || return 1
+	nixcage_task_set "$root" "$factory" "$id" state "done" || return 1
+	echo "$child"
 }

@@ -28,35 +28,31 @@ teardown() {
 	teardown_temp_dir
 }
 
-@test "filing a goal reaches the guest with the factory and role" {
-	run_nixcage task file acme builder --acceptance "tests pass"
+@test "filing a goal names the workflow, not a role" {
+	run_nixcage task file acme ship --acceptance "tests pass"
 	[ "$status" -eq 0 ]
 	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "nixcage-container task-file acme builder"
+	assert_output --partial "nixcage-container task-file acme ship"
+	# Who does the work is the workflow's first stage, never the caller's pick.
+	refute_output --partial "builder"
 }
 
 @test "a goal carries its acceptance criteria, quoted for the remote shell" {
-	run_nixcage task file acme builder --acceptance "tests pass and the tracker is clean"
+	run_nixcage task file acme ship --acceptance "tests pass and the tracker is clean"
 	run cat "$TEST_TEMP_DIR/ssh-calls"
 	assert_output --partial "tests\\ pass\\ and\\ the\\ tracker\\ is\\ clean"
 }
 
-@test "a goal belongs to a workflow, defaulting until workflows are declared" {
-	run_nixcage task file acme builder --acceptance x
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "task-file acme builder default"
-}
-
-@test "a named workflow is carried instead of the default" {
-	run_nixcage task file acme builder --workflow ship --acceptance x
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "task-file acme builder ship"
-}
-
-@test "filing without a factory and a role explains itself" {
+@test "filing without a factory and a workflow explains itself" {
 	run_nixcage task file acme
 	assert_failure
-	assert_output --partial "task file <factory> <role>"
+	assert_output --partial "task file <factory> <workflow>"
+}
+
+@test "an option filing does not understand is refused rather than ignored" {
+	run_nixcage task file acme ship --owner builder
+	assert_failure
+	assert_output --partial "--owner"
 }
 
 @test "listing a factory's tasks reaches the guest" {
