@@ -358,3 +358,87 @@ teardown() {
 	[ ! -e "$ROOT/acme/.seq" ]
 	[ ! -e "$ROOT/acme/.seq.lock" ]
 }
+
+@test "a settled task at a gated stage waits instead of moving on" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "ready to integrate"
+	run nixcage_task_gate "$ROOT" acme "$id" before-integration
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "awaiting-review" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" gate)" = "before-integration" ]
+}
+
+@test "a task waiting at a gate cannot be advanced until it is answered" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	run nixcage_task_advance "$ROOT" acme "$id" "" ""
+	assert_failure
+	assert_output --partial "gate"
+}
+
+@test "an approved gate lets the work move on" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	run nixcage_task_answer "$ROOT" acme "$id" approve "looks right"
+	assert_success
+	[ "$(nixcage_task_get "$ROOT" acme "$id" gate)" = "" ]
+	run nixcage_task_advance "$ROOT" acme "$id" "" ""
+	assert_success
+}
+
+@test "a rejected gate sends the work back rather than discarding it" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	nixcage_task_answer "$ROOT" acme "$id" reject "use approach Y instead"
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "ready" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" answer)" = "use approach Y instead" ]
+}
+
+@test "a rejection costs no attempt, since it is a decision rather than a failure" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	nixcage_task_answer "$ROOT" acme "$id" reject "no"
+	[ "$(nixcage_task_get "$ROOT" acme "$id" attempts)" = "1" ]
+}
+
+@test "a task nobody gated cannot be answered" {
+	id="$(nixcage_task_new "$ROOT" acme ship builder 01)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	run nixcage_task_answer "$ROOT" acme "$id" approve ""
+	assert_failure
+}
+
+@test "an answer that is neither approval nor rejection is refused" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	run nixcage_task_answer "$ROOT" acme "$id" maybe ""
+	assert_failure
+}
+
+@test "an unanswered gate waits forever rather than deciding itself" {
+	id="$(nixcage_task_new "$ROOT" acme ship reviewer 02)"
+	nixcage_task_set "$ROOT" acme "$id" state ready
+	nixcage_task_attempt "$ROOT" acme "$id" 3
+	nixcage_task_settle "$ROOT" acme "$id" "done"
+	nixcage_task_gate "$ROOT" acme "$id" before-integration
+	# Nothing in the store times it out; only an answer moves it.
+	[ "$(nixcage_task_get "$ROOT" acme "$id" state)" = "awaiting-review" ]
+	[ "$(nixcage_task_get "$ROOT" acme "$id" gate)" = "before-integration" ]
+}

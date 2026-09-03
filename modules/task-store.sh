@@ -17,7 +17,7 @@ NIXCAGE_TASK_STATES="proposed ready running blocked awaiting-review done failed 
 ## The scalar fields that share one file and are therefore written together.
 ## Everything else is text written once, kept in a file of its own because a
 ## line-oriented file cannot hold a value with newlines (ADR-014).
-NIXCAGE_TASK_SCALARS="state attempts role workflow stage parent seq item"
+NIXCAGE_TASK_SCALARS="state attempts role workflow stage parent seq item gate"
 
 nixcage_task_state_ok() {
 	local candidate="$1" state
@@ -320,6 +320,13 @@ nixcage_task_advance() {
 		return 1
 	fi
 
+	local gate
+	gate="$(nixcage_task_get "$root" "$factory" "$id" gate)"
+	if [ -n "$gate" ]; then
+		echo "nixcage: $id waits at the $gate gate" >&2
+		return 1
+	fi
+
 	if [ -z "$next_stage" ]; then
 		nixcage_task_set "$root" "$factory" "$id" state "done" || return 1
 		return 0
@@ -334,4 +341,47 @@ nixcage_task_advance() {
 	nixcage_task_set "$root" "$factory" "$id" state "done" || return 1
 
 	echo "$child"
+}
+
+## Hold settled work at a gate. The task stays awaiting-review and the gate
+## names what it waits for, so a run that has finished its work is visibly
+## waiting on a person rather than looking finished.
+nixcage_task_gate() {
+	local root="$1" factory="$2" id="$3" gate="$4"
+	local state
+	state="$(nixcage_task_get "$root" "$factory" "$id" state)" || return 1
+	if [ "$state" != "awaiting-review" ]; then
+		echo "nixcage: $id is $state, so there is nothing to hold" >&2
+		return 1
+	fi
+	nixcage_task_set "$root" "$factory" "$id" gate "$gate"
+}
+
+## Answer a gate. Approval clears it and the work may move on; rejection sends
+## the work back with the reason recorded rather than discarding it, and costs
+## no attempt, because a rejection is a decision rather than a failure.
+nixcage_task_answer() {
+	local root="$1" factory="$2" id="$3" answer="$4" reason="${5:-}"
+
+	local gate
+	gate="$(nixcage_task_get "$root" "$factory" "$id" gate)" || return 1
+	if [ -z "$gate" ]; then
+		echo "nixcage: $id is not waiting at a gate" >&2
+		return 1
+	fi
+
+	[ -n "$reason" ] && nixcage_task_set "$root" "$factory" "$id" answer "$reason"
+
+	case "$answer" in
+	approve)
+		nixcage_task_set "$root" "$factory" "$id" gate ""
+		;;
+	reject)
+		nixcage_task_set "$root" "$factory" "$id" gate "" state ready
+		;;
+	*)
+		echo "nixcage: an answer is approve or reject, not $answer" >&2
+		return 1
+		;;
+	esac
 }

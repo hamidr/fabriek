@@ -423,6 +423,65 @@ let
         done < <(nixcage_task_list "$TASKS_ROOT" "$factory" "$want")
       }
 
+      ## Move settled work to the next stage, or finish it. Used when a stage
+      ## has no gate, and again when a gate is approved, so the two paths
+      ## cannot drift apart.
+      advance_work() {
+        local factory="$1" id="$2" clone="$3" item="$4"
+        local workflow stage next child child_item seed
+        workflow="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
+        stage="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
+        next="$(nixcage_workflow_next "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")"
+
+        if [ -n "$next" ]; then
+          child="$(nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" \
+            "''${next%% *}" "''${next#* }")" || die "$id: could not advance the work"
+          nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" role acceptance >/dev/null 2>&1 || true
+          if [ -n "$item" ]; then
+            seed="$STATE_DIR/runs/$factory/$id/seed"
+            mkdir -p "$(dirname "$seed")"
+            {
+              printf '%s\n\n' "$child"
+              printf 'inherited from %s:\n\n' "$id"
+              nixcage_record_show "$clone" "$item"
+            } >"$seed"
+            child_item="$(nixcage_record_new "$clone" supervisor <"$seed")"
+            [ -n "$child_item" ] &&
+              nixcage_task_set "$TASKS_ROOT" "$factory" "$child" item "$child_item"
+            printf 'settled; %s opened for %s\n' "$child" "''${next#* }" |
+              nixcage_record_comment "$clone" "$item" supervisor
+          fi
+          echo "$id: settled, $child opened for ''${next#* }"
+        else
+          nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" "" ||
+            die "$id: could not finish the work"
+          [ -n "$item" ] && printf 'settled; the pipeline ends here\n' |
+            nixcage_record_comment "$clone" "$item" supervisor
+          echo "$id: settled, the pipeline ends here"
+        fi
+      }
+
+      ## Answer a gate. Approval lets the work move on by the same path a
+      ## gateless stage takes; rejection sends it back with the reason kept.
+      cmd_task_answer() {
+        local factory="$1" id="$2" answer="$3" reason="''${4:-}"
+        local clone item
+        clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
+        item="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" item)"
+
+        nixcage_task_answer "$TASKS_ROOT" "$factory" "$id" "$answer" "$reason" || exit 1
+        if [ -n "$item" ]; then
+          printf '%s: %s\n' "$answer" "''${reason:-no reason given}" |
+            nixcage_record_comment "$clone" "$item" operator
+        fi
+
+        if [ "$answer" = "approve" ]; then
+          advance_work "$factory" "$id" "$clone" "$item"
+        else
+          echo "$id: rejected, back to its role"
+        fi
+      }
+
       cmd_task_thread() {
         local factory="$1" id="$2"
         local clone item
@@ -434,7 +493,7 @@ let
 
       cmd_task_show() {
         local factory="$1" id="$2" field
-        for field in state role workflow stage parent item attempts acceptance outcome; do
+        for field in state role workflow stage parent item gate attempts acceptance outcome answer; do
           printf '%s\t%s\n' "$field" \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" "$field")"
         done
@@ -548,45 +607,21 @@ let
           nixcage_task_settle "$TASKS_ROOT" "$factory" "$id" "$outcome" ||
             die "$id: could not record the outcome"
 
-          ## The work moves along the declared edge, or the pipeline ends here.
-          ## A role creates nothing itself: what follows a stage is the
-          ## declaration's business, not the role's.
-          local workflow stage next child
-          workflow="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
+          ## A gated stage stops here. The work is done and the hand-off waits
+          ## on a person, so the task stays awaiting-review rather than moving
+          ## on, and the slot it held was released when this run ended.
+          local stage gate
           stage="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
-          next="$(nixcage_workflow_next "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")"
-          if [ -n "$next" ]; then
-            child="$(nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" \
-              "''${next%% *}" "''${next#* }")" || die "$id: could not advance the work"
-            nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" role acceptance >/dev/null 2>&1 || true
-            ## The child opens its own item, seeded with everything said before
-            ## the hand-off. The parent is terminal from here, so the copy can
-            ## never diverge from what it was copied from (PRD-003).
-            local child_item seed
-            if [ -n "$item" ]; then
-              ## Written to a file first, then read from it. git-bug locks the
-              ## repository, so piping one git-bug command into another runs
-              ## them concurrently and the second fails on the lock.
-              seed="$run_dir/seed"
-              {
-                printf '%s\n\n' "$child"
-                printf 'inherited from %s:\n\n' "$id"
-                nixcage_record_show "$clone" "$item"
-              } >"$seed"
-              child_item="$(nixcage_record_new "$clone" supervisor <"$seed")"
-              [ -n "$child_item" ] &&
-                nixcage_task_set "$TASKS_ROOT" "$factory" "$child" item "$child_item"
-              printf 'settled; %s opened for %s\n' "$child" "''${next#* }" |
-                nixcage_record_comment "$clone" "$item" supervisor
-            fi
-            echo "$id: settled, $child opened for ''${next#* }"
-          else
-            nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" "" ||
-              die "$id: could not finish the work"
-            [ -n "$item" ] && printf 'settled; the pipeline ends here\n' |
+          gate="$(nixcage_workflow_stage_gate "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")"
+          if [ -n "$gate" ]; then
+            nixcage_task_gate "$TASKS_ROOT" "$factory" "$id" "$gate" || exit 1
+            [ -n "$item" ] && printf 'waiting at the %s gate\n' "$gate" |
               nixcage_record_comment "$clone" "$item" supervisor
-            echo "$id: settled, the pipeline ends here"
+            echo "$id: settled, waiting at the $gate gate"
+            return 0
           fi
+
+          advance_work "$factory" "$id" "$clone" "$item"
         else
           nixcage_task_failed "$TASKS_ROOT" "$factory" "$id" \
             "the session ended having recorded no outcome" "$max"
@@ -618,9 +653,10 @@ let
       task-list) cmd_task_list "$@" ;;
       task-show) cmd_task_show "$@" ;;
       task-thread) cmd_task_thread "$@" ;;
+      task-answer) cmd_task_answer "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | list | rm <name>" ;;
       esac
     '';
   };

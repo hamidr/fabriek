@@ -512,6 +512,14 @@ cmd_task() {
     fi
     guest task-show "$factory" "$id"
     ;;
+  answer)
+    local factory="${1:-}" id="${2:-}" answer="${3:-}"
+    if [[ -z "$factory" || -z "$id" || -z "$answer" ]]; then
+      log_err "usage: nixcage task answer <factory> <id> approve|reject [reason]"
+      exit 1
+    fi
+    guest task-answer "$factory" "$id" "$answer" "${4:-}"
+    ;;
   thread)
     local factory="${1:-}" id="${2:-}"
     if [[ -z "$factory" || -z "$id" ]]; then
@@ -531,7 +539,7 @@ cmd_task() {
     guest role-run "$factory" "$role" "$id"
     ;;
   *)
-    log_err "usage: nixcage task file|list|show|thread|run ..."
+    log_err "usage: nixcage task file|list|show|thread|run|answer ..."
     exit 1
     ;;
   esac
@@ -814,6 +822,7 @@ ${BOLD}Commands:${NC}
   task show <factory> <id>
   task thread <factory> <id>
   task run <factory> <role> <id>
+  task answer <factory> <id> approve|reject [reason]
                      File a goal into a factory, read back what is there, and
                      run one task in its role's cage
   rm [name]          Delete a project container and its persistent home
