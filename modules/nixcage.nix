@@ -427,12 +427,14 @@ in
           "nix-command"
           "flakes"
         ];
-
-        ## Every project's devShell is a separate closure in the same overlay,
-        ## and they overlap heavily; hardlinking the duplicates is most of what
-        ## keeps a many-project VM from filling one.
-        auto-optimise-store = lib.mkDefault true;
       };
+
+      ## Store optimisation is deliberately absent. Hardlinking duplicate paths
+      ## would suit a VM whose projects overlap heavily, but microvm.nix asserts
+      ## against it wherever writableStoreOverlay is set, which this module
+      ## always sets, so enabling it makes the VM fail to build rather than
+      ## build smaller.
+      ##
 
       ## The store overlay is a fixed-size volume that only grows: containers
       ## build into it for the life of the VM and nothing else prunes it.
