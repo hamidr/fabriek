@@ -5,7 +5,7 @@ status: proposed
 date: 2026-09-03
 status_date: 2026-09-03
 summary: issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database
-depends_on: [ADR-011, ADR-012]
+depends_on: [ADR-011, ADR-014]
 supersedes: []
 superseded_by: []
 ---
@@ -78,7 +78,7 @@ to the next stage. Read top to bottom, an issue becomes the story of the work.
 
 **8. Task state stays ours.** git-bug knows open and closed. The eight task
 states, the stages, the attempts and the caps remain in the supervisor's own
-store, which is what ADR-012 shrinks to.
+store, which ADR-014 keeps as files.
 
 ## Consequences
 

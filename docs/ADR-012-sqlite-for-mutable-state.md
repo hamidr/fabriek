@@ -1,7 +1,7 @@
 ---
 id: ADR-012
 title: A factory's mutable state lives in SQLite; the declaration stays files
-status: proposed
+status: withdrawn
 date: 2026-09-03
 status_date: 2026-09-03
 summary: tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree
@@ -9,6 +9,17 @@ depends_on: [ADR-011]
 supersedes: []
 superseded_by: []
 ---
+
+## Withdrawn
+
+This was never adopted. ADR-013 moved discussion into git-bug, which removed
+the read-heavy argument below and left a store small enough that the defect
+this decision existed to fix could be fixed without a database: a task's
+mutable fields are written together in one file, which ADR-014 records.
+
+The reasoning is kept rather than deleted, because the arguments still hold if
+this store ever grows relations, and someone reaching for a database here later
+should find the case already made.
 
 ## Context
 
