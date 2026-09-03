@@ -1,9 +1,9 @@
 ---
 id: ADR-010
 title: A factory role cage runs under its own uid, name, and signing key
-status: accepted
+status: implemented
 date: 2026-09-02
-status_date: 2026-09-02
+status_date: 2026-09-03
 summary: factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs
 depends_on: [ADR-004, ADR-007, ADR-009]
 supersedes: []
