@@ -62,6 +62,7 @@ let
       . ${./workflow-config.sh}
       . ${./record.sh}
       . ${./caps.sh}
+      . ${./signing.sh}
       . ${./factory-config.sh}
       . ${./role-guidance.sh}
 
@@ -133,7 +134,7 @@ let
       cmd_enter() {
         ## Options precede the positional arguments so a session command can
         ## still be anything at all.
-        local auth_sock="" role="" task_dir=""
+        local auth_sock="" role="" task_dir="" signing_role=""
         while [ $# -gt 0 ]; do
           case "$1" in
           --auth-sock)
@@ -148,6 +149,10 @@ let
             task_dir="''${2:-}"
             shift 2
             ;;
+          --signing-key)
+            signing_role="''${2:-}"
+            shift 2
+            ;;
           *) break ;;
           esac
         done
@@ -155,6 +160,12 @@ let
         local name="$1" project="$2"
         shift 2
         check_name "$name"
+
+        ## Refused rather than resolved: a silent preference would decide a
+        ## security property by argument order (ADR-009).
+        if [ -n "$auth_sock" ] && [ -n "$signing_role" ]; then
+          die "--auth-sock and --signing-key are mutually exclusive"
+        fi
         [ -d "$project" ] || die "project directory not found: $project"
 
         ## An ordinary session is mapped onto the project owner: nix's libgit2
@@ -267,6 +278,24 @@ let
           )
         fi
 
+        ## A run nobody is watching signs with a key of its own and holds no
+        ## forwarded agent, so it cannot push, pull a private repository, or
+        ## authenticate anywhere (ADR-009).
+        local -a signing_bind=()
+        if [ -n "$signing_role" ]; then
+          local key signers line
+          key="$(nixcage_signing_ensure "$STATE_DIR" "$signing_role" "$owner_uid")" ||
+            die "could not prepare a signing key for $signing_role"
+          signers="$(nixcage_signing_signers "$STATE_DIR")"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            signing_bind+=("$line")
+          done < <(nixcage_signing_args "$key" "$signers")
+          ## Appended after the operator's identity so the role's own name,
+          ## address and key win: a role signs as itself.
+          nixcage_signing_gitconfig "$signing_role" >>"$rootfs/etc/gitconfig"
+        fi
+
         write_secret_env "$rootfs/etc/nixcage-env"
         ## Everything the skeleton contains was created by root and would
         ## otherwise appear as an unmapped nobody inside the container.
@@ -286,6 +315,7 @@ let
           ''${agent_bind[@]+"''${agent_bind[@]}"} \
           ''${guidance_args[@]+"''${guidance_args[@]}"} \
           ''${task_bind[@]+"''${task_bind[@]}"} \
+          ''${signing_bind[@]+"''${signing_bind[@]}"} \
           --chdir=/workspace \
           --setenv=HOME=/root \
           --setenv=PATH="$PROFILE/bin" \
@@ -334,7 +364,7 @@ let
         local -a passthrough=()
         while [ $# -gt 0 ]; do
           case "$1" in
-          --auth-sock | --task-dir)
+          --auth-sock | --task-dir | --signing-key)
             passthrough+=("$1" "''${2:-}")
             shift 2
             ;;
@@ -344,7 +374,7 @@ let
 
         local factory="''${1:-}" role="''${2:-}"
         [ -n "$factory" ] && [ -n "$role" ] ||
-          die "usage: nixcage-container role-enter [--auth-sock <path>] <factory> <role> [cmd...]"
+          die "usage: nixcage-container role-enter [--auth-sock <path>|--signing-key <role>] [--task-dir <path>] <factory> <role> [cmd...]"
         shift 2
 
         local repo declared_cmd
@@ -586,7 +616,9 @@ let
         chmod 444 "$run_dir/brief"
 
         local status=0
-        timeout "$limit" "$0" role-enter --task-dir "$run_dir" "$factory" "$role" || status=$?
+        timeout "$limit" "$0" role-enter \
+          --task-dir "$run_dir" --signing-key "$role" \
+          "$factory" "$role" || status=$?
 
         ## Whatever the role wrote during its turn reaches the record now: it
         ## could not write there itself, and this is the boundary where its

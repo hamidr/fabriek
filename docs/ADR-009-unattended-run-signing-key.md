@@ -109,5 +109,18 @@ role's key is created once and reused on the next run, and a session started
 this way has no `SSH_AUTH_SOCK` in its environment. The Nix rendering carries
 no bats test, per the infrastructure tier.
 
+Measured in the VM once implemented. An unattended run committed and the
+commit reads `signature: G builder@factory.invalid` -- a good signature, by the
+role, verified against the generated `allowed_signers`. The session had no
+`SSH_AUTH_SOCK` and no key of the operator's anywhere in it. The key on disk is
+mode 400 owned by the role's uid, and the public half is readable without
+entering the cage.
+
+One thing the measurement needed that the decision did not say: `ssh-keygen`
+must be in the container profile for git to sign at all. It has been there
+since ADR-008, so nothing changes, but a cage whose profile predates that
+fails with `cannot run ssh-keygen` at commit time rather than at configuration
+time -- which is how this was found, on a VM still running an older nixcage.
+
 The decision makes no performance, storage, or capacity claim, so there is no
 measurement plan.

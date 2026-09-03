@@ -96,8 +96,17 @@ teardown() {
 @test "the guest forwards every option it is given, not just the agent socket" {
 	# role-enter parses options before the positionals; anything it fails to
 	# recognise is read as the factory name, which fails far from the cause.
-	run grep -n -- "--auth-sock | --task-dir" "$NIXCAGE_ROOT/modules/container.nix"
+	run grep -n -- "--auth-sock | --task-dir | --signing-key" "$NIXCAGE_ROOT/modules/container.nix"
 	assert_success
+}
+
+@test "an unattended run signs with a role key and forwards no agent" {
+	# The supervisor's own path must never pass --auth-sock: a run nobody is
+	# watching holding the operator's agent is the thing ADR-009 removes.
+	run grep -n -A3 'timeout "\$limit" "\$0" role-enter' "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+	assert_output --partial "--signing-key"
+	refute_output --partial "--auth-sock"
 }
 
 @test "on linux role goes through sudo rather than ssh" {
