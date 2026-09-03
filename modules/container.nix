@@ -47,6 +47,9 @@ let
       ## The ownership check on a session's home walks it, so find has to be on
       ## the script's own PATH rather than only on the system's.
       findutils
+      ## The shared record. The supervisor is the only writer (ADR-013), so
+      ## this is here rather than in the container profile.
+      git-bug
     ];
     text = ''
       ## Sourced by store path: the file is a real shell file so shellcheck

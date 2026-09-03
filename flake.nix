@@ -65,6 +65,10 @@
               bats.libraries.bats-support
               bats.libraries.bats-assert
               openssh
+              ## The record is git-bug (ADR-013), and the tests drive it for
+              ## real rather than stubbing it, so it belongs in the shell.
+              git
+              git-bug
             ];
 
             BATS_LIB_PATH = "${pkgs.bats.libraries.bats-support}/share/bats:${pkgs.bats.libraries.bats-assert}/share/bats";

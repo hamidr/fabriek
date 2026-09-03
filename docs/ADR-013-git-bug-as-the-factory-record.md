@@ -150,7 +150,10 @@ Setting `git config user.name` does not change it, and a truncated id fails
 silently, which is how the first attempt attributed a builder's comment to the
 architect. The supervisor sets the full id before each write.
 
-One operational detail: git-bug builds an index under `.git/git-bug`, and a
+Two operational details. git-bug builds an index under `.git/git-bug`, and a
 partial one left by an interrupted run makes later invocations fail with
-`cannot create new index, path already exists`. It is safe to delete and is
-rebuilt on demand.
+`cannot create new index, path already exists`; it is safe to delete and is
+rebuilt on demand. And git-bug has no `-C` flag: it acts on the repository it
+is run in, so every call is made from a subshell that has moved there. Passing
+`-C` fails with `unknown shorthand flag`, which is a clearer failure than most
+of the ones in this document.
