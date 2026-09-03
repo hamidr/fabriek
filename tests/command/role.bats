@@ -119,3 +119,11 @@ teardown() {
 	assert_output --partial "nixcage-container role-enter acme builder"
 	[ ! -f "$TEST_TEMP_DIR/ssh-calls" ]
 }
+
+@test "a role worktree is reachable at the path git recorded, not only /workspace" {
+	# nix resolves a flake through libgit2, which opens a linked worktree by
+	# the absolute path stored beside it; bound at /workspace alone, every
+	# flake command in a role session fails on a missing directory.
+	run grep -n -- '--bind=\$project:\$project' "$NIXCAGE_ROOT/modules/container.nix"
+	assert_success
+}

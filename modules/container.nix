@@ -198,6 +198,17 @@ let
         local git_dirs git_dir
         git_dirs="$(nixcage_git_binds "$project")" ||
           die "cannot resolve the git directory of $project"
+        ## A linked worktree is also recorded by its own absolute path, inside
+        ## the administrative directory git keeps for it. Tools that resolve a
+        ## repository through libgit2 rather than through the .git file open
+        ## that path directly -- nix's flake fetcher does, so without this bind
+        ## every flake command in a role worktree fails on a directory that
+        ## exists in the VM and not in the session. The project keeps its
+        ## /workspace bind as well: that path is the one sessions are written
+        ## against.
+        if [ "$project" != /workspace ]; then
+          git_binds+=("--bind=$project:$project")
+        fi
         while IFS= read -r git_dir; do
           [ -n "$git_dir" ] || continue
           git_binds+=("--bind=$git_dir")
