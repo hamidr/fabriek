@@ -1,9 +1,9 @@
 ---
 id: ADR-015
 title: A stage needs a capability and states its own policy; roles provide capabilities
-status: proposed
+status: implemented
 date: 2026-09-03
-status_date: 2026-09-03
+status_date: 2026-09-04
 summary: stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy
 depends_on: [ADR-010, ADR-011]
 supersedes: []
@@ -99,16 +99,40 @@ for several columns at once, which the record will show and nothing prevents.
 
 ## Verification
 
-The properties worth holding are testable without a cage.
+The design was modelled before it was built, because a stage naming a role gave
+two properties for free that a stage naming a capability has to earn: that
+every task has someone who can work it, and that a role never runs two tasks at
+once.
 
-A stage resolves to the roles that provide its capability, and to none when
-nothing does. A task taken by a role records that role and every later attempt
-resolves to it, including when a peer providing the same capability is idle. A
-stage refuses a task missing a field its `ready` names, and names the field. A
-stage's `done` text reaches the brief verbatim.
+Alloy carries capabilities, what each role provides, and attempts -- attempts
+rather than a single taker field, because stickiness is a claim about several
+of them and with one field it would hold by construction. `alloy6 exec
+models/factory-structure.als`: ten checks UNSAT at scope 6, and the fan-out and
+generalist witnesses SAT. Removing the two mechanism facts turns all three new
+checks SAT, so they are not vacuous.
 
-One property needs a factory: three tasks at a fanning-out stage with two
-capable roles run two at a time rather than one, and the third waits. That is
-measured in the VM, because it is the consequence this decision exists for and
-because the single-role queueing it replaces was itself only found by running
-it.
+Quint replaces its owner table with a resolution made when a task is taken and
+keeps the roles a task has actually run on. `quint run
+--invariant=allInvariants --max-steps=60 --max-samples=50000`: no violation. A
+mutation handing a retry to an idle peer violates the stickiness invariant, and
+the fan-out witness violates its own negation in 19ms.
+
+The rest was measured in a VM, with two roles providing `build` and a stage
+needing it.
+
+Two tasks filed at that stage and started twelve seconds apart ran at the same
+time, one taken by each role: `task-0001 running backend` and `task-0002
+running frontend`. Both settled. That is the consequence this decision exists
+for, and the queueing it replaces was itself only visible by running a factory.
+
+A third task was taken by `backend`, timed out, and returned to `ready` with
+`backend` still recorded. Started again with `frontend` idle, it went to
+`backend` a second time and its attempt count reached two.
+
+A task filed without acceptance criteria stayed `proposed` and the refusal
+named the field: `task-0004 is missing acceptance`. The stage's `done` text
+reached the brief verbatim, under `done at this stage means`.
+
+A workflow whose stage needs a capability no role provides is refused when work
+is filed for it, naming the capability and the stage rather than failing later
+inside a cage.
