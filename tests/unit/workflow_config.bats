@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# Reading a declared pipeline: its stages in order, and who may ask whom.
+# Reading a declared pipeline: the capability each stage needs, its own entry
+# and exit policy, and who may ask whom (ADR-015).
 
 load ../test_helper/common
 
@@ -12,10 +13,12 @@ setup() {
 	ROOT="$TEST_TEMP_DIR/factories"
 	W="$ROOT/acme/workflows/ship"
 	mkdir -p "$W/stages/00" "$W/stages/01" "$W/stages/02" "$W/consults/builder"
-	echo architect >"$W/stages/00/role"
-	echo builder >"$W/stages/01/role"
+	echo design >"$W/stages/00/needs"
+	echo build >"$W/stages/01/needs"
 	: >"$W/stages/01/fanout"
-	echo reviewer >"$W/stages/02/role"
+	printf 'acceptance\nbody\n' >"$W/stages/01/ready"
+	printf 'tests pass and the diff is small\n' >"$W/stages/01/done"
+	echo review >"$W/stages/02/needs"
 	echo before-integration >"$W/stages/02/gate"
 	: >"$W/consults/builder/architect"
 }
@@ -27,21 +30,21 @@ teardown() {
 @test "a workflow's stages come back in the order they were declared" {
 	run nixcage_workflow_stages "$ROOT" acme ship
 	assert_success
-	assert_line --index 0 "00 architect"
-	assert_line --index 1 "01 builder"
-	assert_line --index 2 "02 reviewer"
+	assert_line --index 0 "00 design"
+	assert_line --index 1 "01 build"
+	assert_line --index 2 "02 review"
 }
 
 @test "a goal enters at the first stage" {
 	run nixcage_workflow_entry "$ROOT" acme ship
 	assert_success
-	assert_output "00 architect"
+	assert_output "00 design"
 }
 
 @test "each stage knows which one follows it" {
 	run nixcage_workflow_next "$ROOT" acme ship 00
 	assert_success
-	assert_output "01 builder"
+	assert_output "01 build"
 }
 
 @test "the last stage has nothing after it, and that is not an error" {
@@ -109,4 +112,35 @@ teardown() {
 	run nixcage_workflow_budget "$ROOT" acme ship runs
 	assert_success
 	assert_output "0"
+}
+
+@test "a stage names the capability it needs, not a role" {
+	run nixcage_workflow_stage_needs "$ROOT" acme ship 01
+	assert_success
+	assert_output "build"
+}
+
+@test "a stage states which fields a task must carry before it may be taken" {
+	run nixcage_workflow_stage_ready "$ROOT" acme ship 01
+	assert_success
+	assert_line --index 0 "acceptance"
+	assert_line --index 1 "body"
+}
+
+@test "a stage that requires nothing requires nothing, and that is not an error" {
+	run nixcage_workflow_stage_ready "$ROOT" acme ship 00
+	assert_success
+	assert_output ""
+}
+
+@test "a stage's finish line is prose, handed over as written" {
+	run nixcage_workflow_stage_done "$ROOT" acme ship 01
+	assert_success
+	assert_output "tests pass and the diff is small"
+}
+
+@test "a stage that states no finish line states none" {
+	run nixcage_workflow_stage_done "$ROOT" acme ship 02
+	assert_success
+	assert_output ""
 }

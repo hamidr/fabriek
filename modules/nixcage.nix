@@ -88,9 +88,39 @@ in
                       type = lib.types.listOf (
                         lib.types.submodule {
                           options = {
-                            role = lib.mkOption {
+                            needs = lib.mkOption {
                               type = lib.types.str;
-                              description = "The role that owns this stage.";
+                              example = "build";
+                              description = ''
+                                The capability this stage needs. Any role whose
+                                provides includes it may take this stage's
+                                tasks, so a column in the flow and a worker are
+                                declared separately and capacity is added by
+                                declaring a role rather than by editing the
+                                pipeline.
+                              '';
+                            };
+                            ready = lib.mkOption {
+                              type = lib.types.listOf lib.types.str;
+                              default = [ ];
+                              example = [ "acceptance" ];
+                              description = ''
+                                The fields a task must carry before this stage
+                                will take it. Checked for presence and nothing
+                                else, so nothing anyone wrote is read. Empty
+                                means the acceptance criteria alone.
+                              '';
+                            };
+                            done = lib.mkOption {
+                              type = lib.types.nullOr lib.types.str;
+                              default = null;
+                              example = "tests pass and the change is reviewable";
+                              description = ''
+                                What finishing means at this stage, in your own
+                                words. Handed to the role in its brief and never
+                                enforced: judging whether work meets a bar is
+                                reading content, which belongs in a cage.
+                              '';
                             };
                             fanOut = lib.mkOption {
                               type = lib.types.bool;
@@ -167,6 +197,17 @@ in
               type = lib.types.attrsOf (
                 lib.types.submodule {
                   options = {
+                    provides = lib.mkOption {
+                      type = lib.types.listOf lib.types.str;
+                      default = [ ];
+                      example = [ "build" ];
+                      description = ''
+                        The capabilities this role can work. A stage names one
+                        of these rather than naming a role, so several roles can
+                        work one stage at once. A role providing none takes no
+                        work.
+                      '';
+                    };
                     command = lib.mkOption {
                       type = lib.types.nullOr (lib.types.listOf lib.types.str);
                       default = null;
@@ -672,6 +713,13 @@ in
             ) factory.roles
             ++ lib.mapAttrsToList (
               roleName: role:
+              lib.mkIf (role.provides != [ ]) {
+                "nixcage/factories/${factoryName}/roles/${roleName}/provides".text =
+                  lib.concatMapStrings (c: c + "\n") role.provides;
+              }
+            ) factory.roles
+            ++ lib.mapAttrsToList (
+              roleName: role:
               lib.mkIf (role.shell != null) {
                 ## Just the name: the toolchain itself is the project's, and
                 ## nixcage only carries which of its shells this role enters.
@@ -684,8 +732,24 @@ in
               (lib.imap0 (i: stage: {
                 "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
                   lib.fixedWidthNumber 2 i
-                }/role".text = stage.role + "\n";
+                }/needs".text = stage.needs + "\n";
               }) workflow.stages)
+              ++ (lib.imap0 (
+                i: stage:
+                lib.mkIf (stage.ready != [ ]) {
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                    lib.fixedWidthNumber 2 i
+                  }/ready".text = lib.concatMapStrings (f: f + "\n") stage.ready;
+                }
+              ) workflow.stages)
+              ++ (lib.imap0 (
+                i: stage:
+                lib.mkIf (stage.done != null) {
+                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                    lib.fixedWidthNumber 2 i
+                  }/done".text = stage.done + "\n";
+                }
+              ) workflow.stages)
               ++ (lib.imap0 (
                 i: stage:
                 lib.mkIf stage.fanOut {

@@ -95,18 +95,48 @@
               #   ## that shell is the repository's business -- flake-parts is
               #   ## the usual way to write several. A role that names none is
               #   ## entered like any other session.
+              #   ## 'provides' is what a role can work. A stage names a
+              #   ## capability rather than a role, so declaring a second
+              #   ## backend adds capacity without touching the pipeline.
               #   roles = {
-              #     architect.command = [ "claude" ];
+              #     architect = {
+              #       command = [ "claude" ];
+              #       provides = [ "design" ];
+              #     };
               #     backend = {
               #       command = [ "claude" ];
+              #       provides = [ "build" ];
               #       shell = "backend-jvm";
               #     };
               #     frontend = {
               #       command = [ "claude" ];
+              #       provides = [ "build" ];
               #       shell = "frontend";
               #     };
-              #     reviewer.command = [ "claude" ];
+              #     reviewer = {
+              #       command = [ "claude" ];
+              #       provides = [ "review" ];
+              #     };
               #   };
+              #
+              #   ## A stage says what the work needs, what a task must carry
+              #   ## before it is taken, and what finishing means there. The
+              #   ## last is prose: the role reads it, nixcage never checks it.
+              #   workflows.ship.stages = [
+              #     {
+              #       needs = "design";
+              #       done = "the approach is written down and the work is split";
+              #     }
+              #     {
+              #       needs = "build";
+              #       ready = [ "acceptance" ];
+              #       done = "tests pass and the change is reviewable";
+              #     }
+              #     {
+              #       needs = "review";
+              #       gate = "before-integration";
+              #     }
+              #   ];
               # };
             };
 

@@ -19,9 +19,14 @@ nixcage_workflow_dir() {
 	echo "$root/$factory/workflows/$workflow"
 }
 
-## Every stage as "<index> <role>", in declaration order. A workflow with no
-## stages is a declaration mistake rather than an empty pipeline, so it is
-## refused here instead of producing a workflow nothing can run.
+## Every stage as "<index> <capability>", in declaration order. A stage names
+## what it needs done rather than who does it (ADR-015), so several roles can
+## work one stage at once and capacity is added by declaring a role instead of
+## by editing the pipeline.
+##
+## A workflow with no stages is a declaration mistake rather than an empty
+## pipeline, so it is refused here instead of producing a workflow nothing can
+## run.
 nixcage_workflow_stages() {
 	local root="$1" factory="$2" workflow="$3"
 	local dir
@@ -36,7 +41,7 @@ nixcage_workflow_stages() {
 	for path in "$dir"/stages/*; do
 		[ -d "$path" ] || continue
 		index="$(basename "$path")"
-		stages+=("$index $(cat "$path/role" 2>/dev/null)")
+		stages+=("$index $(cat "$path/needs" 2>/dev/null)")
 	done
 	if [ "${#stages[@]}" -eq 0 ]; then
 		echo "nixcage: workflow $workflow declares no stages" >&2
@@ -63,6 +68,37 @@ nixcage_workflow_next() {
 		[ "${line%% *}" = "$index" ] && seen=yes
 	done < <(nixcage_workflow_stages "$root" "$factory" "$workflow") || return 1
 	echo ""
+}
+
+## The capability a stage needs.
+nixcage_workflow_stage_needs() {
+	local root="$1" factory="$2" workflow="$3" index="$4"
+	local dir
+	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	[ -f "$dir/stages/$index/needs" ] || return 1
+	cat "$dir/stages/$index/needs"
+}
+
+## The fields a task must carry before this stage may take it, one per line.
+## Checked for presence and nothing else: it is a metadata check, and reads
+## nothing anyone wrote (ADR-015).
+nixcage_workflow_stage_ready() {
+	local root="$1" factory="$2" workflow="$3" index="$4"
+	local dir
+	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	[ -f "$dir/stages/$index/ready" ] || return 0
+	cat "$dir/stages/$index/ready"
+}
+
+## What finishing means at this stage, as prose. Never enforced: judging
+## whether work meets a bar is reading content, which belongs in a cage, so
+## this is handed to the role that will judge it (ADR-015).
+nixcage_workflow_stage_done() {
+	local root="$1" factory="$2" workflow="$3" index="$4"
+	local dir
+	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	[ -f "$dir/stages/$index/done" ] || return 0
+	cat "$dir/stages/$index/done"
 }
 
 nixcage_workflow_stage_fans_out() {

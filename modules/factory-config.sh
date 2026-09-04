@@ -91,3 +91,31 @@ nixcage_factory_role_shell() {
 	fi
 	printf '%s\n' "$want"
 }
+
+## What a role can do, one capability per line. A role that declares none can
+## take no stage's work: capability is what a stage resolves through, so an
+## undeclared one is a role with a cage and nothing to do (ADR-015).
+nixcage_factory_role_provides() {
+	local root="$1" factory="$2" role="$3"
+	nixcage_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
+	local file="$root/$factory/roles/$role/provides"
+	[ -f "$file" ] || return 0
+	cat "$file"
+}
+
+## The roles that provide a capability, in declaration order. Order is the
+## whole tie-break: among idle capable roles the first one takes the task, so
+## a factory replays the same way twice (ADR-015).
+nixcage_factory_roles_providing() {
+	local root="$1" factory="$2" capability="$3"
+	[ -n "$capability" ] || return 1
+	local role line
+	while IFS= read -r role; do
+		[ -n "$role" ] || continue
+		while IFS= read -r line; do
+			[ "$line" = "$capability" ] || continue
+			echo "$role"
+			break
+		done < <(nixcage_factory_role_provides "$root" "$factory" "$role")
+	done < <(nixcage_factory_roles "$root" "$factory")
+}

@@ -125,3 +125,33 @@ teardown() {
 	run grep -E "^ *default = " "$example"
 	assert_success
 }
+
+@test "a role declares what it can do" {
+	printf 'build\nreview\n' >"$ROOT/acme/roles/builder/provides"
+	run nixcage_factory_role_provides "$ROOT" acme builder
+	assert_success
+	assert_line --index 0 "build"
+	assert_line --index 1 "review"
+}
+
+@test "a role that declares nothing can do nothing, and that is not an error" {
+	run nixcage_factory_role_provides "$ROOT" acme reviewer
+	assert_success
+	assert_output ""
+}
+
+@test "a capability resolves to the roles providing it, in declaration order" {
+	printf 'build\n' >"$ROOT/acme/roles/builder/provides"
+	printf 'build\n' >"$ROOT/acme/roles/reviewer/provides"
+	run nixcage_factory_roles_providing "$ROOT" acme build
+	assert_success
+	assert_line --index 0 "builder"
+	assert_line --index 1 "reviewer"
+}
+
+@test "a capability nothing provides resolves to nobody" {
+	printf 'build\n' >"$ROOT/acme/roles/builder/provides"
+	run nixcage_factory_roles_providing "$ROOT" acme design
+	assert_success
+	assert_output ""
+}
