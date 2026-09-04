@@ -455,20 +455,91 @@ let
       ## bookkeeping, not part of the shared record.
       SEEN_ROOT="$STATE_DIR/seen"
 
-      ## File a goal. It enters at the workflow's first stage and is owned by
-      ## that stage's role, so the operator names what should happen rather
-      ## than who should do it.
+      ## Every role that could take a task at this stage, in declaration order.
+      ## A stage nothing can work is a declaration mistake and is refused where
+      ## it is read rather than when a task reaches it (ADR-015).
+      stage_roles() {
+        local factory="$1" workflow="$2" stage="$3"
+        local capability roles
+        capability="$(nixcage_workflow_stage_needs \
+          "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")" ||
+          die "$workflow stage $stage declares no capability"
+        roles="$(nixcage_factory_roles_providing "$FACTORIES_ROOT" "$factory" "$capability")"
+        [ -n "$roles" ] ||
+          die "no role of $factory provides $capability, which $workflow stage $stage needs"
+        printf '%s\n' "$roles"
+      }
+
+      ## A role is busy while it holds a task: one worktree, one branch, one
+      ## task at a time. Blocked counts as busy because nothing switched
+      ## branches when the task blocked.
+      role_busy() {
+        local factory="$1" role="$2" id state
+        while IFS= read -r id; do
+          [ -n "$id" ] || continue
+          [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] || continue
+          state="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" state)"
+          case "$state" in
+          running | blocked) return 0 ;;
+          esac
+        done < <(nixcage_task_list "$TASKS_ROOT" "$factory")
+        return 1
+      }
+
+      ## Who works a task. A task already taken answers with its taker, however
+      ## busy it is: the branch is in that role's namespace and no peer can
+      ## write it. An untaken one resolves its stage's capability to the first
+      ## idle role providing it, in declaration order, so a factory replays the
+      ## same way twice (ADR-015).
+      resolve_taker() {
+        local factory="$1" id="$2"
+        local taken workflow stage role
+        taken="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)"
+        if [ -n "$taken" ]; then
+          echo "$taken"
+          return 0
+        fi
+        workflow="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
+        stage="$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
+        ## Resolved into a variable rather than read from a process
+        ## substitution: an undeclared capability has to fail here with its own
+        ## message, and inside a subshell it would look like every role being
+        ## busy instead.
+        local candidates
+        candidates="$(stage_roles "$factory" "$workflow" "$stage")" || exit 1
+        while IFS= read -r role; do
+          [ -n "$role" ] || continue
+          role_busy "$factory" "$role" && continue
+          echo "$role"
+          return 0
+        done <<<"$candidates"
+        return 1
+      }
+
+      ## The fields a stage requires before it will take a task, defaulting to
+      ## the acceptance criteria: a task nobody stated a finish line for is not
+      ## work anyone can judge.
+      stage_ready_fields() {
+        local factory="$1" workflow="$2" stage="$3" fields
+        fields="$(nixcage_workflow_stage_ready \
+          "$FACTORIES_ROOT" "$factory" "$workflow" "$stage")"
+        [ -n "$fields" ] || fields=acceptance
+        printf '%s\n' "$fields"
+      }
+
+      ## File a goal. It enters at the workflow's first stage, which says what
+      ## capability the work needs rather than who has it, so the operator
+      ## names what should happen and nobody names a role.
       cmd_task_file() {
         local factory="$1" workflow="$2" acceptance="''${3:-}"
-        local entry stage role
+        local entry stage field
         entry="$(nixcage_workflow_entry "$FACTORIES_ROOT" "$factory" "$workflow")" || exit 1
         stage="''${entry%% *}"
-        role="''${entry#* }"
-        nixcage_factory_role_command "$FACTORIES_ROOT" "$factory" "$role" >/dev/null || exit 1
+        stage_roles "$factory" "$workflow" "$stage" >/dev/null || exit 1
 
         local id
-        id="$(nixcage_task_new "$TASKS_ROOT" "$factory" "$workflow" "$role" "$stage")" ||
-          die "could not file a task for $role"
+        id="$(nixcage_task_new "$TASKS_ROOT" "$factory" "$workflow" "$stage")" ||
+          die "could not file a task for $workflow"
         if [ -n "$acceptance" ]; then
           nixcage_task_set "$TASKS_ROOT" "$factory" "$id" acceptance "$acceptance"
         fi
@@ -483,9 +554,15 @@ let
         item="$(printf '%s\n\n%s\n' "$id" "$acceptance" |
           nixcage_record_new "$clone" supervisor)"
         [ -n "$item" ] && nixcage_task_set "$TASKS_ROOT" "$factory" "$id" item "$item"
-        ## Required fields become the workflow's to declare in a later phase;
-        ## an owner and a stated finish line are what a task needs today.
-        nixcage_task_ready "$TASKS_ROOT" "$factory" "$id" role acceptance >/dev/null 2>&1 || true
+        ## What a stage requires before it will take work is the stage's to
+        ## state. A task missing one of those fields stays proposed and says
+        ## which, rather than being taken and failing inside a cage.
+        local -a required=()
+        while IFS= read -r field; do
+          [ -n "$field" ] || continue
+          required+=("$field")
+        done < <(stage_ready_fields "$factory" "$workflow" "$stage")
+        nixcage_task_ready "$TASKS_ROOT" "$factory" "$id" "''${required[@]}" >/dev/null || true
         echo "$id"
       }
 
@@ -512,8 +589,14 @@ let
 
         if [ -n "$next" ]; then
           child="$(nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" \
-            "''${next%% *}" "''${next#* }")" || die "$id: could not advance the work"
-          nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" role acceptance >/dev/null 2>&1 || true
+            "''${next%% *}")" || die "$id: could not advance the work"
+          local -a required=()
+          local field
+          while IFS= read -r field; do
+            [ -n "$field" ] || continue
+            required+=("$field")
+          done < <(stage_ready_fields "$factory" "$workflow" "''${next%% *}")
+          nixcage_task_ready "$TASKS_ROOT" "$factory" "$child" "''${required[@]}" >/dev/null || true
           if [ -n "$item" ]; then
             seed="$STATE_DIR/runs/$factory/$id/seed"
             mkdir -p "$(dirname "$seed")"
@@ -525,12 +608,12 @@ let
             child_item="$(nixcage_record_new "$clone" supervisor <"$seed")"
             [ -n "$child_item" ] &&
               nixcage_task_set "$TASKS_ROOT" "$factory" "$child" item "$child_item"
-            printf 'settled; %s opened for %s\n' "$child" "''${next#* }" |
+            printf 'settled; %s opened, needing %s\n' "$child" "''${next#* }" |
               nixcage_record_comment "$clone" "$item" supervisor
           fi
-          echo "$id: settled, $child opened for ''${next#* }"
+          echo "$id: settled, $child opened, needing ''${next#* }"
         else
-          nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" "" ||
+          nixcage_task_advance "$TASKS_ROOT" "$factory" "$id" "" ||
             die "$id: could not finish the work"
           [ -n "$item" ] && printf 'settled; the pipeline ends here\n' |
             nixcage_record_comment "$clone" "$item" supervisor
@@ -643,12 +726,17 @@ let
         done
       }
 
-      ## Run one task in its role's cage. The task is handed in as files and
-      ## the outcome is read back out of one, so nothing about it is ever an
-      ## argument. Every ending is recorded: settled when the role wrote what it
-      ## did, failed when it wrote nothing, crashed, or outlived its limit.
-      cmd_role_run() {
-        local factory="$1" role="$2" id="$3"
+      ## Run one task in the cage of whoever takes it. The task is handed in as
+      ## files and the outcome is read back out of one, so nothing about it is
+      ## ever an argument. Every ending is recorded: settled when the role wrote
+      ## what it did, failed when it wrote nothing, crashed, or outlived its
+      ## limit.
+      ##
+      ## No role is named by the caller: the stage says what the work needs and
+      ## the first idle role providing it takes the task, which is then its for
+      ## every later attempt (ADR-015).
+      cmd_task_run() {
+        local factory="$1" id="$2" role
         [ -f "$FACTORY_CONFIG" ] ||
           die "no factory declared: set nixcage.supervisor.roleUidRange"
         # shellcheck disable=SC1090
@@ -661,8 +749,9 @@ let
           die "$factory is halted: $halted"
         fi
 
-        [ "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] ||
-          die "$id does not belong to role $role"
+        role="$(resolve_taker "$factory" "$id")" ||
+          die "$id: every role that could take this work is busy"
+        nixcage_task_take "$TASKS_ROOT" "$factory" "$id" "$role" || exit 1
 
         local clone item workflow
         clone="$(nixcage_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
@@ -708,6 +797,15 @@ let
           printf 'role: %s\n' "$role"
           printf 'acceptance:\n%s\n' \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" acceptance)"
+          ## What finishing means at this stage, as its declaration states it.
+          ## Handed over rather than checked: judging whether work meets a bar
+          ## is reading content, which is what a cage is for (ADR-015).
+          local finish
+          finish="$(nixcage_workflow_stage_done "$FACTORIES_ROOT" "$factory" \
+            "$workflow" "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" stage)")"
+          if [ -n "$finish" ]; then
+            printf '\ndone at this stage means:\n%s\n' "$finish"
+          fi
           printf '\nbody:\n%s\n' \
             "$(nixcage_task_get "$TASKS_ROOT" "$factory" "$id" body)"
           ## The conventions of this factory, which the repository carries and
@@ -808,7 +906,7 @@ let
       enter) cmd_enter "$@" ;;
       role-worktree) cmd_role_worktree "$@" ;;
       role-enter) cmd_role_enter "$@" ;;
-      role-run) cmd_role_run "$@" ;;
+      task-run) cmd_task_run "$@" ;;
       task-file) cmd_task_file "$@" ;;
       task-list) cmd_task_list "$@" ;;
       task-show) cmd_task_show "$@" ;;
@@ -821,7 +919,7 @@ let
       factory-reports) cmd_factory_reports "$@" ;;
       list) cmd_list ;;
       rm) cmd_rm "$@" ;;
-      *) die "usage: nixcage-container enter [--role <role>] [--shell <name>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | role-run <factory> <role> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | factory-reports <factory> | list | rm <name>" ;;
+      *) die "usage: nixcage-container enter [--role <role>] [--shell <name>] <name> <project> [cmd...] | role-enter [--auth-sock <path>] <factory> <role> [cmd...] | role-worktree <factory> <role> <repo> | task-run <factory> <id> | task-file <factory> <workflow> [acceptance] | task-list <factory> [state] | task-show <factory> <id> | task-thread <factory> <id> | task-answer <factory> <id> approve|reject [reason] | factory-sync <factory> | factory-integrate <factory> <commit> | factory-resume <factory> | factory-status <factory> | factory-reports <factory> | list | rm <name>" ;;
       esac
     '';
   };

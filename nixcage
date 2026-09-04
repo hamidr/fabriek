@@ -545,14 +545,17 @@ cmd_task() {
     guest task-thread "$factory" "$id"
     ;;
   run)
-    local factory="${1:-}" role="${2:-}" id="${3:-}"
-    if [[ -z "$factory" || -z "$role" || -z "$id" ]]; then
-      log_err "usage: nixcage task run <factory> <role> <id>"
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: nixcage task run <factory> <id>"
       exit 1
     fi
+    ## No role is named: the stage says what the work needs and the first idle
+    ## role providing it takes the task.
+    ##
     ## The run happens in the cage and can take as long as its declared limit
     ## allows, so this is the one task command that is not a quick read.
-    guest role-run "$factory" "$role" "$id"
+    guest task-run "$factory" "$id"
     ;;
   *)
     log_err "usage: nixcage task file|list|show|thread|run|answer ..."
@@ -872,7 +875,7 @@ ${BOLD}Commands:${NC}
   task list <factory> [state]
   task show <factory> <id>
   task thread <factory> <id>
-  task run <factory> <role> <id>
+  task run <factory> <id>
   task answer <factory> <id> approve|reject [reason]
   factory status|sync|resume|reports <factory>
   factory integrate <factory> <commit>

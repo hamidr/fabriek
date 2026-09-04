@@ -74,11 +74,10 @@ nixcage_task_read_scalar() {
 ## does not, which is the atomic test-and-set a lock was previously wrapped
 ## around. A losing racer retries with the next number rather than waiting.
 nixcage_task_new() {
-	local root="$1" factory="$2" workflow="$3" role="$4" stage="${5:-}"
+	local root="$1" factory="$2" workflow="$3" stage="${4:-}"
 
 	nixcage_role_name_ok "$factory" || return 1
 	nixcage_role_name_ok "$workflow" || return 1
-	nixcage_role_name_ok "$role" || return 1
 
 	local base="$root/$factory"
 	mkdir -p "$base"
@@ -109,7 +108,7 @@ nixcage_task_new() {
 	nixcage_task_put_scalars "$dir" \
 		"state=proposed" \
 		"attempts=0" \
-		"role=$role" \
+		"role=" \
 		"workflow=$workflow" \
 		"stage=$stage" \
 		"parent=" \
@@ -303,15 +302,17 @@ nixcage_task_cancel() {
 }
 
 ## Move the work to the next stage. The finished task ends as done and the
-## created one starts at the stage the pipeline puts it in, owned by that
-## stage's role, carrying the workflow and the acceptance criteria it came
-## with. A created task inherits its parent's workflow and cannot name
-## another, so no cascade escapes the budget of the work that started it.
+## created one starts at the stage the pipeline puts it in, taken by nobody
+## yet, carrying the workflow and the acceptance criteria it came with. Who
+## works it is resolved from that stage's capability when it is taken, which is
+## why no role is named here (ADR-015). A created task inherits its parent's
+## workflow and cannot name another, so no cascade escapes the budget of the
+## work that started it.
 ##
 ## The end of the pipeline is not a stage: reaching it finishes the work and
 ## creates nothing, which is why an empty next stage is a success.
 nixcage_task_advance() {
-	local root="$1" factory="$2" id="$3" next_stage="$4" next_role="$5"
+	local root="$1" factory="$2" id="$3" next_stage="$4"
 
 	local state
 	state="$(nixcage_task_get "$root" "$factory" "$id" state)" || return 1
@@ -334,7 +335,7 @@ nixcage_task_advance() {
 
 	local workflow child
 	workflow="$(nixcage_task_get "$root" "$factory" "$id" workflow)" || return 1
-	child="$(nixcage_task_new "$root" "$factory" "$workflow" "$next_role" "$next_stage")" || return 1
+	child="$(nixcage_task_new "$root" "$factory" "$workflow" "$next_stage")" || return 1
 	nixcage_task_set "$root" "$factory" "$child" parent "$id" || return 1
 	nixcage_task_set "$root" "$factory" "$child" acceptance \
 		"$(nixcage_task_get "$root" "$factory" "$id" acceptance)" || return 1
@@ -384,4 +385,27 @@ nixcage_task_answer() {
 		return 1
 		;;
 	esac
+}
+
+## Record which role took a task. Taking happens once: every later attempt goes
+## to the role that holds the branch, so a retry continues the first attempt's
+## commits instead of starting again in a namespace it cannot write (ADR-015).
+##
+## Taking again with the same role is how a retry passes through here; taking
+## with another is refused rather than silently reassigned.
+nixcage_task_take() {
+	local root="$1" factory="$2" id="$3" role="$4"
+	nixcage_role_name_ok "$role" || return 1
+
+	local taken
+	taken="$(nixcage_task_get "$root" "$factory" "$id" role)" || return 1
+	if [ -n "$taken" ]; then
+		if [ "$taken" != "$role" ]; then
+			echo "nixcage: $id was taken by $taken, not $role" >&2
+			return 1
+		fi
+		return 0
+	fi
+
+	nixcage_task_set "$root" "$factory" "$id" role "$role"
 }
