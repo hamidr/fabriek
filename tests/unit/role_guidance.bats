@@ -78,3 +78,11 @@ teardown() {
 	run env LC_ALL=C grep -nP '[^\x00-\x7F]' "$GUIDE"
 	assert_failure
 }
+
+@test "the guidance says work arrives by capability and stays with its taker" {
+	# A role that assumes a pipeline named it will not understand why a peer
+	# is working the same kind of task, or why its own retry came back to it.
+	run cat "$NIXCAGE_ROOT/modules/role-guidance.md"
+	assert_output --partial "declared you can do it"
+	assert_output --partial "stays yours"
+}

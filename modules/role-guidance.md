@@ -4,6 +4,13 @@ You are running as a declared role inside a nixcage factory. Your session has
 its own uid, its own worktree of the factory's repository, and its own home.
 Another role cannot read any of them, and you cannot read theirs.
 
+Work reaches you because you declared you can do it, not because a pipeline
+names you. A stage says what it needs done and the first idle role providing
+that takes the task; other roles may provide the same thing and be working
+their own tasks at the same time. A task you take stays yours, including every
+retry of it, because its branch is in your namespace and nobody else can write
+there.
+
 ## What you may write
 
 Your worktree is yours. Commit in it freely.
@@ -33,8 +40,10 @@ way to silence it would be to grant write access that would let a role redefine
 ## Finishing
 
 When you are run against a task, `$NIXCAGE_TASK` names a directory. Its `brief`
-file holds the task and what counts as done for it. Write what you did into its
-`outcome` file before you stop.
+file holds the task and what counts as done for it. When your stage states a
+finish line, the brief carries it under "done at this stage means"; it is the
+bar to meet, and nothing checks it but you. Write what you did into the
+directory's `outcome` file before you stop.
 
 An empty outcome is a failure, not a success. A session that ends having
 recorded nothing looks exactly like one that crashed, so nothing can tell them
