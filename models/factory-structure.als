@@ -20,12 +20,17 @@ sig Worktree { owner: one Uid, checkedOut: one Ref }
 sig Ref { namespace: lone Role }
 one sig Main extends Ref {}
 
-sig Role { uid: one Uid, tree: one Worktree }
+-- ADR-015: what a role can do, declared. A stage names one of these rather
+-- than naming a role, so a column in the flow and a worker are different
+-- objects.
+sig Capability {}
+
+sig Role { uid: one Uid, tree: one Worktree, provides: set Capability }
 
 sig Workflow { stages: set Stage, entry: one Stage }
 -- next: pipeline edges, acyclic. consults: who this stage may ask, and it may
 -- point backwards, so this relation is deliberately not required acyclic.
-sig Stage { ownedBy: one Role, next: set Stage, consults: set Role }
+sig Stage { needs: one Capability, next: set Stage, consults: set Role }
 
 sig Task {
   workflow: one Workflow,
@@ -34,6 +39,12 @@ sig Task {
   state: one TaskState,
   kind: one TaskKind
 }
+
+-- ADR-015 decision 4: a task sticks to the role that took it, and every later
+-- attempt goes to that role. Attempts are modelled because stickiness is a
+-- claim about several of them; with a single taker field it would be true by
+-- construction and say nothing.
+sig Attempt { task: one Task, by: one Role, branch: one Ref }
 abstract sig TaskKind {}
 one sig Pipelined, Consult extends TaskKind {}
 abstract sig TaskState {}
@@ -43,6 +54,9 @@ one sig Proposed, Ready, Running, Blocked, AwaitingReview, Done, Failed, Cancell
 /* ---------- the mechanism ---------- */
 
 fun writable[r: Role]: set Ref { namespace.r }
+
+-- The roles that may take a stage's work: those providing what it needs.
+fun capable[s: Stage]: set Role { provides.(s.needs) }
 
 -- ADR-010 decision 1 and 6: a uid per role, a worktree per role, owned by it.
 fact RoleIdentity {
@@ -59,6 +73,29 @@ fact MainHasNoNamespace { no Main.namespace }
 -- has checked out. This is a fact about git, not a choice of ours.
 fact CommitNeedsAWritableBranch {
   all r: Role | r.tree.checkedOut in writable[r]
+}
+
+-- ADR-015: a stage no declared role can work is rejected when the declaration
+-- is read, exactly as a stage naming an undeclared role was.
+fact EveryStageIsCoverable {
+  all s: Stage | some capable[s]
+}
+
+-- ADR-015 decision 3 and 4: taking resolves the capability to a role, and the
+-- recorded taker answers for every later attempt. What the mechanism gives is
+-- these two things; that all attempts agree is a consequence, not a rule.
+fact TakingResolvesACapability {
+  all a: Attempt | a.by in capable[a.task.stage]
+}
+fact AttemptsGoToTheRecordedTaker {
+  all disj a, b: Attempt | a.task = b.task implies a.by = b.by
+}
+
+-- ADR-010 and ADR-015 decision 4: an attempt works a branch in the taker's own
+-- namespace, which is why a retry can continue the first attempt's commits
+-- without the ref partition needing an exception.
+fact AttemptsWorkTheirTakersBranch {
+  all a: Attempt | a.branch in writable[a.by]
 }
 
 -- PRD-003: a pipeline's stages belong to it, its edges stay inside it, and it
@@ -86,7 +123,7 @@ fact TaskCreation {
   all t: Task | t.kind = Consult implies {
     some t.parent
     t.stage in t.workflow.stages
-    t.stage.ownedBy in t.parent.stage.consults
+    some r: t.parent.stage.consults | t.stage.needs in r.provides
   }
   all t: Task | t not in t.^parent
 }
@@ -139,9 +176,28 @@ assert PipelinedStageReachableFromEntry {
   all t: Task | t.kind = Pipelined implies t.stage in t.workflow.entry.*next
 }
 
--- PRD-003: every task has a role that will run it.
-assert EveryTaskHasAnOwningRole {
-  all t: Task | one t.stage.ownedBy
+-- ADR-015: "a stage resolves to the roles that provide its capability, and to
+-- none when nothing does" -- so every declared task has someone who can work
+-- it, which is what naming a role gave for free and a capability must earn.
+assert EveryTaskHasACapableRole {
+  all t: Task | some capable[t.stage]
+}
+
+-- ADR-015 decision 4: every attempt at a task is made by the same role.
+assert AttemptsAtATaskShareOneRole {
+  all disj a, b: Attempt | a.task = b.task implies a.by = b.by
+}
+
+-- A retry cannot be handed to an idle peer that provides the same capability:
+-- the branch is in the first taker's namespace and no other role can write it.
+assert RetriesCannotMoveToAPeer {
+  all disj a, b: Attempt |
+    a.task = b.task implies a.branch in writable[b.by]
+}
+
+-- ADR-015 decision 1: work only ever reaches a role that declared it can do it.
+assert NoRoleWorksOutsideWhatItProvides {
+  all a: Attempt | a.task.stage.needs in a.by.provides
 }
 
 -- PRD-003: "no chain of roles waiting on each other can close into a loop no
@@ -156,13 +212,14 @@ assert WaitingNeverFormsALoop {
 -- never by one it was not.
 assert ConsultsFollowTheDeclaredGraph {
   all t: Task | t.kind = Consult implies
-    t.stage.ownedBy in t.parent.stage.consults
+    some r: t.parent.stage.consults | t.stage.needs in r.provides
 }
 
 -- The consult graph is allowed to point backwards. Confirm the model permits
 -- it, so ConsultsAreLeaves is not quietly doing the work acyclicity would.
 run ConsultCanPointBackwards {
-  some s1, s2: Stage | s1 in s2.^next and s1.ownedBy in s2.consults
+  some s1, s2: Stage | s1 in s2.^next and
+    some r: s2.consults | s1.needs in r.provides
   some t: Task | t.kind = Consult
 } for 6
 
@@ -172,9 +229,31 @@ check NoTwoRolesShareAWritableRef for 6
 check PipelinedCascadeNeverRevisitsAStage for 6
 check TaskStageBelongsToItsWorkflow for 6
 check PipelinedStageReachableFromEntry for 6
-check EveryTaskHasAnOwningRole for 6
+check EveryTaskHasACapableRole for 6
+check AttemptsAtATaskShareOneRole for 6
+check RetriesCannotMoveToAPeer for 6
+check NoRoleWorksOutsideWhatItProvides for 6
 check WaitingNeverFormsALoop for 6
 check ConsultsFollowTheDeclaredGraph for 6
+
+-- ADR-015 decision 2: fan-out parallelises. Two tasks at one stage, taken by
+-- two different roles, has to be a legal configuration -- it is the whole
+-- point of the change, and a model that forbade it would be modelling the
+-- pipeline this replaces.
+run FanOutReachesTwoRoles {
+  some disj t1, t2: Task | t1.stage = t2.stage and
+    some disj a1, a2: Attempt | a1.task = t1 and a2.task = t2 and a1.by != a2.by
+} for 6
+
+-- A generalist providing several capabilities can be pulled into stages of
+-- different workflows. ADR-015 accepts this and says the record will show it.
+run OneRoleCoversTwoStages {
+  some r: Role | {
+    #r.provides > 1
+    some disj s1, s2: Stage | s1.needs != s2.needs and
+      r in capable[s1] and r in capable[s2]
+  }
+} for 6
 
 -- Not vacuous: a factory with several roles, a real cascade, and a pipeline of
 -- more than one stage is possible.

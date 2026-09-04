@@ -10,14 +10,24 @@ module factory {
   pure val tasks = Set("t1", "t2", "t3", "t4", "tc")
   pure val roles = Set("builderA", "builderB", "reviewer", "architect")
 
-  // One task per role, and one more sharing builderA, so both limits can bite:
-  // t1 and t4 contend for a role, and three distinct roles can outnumber the
-  // global concurrency cap. A cap at or above the role count is unreachable,
-  // because one worktree per role already bounds active runs by role count.
-  pure val ownerOf = Map(
-    "t1" -> "builderA", "t2" -> "builderB", "t3" -> "reviewer",
-    "t4" -> "builderA", "tc" -> "architect"
+  // ADR-015: a stage names a capability and a role declares what it provides,
+  // so who works a task is resolved when it is taken rather than fixed by the
+  // pipeline. Two roles provide "build", which is what makes fan-out
+  // parallelise and what makes one-task-per-role a property of the taking rule
+  // rather than of a table written in advance.
+  pure val needsOf = Map(
+    "t1" -> "build", "t2" -> "build", "t3" -> "review",
+    "t4" -> "build", "tc" -> "design"
   )
+  pure val providesOf = Map(
+    "builderA" -> Set("build"),
+    "builderB" -> Set("build"),
+    "reviewer" -> Set("review"),
+    "architect" -> Set("design")
+  )
+  // Declaration order: among idle capable roles the first takes the task, so a
+  // factory replays the same way twice.
+  pure val roleOrder = ["builderA", "builderB", "reviewer", "architect"]
 
   // Whether a task's stage declares a gate before it may finish.
   pure val gated = Map(
@@ -38,6 +48,13 @@ module factory {
   var mainLen: int
   var mainLenPrev: int
   var integrating: str
+  // Which role took a task. Empty until it is taken, and never changed after:
+  // every later attempt goes to the role whose namespace holds the branch.
+  var takenBy: str -> str
+  // Every role a task has actually run on. Stickiness is a claim about the
+  // history rather than about one field, so the history is kept: a taking rule
+  // that quietly reassigned a retry would leave two roles here.
+  var ranOn: str -> Set[str]
 
   pure def liveRun(rs: str): bool = rs == "starting" or rs == "working"
   pure def holdsRole(rs: str): bool = liveRun(rs) or rs == "gate" or rs == "resumable"
@@ -57,7 +74,17 @@ module factory {
   }
 
   def roleBusy(r: str): bool =
-    tasks.exists(t => ownerOf.get(t) == r and occupies(t))
+    tasks.exists(t => takenBy.get(t) == r and occupies(t))
+
+  def canDo(r: str, cap: str): bool = providesOf.get(r).contains(cap)
+
+  // The role that would take a task now: the first idle capable one in
+  // declaration order, or "" when every capable role is busy.
+  def takerFor(t: str): str =
+    roleOrder.foldl("", (acc, r) =>
+      if (acc != "") acc
+      else if (canDo(r, needsOf.get(t)) and not(roleBusy(r))) r
+      else "")
 
   action init = all {
     // tc does not exist until it is asked for.
@@ -66,6 +93,8 @@ module factory {
     answered' = tasks.mapBy(_ => false),
     attempts' = tasks.mapBy(_ => 0),
     runsSpent' = 0,
+    takenBy' = tasks.mapBy(_ => ""),
+    ranOn' = tasks.mapBy(_ => Set()),
     mainLen' = 0,
     mainLenPrev' = 0,
     integrating' = "",
@@ -79,15 +108,26 @@ module factory {
     runState' = runState, answered' = answered, attempts' = attempts,
     runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
     integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // Only the supervisor starts a run, and every cap is checked here.
+  // A task never taken resolves its capability to a role now; a task already
+  // taken waits for that role and no other, because its branch is in that
+  // role's namespace and no peer can write it.
   action startRun(t) = all {
     taskState.get(t) == "ready",
     attempts.get(t) < maxAttempts,
     runsSpent < budgetRuns,
     activeRuns < maxConcurrent,
-    not(roleBusy(ownerOf.get(t))),
+    if (takenBy.get(t) == "") takerFor(t) != ""
+    else not(roleBusy(takenBy.get(t))),
+    takenBy' =
+      if (takenBy.get(t) == "") takenBy.set(t, takerFor(t)) else takenBy,
+    ranOn' =
+      if (takenBy.get(t) == "") ranOn.set(t, ranOn.get(t).union(Set(takerFor(t))))
+      else ranOn.set(t, ranOn.get(t).union(Set(takenBy.get(t)))),
     taskState' = taskState.set(t, "running"),
     runState' = runState.set(t, "starting"),
     attempts' = attempts.set(t, attempts.get(t) + 1),
@@ -102,6 +142,8 @@ module factory {
     taskState' = taskState, answered' = answered, attempts' = attempts,
     runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
     integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // A gate stops the run. It keeps the role's worktree and releases the slot.
@@ -113,6 +155,8 @@ module factory {
     taskState' = taskState, answered' = answered, attempts' = attempts,
     runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
     integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // Answering a gate records the answer. It does not resume the run: the slot
@@ -124,6 +168,8 @@ module factory {
     runState' = runState.set(t, "resumable"),
     taskState' = taskState, attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // The supervisor readmits an answered run under the same concurrency check
@@ -136,6 +182,8 @@ module factory {
     taskState' = taskState, answered' = answered, attempts' = attempts,
     runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
     integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // Settling requires the gate to have been answered when the stage declares
@@ -147,6 +195,8 @@ module factory {
     taskState' = taskState.set(t, "awaitingReview"),
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // A crash, or a session that went idle recording nothing. The task goes back
@@ -159,6 +209,8 @@ module factory {
       else taskState.set(t, "ready"),
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // Integration is serialised per factory and advances main by fast-forward.
@@ -169,6 +221,8 @@ module factory {
     taskState' = taskState, runState' = runState, answered' = answered,
     attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   action finishIntegrate(t) = all {
@@ -179,6 +233,8 @@ module factory {
     taskState' = taskState.set(t, "done"),
     runState' = runState.set(t, "none"),
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // t1 asks the architect. The consult is created, t1 blocks, and the turn
@@ -191,6 +247,8 @@ module factory {
     runState' = runState.set("t1", "none"),
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   // The consult reached a terminal state, so the asker may go again. It is not
@@ -203,15 +261,20 @@ module factory {
     runState' = runState, answered' = answered, attempts' = attempts,
     runsSpent' = runsSpent, mainLen' = mainLen, mainLenPrev' = mainLen,
     integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   action readmitUnblocked(t) = all {
     taskState.get(t) == "unblocked",
+    takenBy.get(t) != "",
     activeRuns < maxConcurrent,
     taskState' = taskState.set(t, "running"),
     runState' = runState.set(t, "working"),
     answered' = answered, attempts' = attempts, runsSpent' = runsSpent,
     mainLen' = mainLen, mainLenPrev' = mainLen, integrating' = integrating,
+    takenBy' = takenBy,
+    ranOn' = ranOn,
   }
 
   action step = nondet t = tasks.oneOf() {
@@ -248,7 +311,7 @@ module factory {
   // A role never runs two tasks at once: one worktree, one branch.
   val oneTaskPerRole: bool =
     roles.forall(r =>
-      tasks.filter(t => ownerOf.get(t) == r and holdsRole(runState.get(t))).size() <= 1)
+      tasks.filter(t => takenBy.get(t) == r and holdsRole(runState.get(t))).size() <= 1)
 
   // Two integrations never overlap.
   val integrationSerialised: bool =
@@ -274,7 +337,36 @@ module factory {
     tasks.forall(t =>
       taskState.get(t) == "unblocked" implies not(liveRun(runState.get(t))))
 
+  // ADR-015 decision 1: work only reaches a role that declared it can do it.
+  val takerProvidesCapability: bool =
+    tasks.forall(t =>
+      takenBy.get(t) != "" implies canDo(takenBy.get(t), needsOf.get(t)))
+
+  // ADR-015 decision 4: a task sticks to the role that took it, so every
+  // attempt at it was made by the same role however many there were.
+  val attemptsStayWithOneRole: bool =
+    tasks.forall(t => ranOn.get(t).size() <= 1)
+
+  // A retried task never moves to an idle peer providing the same capability.
+  val retryNeverMovesToAPeer: bool =
+    tasks.forall(t =>
+      (attempts.get(t) > 1 and takenBy.get(t) != "")
+        implies ranOn.get(t) == Set(takenBy.get(t)))
+
+  // Fan-out has to be able to parallelise, or this is the pipeline it
+  // replaces. Stated as a negation on purpose: a violation IS the witness, and
+  // a model where this never violates would be modelling the old behaviour.
+  val neverTwoOfOneCapabilityAtOnce: bool =
+    not(tasks.exists(a => tasks.exists(b => and {
+      a != b,
+      needsOf.get(a) == needsOf.get(b),
+      liveRun(runState.get(a)),
+      liveRun(runState.get(b)),
+      takenBy.get(a) != takenBy.get(b),
+    })))
+
   val allInvariants: bool = and {
+    takerProvidesCapability, attemptsStayWithOneRole, retryNeverMovesToAPeer,
     consultNeverBlocks, unblockedHoldsNoSlot,
     noSettleThroughUnansweredGate, concurrencyRespected, gateHoldsNoSlot,
     budgetRespected, attemptsRespected, oneTaskPerRole,
