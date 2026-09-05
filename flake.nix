@@ -37,7 +37,7 @@
           ## The guest program runs on the machine the cages are on, which on
           ## macOS is the VM and never this one. It is not offered here at
           ## all: it needs setfacl, and acl does not build on darwin.
-          // lib.optionalAttrs pkgs.stdenv.isLinux {
+          // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             cageworks-container = cageworks.container;
           };
 

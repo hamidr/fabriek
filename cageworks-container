@@ -582,7 +582,9 @@ cmd_task_run() {
 			cageworks_record_comment "$clone" "$item" supervisor || true
 	fi
 
-	local uid run_dir
+	## Declared here rather than inside the brief below: a { } group is not a
+	## scope, so an assignment made there would outlive this function.
+	local uid run_dir finish own_guidance seen fresh
 	uid="$(nixcage-container uid "$role")" || die "could not get a uid for role $role"
 	run_dir="$STATE_DIR/runs/$factory/$id"
 	rm -rf "$run_dir"

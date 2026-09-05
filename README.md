@@ -103,7 +103,7 @@ person types it. A loop that picks ready work is what remains of PRD-002.
 
 ```bash
 nix develop
-nix develop --command shellcheck cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec models/factory-structure.als

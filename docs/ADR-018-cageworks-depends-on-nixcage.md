@@ -1,9 +1,9 @@
 ---
 id: ADR-018
 title: The factory becomes cageworks, a separate project that depends on nixcage
-status: implementing
+status: implemented
 date: 2026-09-05
-status_date: 2026-09-05
+status_date: 2026-09-06
 summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives
 depends_on: [ADR-002, ADR-004, ADR-010, ADR-017]
 supersedes: []
@@ -204,7 +204,7 @@ The split is done when these pass in cageworks with nixcage as an input, and
 not before:
 
 ```bash
-nix develop --command shellcheck modules/*.sh          # no nixcage script here
+nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec models/factory-structure.als

@@ -1,5 +1,5 @@
 ## Example flake for a repository a factory works. Still an ordinary flake --
-## nixcage needs nothing project-specific -- but it defines one devShell per
+## cageworks needs nothing project-specific -- but it defines one devShell per
 ## specialist instead of a single default. A role declared with
 ## 'shell = "backend-jvm"' enters the shell of that name; a role that names
 ## none enters 'default'.
@@ -7,7 +7,7 @@
 ## flake-parts is used because it makes several per-system shells readable;
 ## plain 'devShells = forAllSystems ...' produces the same attributes.
 {
-  description = "Example repository worked by a nixcage factory";
+  description = "Example repository worked by a cageworks factory";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

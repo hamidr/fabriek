@@ -79,7 +79,7 @@ A change to what a role session is shows up there as a diff.
 
 ```bash
 nix develop                          # bash, jq, shellcheck, bats, git, git-bug
-nix develop --command shellcheck cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/       # ~240 tests, a few minutes
 nix develop --command bats tests/unit/task_store.bats
 nix develop --command bats -f "sticks to the role" tests/unit/task_store.bats

@@ -1,6 +1,6 @@
 # Working as a factory role
 
-You are running as a declared role inside a nixcage factory. Your session has
+You are running as a declared role inside a cageworks factory. Your session has
 its own uid, its own worktree of the factory's repository, and its own home.
 Another role cannot read any of them, and you cannot read theirs.
 
