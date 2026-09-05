@@ -1,7 +1,7 @@
 ---
 id: ADR-018
 title: The factory becomes cageworks, a separate project that depends on nixcage
-status: proposed
+status: implementing
 date: 2026-09-05
 status_date: 2026-09-05
 summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives

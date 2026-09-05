@@ -1,7 +1,11 @@
-## nixcage host module for Linux: project containers run directly on this
-## machine, so there is no VM. Renders /etc/nixcage/config for the CLI and
-## installs the same container layer the VM uses. Secrets come from the
-## host's own sops-nix setup under /run/secrets.
+## cageworks NixOS module: the factories a machine declares and how they are
+## supervised, plus the two programs that run them.
+##
+## It requires nixcage's own module, which owns everything about a cage: the
+## workspace roots, the container layer, the VM on macOS, and the uid range a
+## role's number is allocated from. Nothing here builds a session; it declares
+## what several named workers sharing one repository are, and calls nixcage
+## when one of them needs somewhere to work (ADR-018).
 {
   config,
   pkgs,
@@ -9,32 +13,11 @@
   ...
 }:
 let
-  cfg = config.nixcage;
-  container = import ./container.nix { inherit pkgs; };
+  cfg = config.cageworks;
+  cageworks = import ./package.nix { inherit pkgs; };
 in
 {
-  options.nixcage = {
-    workspaceRoots = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      example = [ "/home/me/Src" ];
-      description = ''
-        Absolute directories whose flake subdirectories can be entered.
-        Containers bind only their own project subdirectory.
-      '';
-    };
-
-    secretEnv = lib.mkOption {
-      type = lib.types.attrsOf lib.types.str;
-      default = { };
-      example = {
-        ANTHROPIC_API_KEY = "anthropic";
-      };
-      description = ''
-        Environment variable to sops secret name mapping. Each container
-        session gets the variable set from this host's /run/secrets/<name>.
-      '';
-    };
-
+  options.cageworks = {
     factories = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -178,7 +161,7 @@ in
                       example = [ "claude" ];
                       description = ''
                         What this role's session runs. Which coding agent that
-                        is belongs to the declaration, never to nixcage. Unset
+                        is belongs to the declaration, never to cageworks. Unset
                         means the ordinary session shell.
                       '';
                     };
@@ -207,30 +190,9 @@ in
       default = { };
       description = ''
         Factories declared on this machine (PRD-003). Each assigns one
-        repository to a set of roles. Requires supervisor.roleUidRange.
+        repository to a set of roles. Requires nixcage.principalUidRange, from
+        which each role's uid is allocated.
       '';
-    };
-
-    storage = lib.mkOption {
-      type = lib.types.submodule {
-        options = {
-          dataset = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            example = "tank/nixcage";
-            description = ''
-              The ZFS dataset mounted at /var/lib/nixcage, if this host keeps
-              nixcage's state on one. Set it and every role worktree becomes a
-              child dataset, which is what makes a per-role quota possible and
-              what keeps an unclean shutdown from truncating a role's work.
-              Left null, nixcage uses ordinary directories and behaves exactly
-              as before; nothing here requires ZFS of a Linux host (ADR-017).
-            '';
-          };
-        };
-      };
-      default = { };
-      description = "Where nixcage keeps its state on this host.";
     };
 
     supervisor = lib.mkOption {
@@ -273,111 +235,34 @@ in
               How much a single role's worktree may hold, as a ZFS size. It
               bounds what one agent can write: a build loop that fills the
               volume otherwise stops every other role and the supervisor with
-              it. Null leaves a role bounded only by the pool. Ignored where
-              nixcage's state is not on a dataset.
-            '';
-          };
-          roleUidRange = lib.mkOption {
-            type = lib.types.nullOr (
-              lib.types.submodule {
-                options = {
-                  base = lib.mkOption {
-                    type = lib.types.ints.unsigned;
-                    example = 700000;
-                    description = "First uid a factory role may be allocated.";
-                  };
-                  size = lib.mkOption {
-                    type = lib.types.ints.positive;
-                    default = 64;
-                    description = "How many uids the range covers.";
-                  };
-                };
-              }
-            );
-            default = null;
-            description = ''
-              The uid range factory roles are allocated from (ADR-010). A role
-              keeps its number, and a forgotten role's number is never
-              reissued, so a new role cannot inherit a dead one's files. The
-              range must not overlap accounts that already exist here.
+              it. Null leaves a role bounded only by what nixcage's storage
+              sits on, and is what a machine without a pool always gets.
             '';
           };
         };
       };
       default = { };
-      description = "Factory supervision. Absent unless a factory is declared.";
-    };
-
-    git = lib.mkOption {
-      type = lib.types.submodule {
-        options = {
-          userName = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            example = "Ada Lovelace";
-            description = "Committer name every session uses. No identity is rendered unless both this and userEmail are set.";
-          };
-          userEmail = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            example = "ada@example.org";
-            description = "Committer email every session uses.";
-          };
-          signing.enable = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = ''
-              Sign commits and tags through the ssh-agent the CLI forwards
-              into the session. No key material is copied in, and a session
-              entered without a reachable agent simply fails to sign.
-            '';
-          };
-        };
-      };
-      default = { };
-      description = "Git identity and signing for container sessions.";
+      description = "How a factory is supervised. Absent unless one is declared.";
     };
   };
 
   config = lib.mkMerge [
     {
-    environment.systemPackages = [ container.script ];
+      environment.systemPackages = [
+        cageworks.cli
+        cageworks.container
+      ];
 
-    ## Rendered only when an identity exists: an incomplete gitconfig would
-    ## replace git's own "who are you" error with a stranger one.
-    environment.etc."nixcage/gitconfig" =
-      lib.mkIf (cfg.git.userName != null && cfg.git.userEmail != null)
-        {
-          text = container.gitConfigText cfg.git;
-        };
-
-    ## Rendered only when a role uid range is declared: an ordinary session
-    ## never reads it, and a role session refuses to start without it.
-    environment.etc."nixcage/factory" = lib.mkIf (cfg.supervisor.roleUidRange != null) {
-      text = ''
-        ROLE_UID_BASE=${toString cfg.supervisor.roleUidRange.base}
-        ROLE_UID_SIZE=${toString cfg.supervisor.roleUidRange.size}
-        TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
-        TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
-        RUN_CONCURRENCY=${toString cfg.supervisor.concurrency}
-        STORAGE_DATASET=${lib.optionalString (cfg.storage.dataset != null) cfg.storage.dataset}
-        ROLE_QUOTA=${lib.optionalString (cfg.supervisor.roleQuota != null) cfg.supervisor.roleQuota}
-      '';
-    };
-
-    environment.etc."nixcage/profile".source = container.profile;
-    environment.etc."nixcage/secret-env".text = lib.concatStrings (
-      lib.mapAttrsToList (var: secret: "${var}=${secret}\n") cfg.secretEnv
-    );
-    environment.etc."nixcage/config".text = ''
-      WORKSPACE_ROOTS=${lib.concatStringsSep ":" cfg.workspaceRoots}
-    '';
-
-    ## The container homes and skeletons live where the VM keeps them, so
-    ## the container script needs no platform branch.
-    systemd.tmpfiles.rules = [
-      "d /var/lib/nixcage 0755 root root -"
-    ];
+      ## Rendered only when a factory is declared: nothing else reads it, and
+      ## the guest program refuses to run without it.
+      environment.etc."cageworks/supervisor" = lib.mkIf (cfg.factories != { }) {
+        text = ''
+          TASK_MAX_ATTEMPTS=${toString cfg.supervisor.taskAttempts}
+          TASK_TIMEOUT_SECONDS=${toString cfg.supervisor.runTimeoutSeconds}
+          RUN_CONCURRENCY=${toString cfg.supervisor.concurrency}
+          ROLE_QUOTA=${lib.optionalString (cfg.supervisor.roleQuota != null) cfg.supervisor.roleQuota}
+        '';
+      };
     }
 
     ## The declaration is rendered as a directory tree: the guest reads a value
@@ -390,24 +275,24 @@ in
           lib.mapAttrsToList (
             factoryName: factory:
             [
-              { "nixcage/factories/${factoryName}/repository".text = factory.repository + "\n"; }
+              { "cageworks/factories/${factoryName}/repository".text = factory.repository + "\n"; }
             ]
             ++ lib.mapAttrsToList (roleName: role: {
-              "nixcage/factories/${factoryName}/roles/${roleName}/declared".text = "";
+              "cageworks/factories/${factoryName}/roles/${roleName}/declared".text = "";
             }) factory.roles
             ++ lib.mapAttrsToList (
               roleName: role:
               lib.mkIf (role.command != null) {
                 ## One word per line: a command is argv, never a shell line, so
                 ## nothing in it is re-split or expanded by anything.
-                "nixcage/factories/${factoryName}/roles/${roleName}/command".text =
+                "cageworks/factories/${factoryName}/roles/${roleName}/command".text =
                   lib.concatMapStrings (word: word + "\n") role.command;
               }
             ) factory.roles
             ++ lib.mapAttrsToList (
               roleName: role:
               lib.mkIf (role.provides != [ ]) {
-                "nixcage/factories/${factoryName}/roles/${roleName}/provides".text =
+                "cageworks/factories/${factoryName}/roles/${roleName}/provides".text =
                   lib.concatMapStrings (c: c + "\n") role.provides;
               }
             ) factory.roles
@@ -415,22 +300,22 @@ in
               roleName: role:
               lib.mkIf (role.shell != null) {
                 ## Just the name: the toolchain itself is the project's, and
-                ## nixcage only carries which of its shells this role enters.
-                "nixcage/factories/${factoryName}/roles/${roleName}/shell".text = role.shell + "\n";
+                ## cageworks only carries which of its shells this role enters.
+                "cageworks/factories/${factoryName}/roles/${roleName}/shell".text = role.shell + "\n";
               }
             ) factory.roles
                       ++ lib.concatLists (
             lib.mapAttrsToList (
               workflowName: workflow:
               (lib.imap0 (i: stage: {
-                "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                "cageworks/factories/${factoryName}/workflows/${workflowName}/stages/${
                   lib.fixedWidthNumber 2 i
                 }/needs".text = stage.needs + "\n";
               }) workflow.stages)
               ++ (lib.imap0 (
                 i: stage:
                 lib.mkIf (stage.ready != [ ]) {
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/stages/${
                     lib.fixedWidthNumber 2 i
                   }/ready".text = lib.concatMapStrings (f: f + "\n") stage.ready;
                 }
@@ -438,7 +323,7 @@ in
               ++ (lib.imap0 (
                 i: stage:
                 lib.mkIf (stage.done != null) {
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/stages/${
                     lib.fixedWidthNumber 2 i
                   }/done".text = stage.done + "\n";
                 }
@@ -446,7 +331,7 @@ in
               ++ (lib.imap0 (
                 i: stage:
                 lib.mkIf stage.fanOut {
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/stages/${
                     lib.fixedWidthNumber 2 i
                   }/fanout".text = "";
                 }
@@ -454,7 +339,7 @@ in
               ++ (lib.imap0 (
                 i: stage:
                 lib.mkIf (stage.gate != null) {
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/stages/${
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/stages/${
                     lib.fixedWidthNumber 2 i
                   }/gate".text = stage.gate + "\n";
                 }
@@ -463,16 +348,16 @@ in
                 lib.mapAttrsToList (
                   asker: targets:
                   map (target: {
-                    "nixcage/factories/${factoryName}/workflows/${workflowName}/consults/${asker}/${target}".text =
+                    "cageworks/factories/${factoryName}/workflows/${workflowName}/consults/${asker}/${target}".text =
                       "";
                   }) targets
                 ) workflow.consults
               )
               ++ [
                 {
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/budget-runs".text =
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/budget-runs".text =
                     toString workflow.budget.runs + "\n";
-                  "nixcage/factories/${factoryName}/workflows/${workflowName}/budget-tokens".text =
+                  "cageworks/factories/${factoryName}/workflows/${workflowName}/budget-tokens".text =
                     toString workflow.budget.tokens + "\n";
                 }
               ]
@@ -482,10 +367,11 @@ in
         )
       );
 
-      ## A factory whose roles have no uid range cannot give them identities.
+      ## A factory whose roles have no uid range cannot give them identities,
+      ## and the range is nixcage's to hand out from (ADR-018).
       assertions = lib.mapAttrsToList (name: _: {
-        assertion = cfg.supervisor.roleUidRange != null;
-        message = "nixcage.factories.${name} needs nixcage.supervisor.roleUidRange";
+        assertion = config.nixcage.principalUidRange != null;
+        message = "cageworks.factories.${name} needs nixcage.principalUidRange";
       }) cfg.factories;
     }
   ];

@@ -11,16 +11,16 @@
 ## not a daemon: a run may outlive the invocation that started it, and a cap
 ## nobody can read after a crash is not a cap.
 ##
-## Sourced by store path into nixcage-container alongside role-uid.sh.
+## Sourced by store path into cageworks-container alongside names.sh.
 
-nixcage_cap_active_dir() {
+cageworks_cap_active_dir() {
 	echo "$1/active"
 }
 
 ## How many runs are in flight, machine-wide.
-nixcage_cap_active() {
+cageworks_cap_active() {
 	local root="$1" dir
-	dir="$(nixcage_cap_active_dir "$root")"
+	dir="$(cageworks_cap_active_dir "$root")"
 	[ -d "$dir" ] || {
 		echo 0
 		return 0
@@ -34,37 +34,37 @@ nixcage_cap_active() {
 
 ## Take a slot, or refuse. Claiming a run that already holds one is not a
 ## second claim: a retry of the same run is the same run.
-nixcage_cap_claim() {
+cageworks_cap_claim() {
 	local root="$1" factory="$2" id="$3" max="$4"
-	nixcage_role_name_ok "$factory" || return 1
+	cageworks_name_ok "$factory" || return 1
 	[[ "$id" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || return 1
 
 	local dir marker
-	dir="$(nixcage_cap_active_dir "$root")"
+	dir="$(cageworks_cap_active_dir "$root")"
 	marker="$dir/$factory-$id"
 	mkdir -p "$dir"
 	[ -e "$marker" ] && return 0
 
 	local active
-	active="$(nixcage_cap_active "$root")"
+	active="$(cageworks_cap_active "$root")"
 	if [ "$max" -gt 0 ] && [ "$active" -ge "$max" ]; then
-		echo "nixcage: $active runs already in flight, and the machine allows $max" >&2
+		echo "cageworks: $active runs already in flight, and the machine allows $max" >&2
 		return 1
 	fi
 	: >"$marker"
 }
 
-nixcage_cap_release() {
+cageworks_cap_release() {
 	local root="$1" factory="$2" id="$3"
-	nixcage_role_name_ok "$factory" || return 1
-	rm -f "$(nixcage_cap_active_dir "$root")/$factory-$id"
+	cageworks_name_ok "$factory" || return 1
+	rm -f "$(cageworks_cap_active_dir "$root")/$factory-$id"
 }
 
-nixcage_cap_spent() {
+cageworks_cap_spent() {
 	local root="$1" factory="$2" workflow="$3" kind="$4"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$workflow" || return 1
-	nixcage_role_name_ok "$kind" || return 1
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$workflow" || return 1
+	cageworks_name_ok "$kind" || return 1
 	local file="$root/budget/$factory/$workflow/$kind"
 	if [ -f "$file" ]; then
 		cat "$file"
@@ -76,14 +76,14 @@ nixcage_cap_spent() {
 ## Charge a workflow. An allowance of zero is unbounded rather than forbidden:
 ## a workflow that declares no budget is one nobody has bounded yet, not one
 ## that may not run.
-nixcage_cap_spend() {
+cageworks_cap_spend() {
 	local root="$1" factory="$2" workflow="$3" kind="$4" amount="$5" max="$6"
 	local spent
-	spent="$(nixcage_cap_spent "$root" "$factory" "$workflow" "$kind")" || return 1
+	spent="$(cageworks_cap_spent "$root" "$factory" "$workflow" "$kind")" || return 1
 
 	local after=$((spent + amount))
 	if [ "$max" -gt 0 ] && [ "$after" -gt "$max" ]; then
-		echo "nixcage: $workflow has spent $spent of $max $kind, and this run needs $amount" >&2
+		echo "cageworks: $workflow has spent $spent of $max $kind, and this run needs $amount" >&2
 		return 1
 	fi
 

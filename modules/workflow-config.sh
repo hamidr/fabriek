@@ -10,12 +10,12 @@
 ##
 ## Rendered as a directory tree for the reason the rest of the declaration is:
 ## a shell script reads a value by reading a file. Sourced by store path into
-## nixcage-container alongside role-uid.sh.
+## cageworks-container alongside names.sh.
 
-nixcage_workflow_dir() {
+cageworks_workflow_dir() {
 	local root="$1" factory="$2" workflow="$3"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$workflow" || return 1
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$workflow" || return 1
 	echo "$root/$factory/workflows/$workflow"
 }
 
@@ -27,12 +27,12 @@ nixcage_workflow_dir() {
 ## A workflow with no stages is a declaration mistake rather than an empty
 ## pipeline, so it is refused here instead of producing a workflow nothing can
 ## run.
-nixcage_workflow_stages() {
+cageworks_workflow_stages() {
 	local root="$1" factory="$2" workflow="$3"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	if [ ! -d "$dir" ]; then
-		echo "nixcage: no workflow declared as $workflow" >&2
+		echo "cageworks: no workflow declared as $workflow" >&2
 		return 1
 	fi
 
@@ -44,20 +44,20 @@ nixcage_workflow_stages() {
 		stages+=("$index $(cat "$path/needs" 2>/dev/null)")
 	done
 	if [ "${#stages[@]}" -eq 0 ]; then
-		echo "nixcage: workflow $workflow declares no stages" >&2
+		echo "cageworks: workflow $workflow declares no stages" >&2
 		return 1
 	fi
 	printf '%s\n' "${stages[@]}" | sort
 }
 
 ## Where a filed goal enters.
-nixcage_workflow_entry() {
-	nixcage_workflow_stages "$1" "$2" "$3" | head -1
+cageworks_workflow_entry() {
+	cageworks_workflow_stages "$1" "$2" "$3" | head -1
 }
 
 ## The stage after this one, or nothing at the end of the pipeline. Reaching
 ## the end is how work finishes, not an error.
-nixcage_workflow_next() {
+cageworks_workflow_next() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local seen="" line
 	while IFS= read -r line; do
@@ -66,15 +66,15 @@ nixcage_workflow_next() {
 			return 0
 		fi
 		[ "${line%% *}" = "$index" ] && seen=yes
-	done < <(nixcage_workflow_stages "$root" "$factory" "$workflow") || return 1
+	done < <(cageworks_workflow_stages "$root" "$factory" "$workflow") || return 1
 	echo ""
 }
 
 ## The capability a stage needs.
-nixcage_workflow_stage_needs() {
+cageworks_workflow_stage_needs() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -f "$dir/stages/$index/needs" ] || return 1
 	cat "$dir/stages/$index/needs"
 }
@@ -82,10 +82,10 @@ nixcage_workflow_stage_needs() {
 ## The fields a task must carry before this stage may take it, one per line.
 ## Checked for presence and nothing else: it is a metadata check, and reads
 ## nothing anyone wrote (ADR-015).
-nixcage_workflow_stage_ready() {
+cageworks_workflow_stage_ready() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -f "$dir/stages/$index/ready" ] || return 0
 	cat "$dir/stages/$index/ready"
 }
@@ -93,25 +93,25 @@ nixcage_workflow_stage_ready() {
 ## What finishing means at this stage, as prose. Never enforced: judging
 ## whether work meets a bar is reading content, which belongs in a cage, so
 ## this is handed to the role that will judge it (ADR-015).
-nixcage_workflow_stage_done() {
+cageworks_workflow_stage_done() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -f "$dir/stages/$index/done" ] || return 0
 	cat "$dir/stages/$index/done"
 }
 
-nixcage_workflow_stage_fans_out() {
+cageworks_workflow_stage_fans_out() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -f "$dir/stages/$index/fanout" ]
 }
 
-nixcage_workflow_stage_gate() {
+cageworks_workflow_stage_gate() {
 	local root="$1" factory="$2" workflow="$3" index="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -f "$dir/stages/$index/gate" ] || return 0
 	cat "$dir/stages/$index/gate"
 }
@@ -119,21 +119,21 @@ nixcage_workflow_stage_gate() {
 ## Whether one role may ask another. Declared per asking role, and deliberately
 ## allowed to point backwards: a consult creates a leaf task, so no chain of
 ## roles waiting on each other can close into a loop whatever this graph says.
-nixcage_workflow_may_consult() {
+cageworks_workflow_may_consult() {
 	local root="$1" factory="$2" workflow="$3" asker="$4" target="$5"
-	nixcage_role_name_ok "$asker" || return 1
-	nixcage_role_name_ok "$target" || return 1
+	cageworks_name_ok "$asker" || return 1
+	cageworks_name_ok "$target" || return 1
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	[ -e "$dir/consults/$asker/$target" ]
 }
 
 ## What a workflow may spend, by kind. Absent means unbounded: a workflow
 ## nobody has bounded yet is not a workflow that may not run.
-nixcage_workflow_budget() {
+cageworks_workflow_budget() {
 	local root="$1" factory="$2" workflow="$3" kind="$4"
 	local dir
-	dir="$(nixcage_workflow_dir "$root" "$factory" "$workflow")" || return 1
+	dir="$(cageworks_workflow_dir "$root" "$factory" "$workflow")" || return 1
 	if [ -f "$dir/budget-$kind" ]; then
 		cat "$dir/budget-$kind"
 	else

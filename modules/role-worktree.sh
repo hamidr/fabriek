@@ -2,27 +2,27 @@
 ## The worktree a factory role works in, and the parts of the repository's git
 ## directory its uid is granted (ADR-010, PRD-003).
 ##
-## Sourced by store path into nixcage-container, alongside role-uid.sh, whose
-## nixcage_role_name_ok this file relies on. A file rather than an inline
+## Sourced by store path into cageworks-container, alongside names.sh, whose
+## cageworks_name_ok this file relies on. A file rather than an inline
 ## string so shellcheck reads it and bats can source it.
 
-## Role worktrees live in nixcage's own state rather than under a workspace
+## Role worktrees live in the state nixcage keeps rather than under a workspace
 ## root: they belong to the supervisor, and putting them beside the operator's
 ## projects would make them enterable by hand as if they were projects.
-nixcage_role_worktree_path() {
+cageworks_role_worktree_path() {
 	local state="$1" factory="$2" role="$3"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$role" || return 1
 	echo "$state/worktrees/$factory/$role"
 }
 
 ## A role writes only refs under its own name, so every branch it takes is
 ## constructed here rather than anywhere a role's own string could reach.
 ## Phase 1 has no tasks, so the default is one working branch per role.
-nixcage_role_branch() {
+cageworks_role_branch() {
 	local role="$1" leaf="${2:-work}"
-	nixcage_role_name_ok "$role" || return 1
-	nixcage_role_name_ok "$leaf" || return 1
+	cageworks_name_ok "$role" || return 1
+	cageworks_name_ok "$leaf" || return 1
 	echo "$role/$leaf"
 }
 
@@ -30,9 +30,9 @@ nixcage_role_branch() {
 ## directory itself and packed-refs stay unreachable: packed-refs holds ref
 ## values, so a role able to write it could redefine main without ever
 ## touching refs/heads/main.
-nixcage_role_acl_targets() {
+cageworks_role_acl_targets() {
 	local gitdir="$1" role="$2"
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$role" || return 1
 	echo "$gitdir/objects"
 	echo "$gitdir/refs/heads/$role"
 	echo "$gitdir/logs/refs/heads/$role"
@@ -43,22 +43,21 @@ nixcage_role_acl_targets() {
 ## is measured behaviour: chowning the tree and its administrative directory is
 ## what makes libgit2 open the repository, and the ACLs are what let a foreign
 ## uid write objects and its own refs with no shared group (ADR-010).
-nixcage_role_worktree_ensure() {
-	local state="$1" factory="$2" role="$3" repo="$4" uid="$5"
-	local dataset_root="${6:-}" quota="${7:-}"
+cageworks_role_worktree_ensure() {
+	local state="$1" factory="$2" role="$3" repo="$4" uid="$5" quota="${6:-}"
 
 	local path branch gitdir target
-	path="$(nixcage_role_worktree_path "$state" "$factory" "$role")" || return 1
-	branch="$(nixcage_role_branch "$role")" || return 1
+	path="$(cageworks_role_worktree_path "$state" "$factory" "$role")" || return 1
+	branch="$(cageworks_role_branch "$role")" || return 1
 
 	gitdir="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" || return 1
 
-	## Where nixcage's state is on ZFS the worktree is a dataset of its own,
-	## so what a role writes can be bounded and an unclean shutdown cannot
-	## leave its files truncated (ADR-017). Creating it mounts the directory,
-	## which is why the worktree is recognised by its pointer rather than by
-	## the directory existing.
-	nixcage_storage_ensure_worktree "$dataset_root" "$factory" "$role" "$path" "$quota" || return 1
+	## The worktree is asked for rather than made, because what a role may
+	## hold and whether an unclean stop can truncate its work are properties
+	## of the filesystem underneath, which is nixcage's to know (ADR-017,
+	## ADR-018). Asking may mount a dataset here, which is why the worktree is
+	## recognised by its pointer rather than by the directory existing.
+	nixcage-container storage ensure "$path" "$uid" "$quota" >/dev/null || return 1
 
 	if [ ! -e "$path/.git" ]; then
 		mkdir -p "$(dirname "$path")"
@@ -82,7 +81,7 @@ nixcage_role_worktree_ensure() {
 	while IFS= read -r target; do
 		[ -e "$target" ] || continue
 		setfacl -R -m "u:$uid:rwX" -m "d:u:$uid:rwX" "$target" || return 1
-	done < <(nixcage_role_acl_targets "$gitdir" "$role")
+	done < <(cageworks_role_acl_targets "$gitdir" "$role")
 
 	echo "$path"
 }

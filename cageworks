@@ -1,0 +1,333 @@
+#!/usr/bin/env bash
+# cageworks -- run a factory of named roles over one repository.
+#
+# What an operator types. It files goals, reads back what is there, enters a
+# role by hand, and hands the factory's work to the operator's own repository.
+# None of it knows where the cages are or how one is reached: every guest
+# command goes through 'nixcage exec', which is nixcage's transport and the
+# only thing here that touches it (ADR-018).
+
+set -euo pipefail
+
+CAGEWORKS_VERSION="1.0.0"
+
+## The pane runs this script again, so it needs a path that resolves from
+## wherever herdr starts the command rather than from the caller's shell.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+CYAN=$'\033[0;36m'
+BOLD=$'\033[1m'
+NC=$'\033[0m'
+
+log_info() { echo -e "${CYAN}[cageworks]${NC} $*"; }
+log_ok()   { echo -e "${GREEN}[cageworks]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[cageworks]${NC} $*"; }
+log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
+
+## The program that carries a command to the machine the cages are on. Named
+## once so the suite can stub it and so there is one place this depends on
+## nixcage at all.
+NIXCAGE="${CAGEWORKS_NIXCAGE:-nixcage}"
+
+## Run a guest command and return its output. Every word is passed through as
+## argv by nixcage exec, so nothing here is quoted for a remote shell and
+## nothing a role produced is ever re-split.
+guest() {
+  "$NIXCAGE" exec -- cageworks-container "$@"
+}
+
+## Tasks: file a goal into a factory, and read back what is there. A task is
+## named rather than located, so none of this cares where it is run from.
+cmd_task() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+  file)
+    local factory="${1:-}" workflow="${2:-}"
+    if [[ -z "$factory" || -z "$workflow" ]]; then
+      log_err "usage: cageworks task file <factory> <workflow> [--acceptance <text>]"
+      exit 1
+    fi
+    shift 2
+    ## A goal names what should happen. Who does it is the workflow's first
+    ## stage, so the operator never picks a role by hand.
+    local acceptance=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+      --acceptance)
+        acceptance="${2:-}"
+        shift 2
+        ;;
+      *)
+        log_err "unknown option for task file: $1"
+        exit 1
+        ;;
+      esac
+    done
+    guest task-file "$factory" "$workflow" "$acceptance"
+    ;;
+  list)
+    local factory="${1:-}"
+    [[ -n "$factory" ]] || {
+      log_err "usage: cageworks task list <factory> [state]"
+      exit 1
+    }
+    guest task-list "$factory" "${2:-}"
+    ;;
+  show)
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: cageworks task show <factory> <id>"
+      exit 1
+    fi
+    guest task-show "$factory" "$id"
+    ;;
+  answer)
+    local factory="${1:-}" id="${2:-}" answer="${3:-}"
+    if [[ -z "$factory" || -z "$id" || -z "$answer" ]]; then
+      log_err "usage: cageworks task answer <factory> <id> approve|reject [reason]"
+      exit 1
+    fi
+    guest task-answer "$factory" "$id" "$answer" "${4:-}"
+    ;;
+  thread)
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: cageworks task thread <factory> <id>"
+      exit 1
+    fi
+    guest task-thread "$factory" "$id"
+    ;;
+  run)
+    local factory="${1:-}" id="${2:-}"
+    if [[ -z "$factory" || -z "$id" ]]; then
+      log_err "usage: cageworks task run <factory> <id>"
+      exit 1
+    fi
+    ## No role is named: the stage says what the work needs and the first idle
+    ## role providing it takes the task.
+    ##
+    ## This runs an agent session for as long as the declared timeout allows,
+    ## so it is the one task command that is not a quick read.
+    guest task-run "$factory" "$id"
+    ;;
+  *)
+    log_err "usage: cageworks task file|list|show|thread|run|answer ..."
+    exit 1
+    ;;
+  esac
+}
+
+## herdr's own socket. The CLI's 'pane report-agent' refuses its own required
+## --source flag in 0.8.0, so the report is written to the socket directly.
+herdr_socket() {
+  echo "${CAGEWORKS_HERDR_SOCK:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock}"
+}
+
+## Tell the console what a role is doing. Best effort on purpose: a console
+## that does not show a state is worse than one that does, and neither is worth
+## refusing to run a session over. herdr's own detection only recognises the
+## agents it knows, which is why an arbitrary role has to be reported at all.
+herdr_report_state() {
+  local pane="$1" role="$2" state="$3" sock
+  sock="$(herdr_socket)"
+  [[ -S "$sock" ]] || return 0
+  command -v nc >/dev/null 2>&1 || return 0
+  jq -cn --arg p "$pane" --arg a "$role" --arg s "$state" \
+    '{id:"cageworks",method:"pane.report_agent",params:{pane_id:$p,source:"cageworks",agent:$a,state:$s}}' |
+    nc -U -w 2 "$sock" >/dev/null 2>&1 || true
+}
+
+## Enter a declared factory role by hand. Unlike a task run this is a person:
+## the session signs through their forwarded agent, exactly as entering an
+## ordinary project does, and ADR-009's cage key belongs to the run nobody
+## watches.
+cmd_role() {
+  local pane_mode="" report_pane=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --pane)
+      pane_mode=yes
+      shift
+      ;;
+    --report-to)
+      report_pane="${2:-}"
+      shift 2
+      ;;
+    *) break ;;
+    esac
+  done
+
+  local factory="${1:-}" role="${2:-}"
+  if [[ -z "$factory" || -z "$role" ]]; then
+    log_err "usage: cageworks role [--pane] <factory> <role> [-- cmd...]"
+    exit 1
+  fi
+  shift 2
+
+  # Accept both 'role f r -- cmd...' and 'role f r cmd...'.
+  [[ "${1:-}" == "--" ]] && shift
+
+  # A pane of its own, so the operator sees every role in one place without
+  # any of them taking over the terminal they started it from.
+  if [[ -n "$pane_mode" ]]; then
+    require_cmd "herdr"
+    require_cmd "jq"
+
+    # herdr's pane run types its words into the pane's shell rather than
+    # executing them, so everything that goes through it is keystrokes. Only
+    # the fixed words of this invocation may: a session command would be
+    # re-split by that shell, and what a role runs is the declaration's
+    # business anyway.
+    if [[ $# -gt 0 ]]; then
+      log_err "role --pane takes no session command: the role's declaration says what it runs"
+      exit 1
+    fi
+
+    local created pane
+    created="$(herdr workspace create --no-focus --label "$factory/$role" --cwd "$PWD")" ||
+      { log_err "could not create a herdr workspace for $factory/$role"; exit 1; }
+    pane="$(printf '%s' "$created" | jq -r '.result.root_pane.pane_id')"
+    if [[ -z "$pane" || "$pane" == "null" ]]; then
+      log_err "herdr did not name a pane for $factory/$role"
+      exit 1
+    fi
+
+    # Quoted word by word, because the pane's shell re-splits what it is sent
+    # and this script's own path may contain spaces.
+    herdr pane run "$pane" \
+      "$(printf '%q' "$SELF")" role --report-to "$(printf '%q' "$pane")" \
+      "$(printf '%q' "$factory")" "$(printf '%q' "$role")"
+    echo "$pane"
+    return
+  fi
+
+  # Reporting brackets the session rather than following it: herdr's agent
+  # wait does not observe a reported state, so the state is only ever as
+  # accurate as the moments it is written.
+  if [[ -n "$report_pane" ]]; then
+    herdr_report_state "$report_pane" "$role" working
+    # shellcheck disable=SC2064  # expand now: the pane is out of scope later
+    trap "herdr_report_state '$report_pane' '$role' idle" EXIT
+  fi
+
+  # The socket the session signs through lives on the far side of the
+  # transport, so it is named there rather than here: on macOS its path is the
+  # VM's and nothing on this side can spell it. Both programs are told, and
+  # they are told different things -- nixcage forwards the agent and carries
+  # the variable across sudo, cageworks-container reads it once it is there.
+  local -a forward=() use_agent=()
+  if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
+    forward=(--agent)
+    use_agent=(--agent)
+  fi
+
+  if [[ $# -eq 0 ]]; then
+    log_info "Entering role $role of factory $factory..."
+    forward+=(--tty)
+  fi
+
+  "$NIXCAGE" exec ${forward[@]+"${forward[@]}"} -- cageworks-container role-enter \
+    ${use_agent[@]+"${use_agent[@]}"} "$factory" "$role" "$@"
+}
+
+## The factory as a whole: what it is doing, handing its work to the operator,
+## and starting it again after it stopped itself.
+cmd_factory() {
+  local sub="${1:-}" factory="${2:-}"
+  if [[ -z "$sub" || -z "$factory" ]]; then
+    log_err "usage: cageworks factory status|sync|resume|reports <factory>"
+    exit 1
+  fi
+  case "$sub" in
+  status | sync | resume | reports)
+    guest "factory-$sub" "$factory"
+    ;;
+  integrate)
+    local commit="${3:-}"
+    if [[ -z "$commit" ]]; then
+      log_err "usage: cageworks factory integrate <factory> <commit>"
+      exit 1
+    fi
+    guest factory-integrate "$factory" "$commit"
+    ;;
+  *)
+    log_err "usage: cageworks factory status|sync|integrate|resume|reports <factory>"
+    exit 1
+    ;;
+  esac
+}
+
+require_cmd() {
+  local cmd="$1"
+  local hint="${2:-}"
+  if ! command -v "$cmd" &>/dev/null; then
+    log_err "'$cmd' is required but not found."
+    [[ -n "$hint" ]] && log_err "  $hint"
+    exit 1
+  fi
+}
+
+cmd_help() {
+  cat <<HELP
+${BOLD}cageworks${NC} v${CAGEWORKS_VERSION} -- a factory of named roles over one repository
+
+${BOLD}Usage:${NC}
+  cageworks <command> [args...]
+
+${BOLD}Commands:${NC}
+  role [--pane] <factory> <role> [-- cmd...]
+                     Enter a declared role in its own worktree and uid
+                     (--pane: run it in a herdr pane of its own instead)
+  task file <factory> <workflow> [--acceptance <text>]
+  task list <factory> [state]
+  task show <factory> <id>
+  task thread <factory> <id>
+  task run <factory> <id>
+  task answer <factory> <id> approve|reject [reason]
+                     File a goal into a factory, read back what is there, and
+                     run one task in its role's cage
+  factory status|sync|resume|reports <factory>
+  factory integrate <factory> <commit>
+                     What a factory is doing, handing its work to you, and
+                     starting it again after it stopped itself
+  version            Print version
+  help               Show this help
+
+${BOLD}Configuration:${NC}
+  cageworks runs on nixcage. Import both modules in the configuration that
+  declares your cages -- nixcage's for the machine, cageworks' for the
+  factories -- and declare:
+
+    nixcage.principalUidRange = { base = 700000; size = 64; };
+    cageworks.factories.acme = { repository = ...; roles = ...; };
+
+  A factory works a clone of the repository you name, on nixcage's own
+  storage, and hands its branch back to you with 'cageworks factory sync'.
+HELP
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+  case "$command" in
+  role)    cmd_role "$@" ;;
+  task)    cmd_task "$@" ;;
+  factory) cmd_factory "$@" ;;
+  version | --version | -v) echo "cageworks $CAGEWORKS_VERSION" ;;
+  help | --help | -h) cmd_help ;;
+  *)
+    log_err "Unknown command: $command"
+    cmd_help
+    exit 1
+    ;;
+  esac
+}
+
+# Allow sourcing without executing (for tests)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

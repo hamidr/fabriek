@@ -5,11 +5,11 @@ load ../test_helper/common
 
 setup() {
 	setup_temp_dir
-	# shellcheck source=../../modules/role-uid.sh
-	source "$NIXCAGE_ROOT/modules/role-uid.sh"
+	# shellcheck source=../../modules/names.sh
+	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/role-guidance.sh
-	source "$NIXCAGE_ROOT/modules/role-guidance.sh"
-	GUIDE="$NIXCAGE_ROOT/modules/role-guidance.md"
+	source "$CAGEWORKS_ROOT/modules/role-guidance.sh"
+	GUIDE="$CAGEWORKS_ROOT/modules/role-guidance.md"
 }
 
 teardown() {
@@ -17,14 +17,18 @@ teardown() {
 }
 
 @test "a role session is given the guidance, bound read-only" {
-	run nixcage_role_guidance_args /store/guidance.md builder
+	run cageworks_role_guidance_args /store/guidance.md builder
 	assert_success
-	assert_line --index 0 "--bind-ro=/store/guidance.md:/etc/nixcage/role-guidance.md"
-	assert_line --index 1 "--setenv=NIXCAGE_ROLE_GUIDANCE=/etc/nixcage/role-guidance.md"
+	# One argv word per line: nixcage takes a flag and its value as separate
+	# arguments, so nothing in either is ever re-split.
+	assert_line --index 0 "--bind-ro"
+	assert_line --index 1 "/store/guidance.md:/etc/cageworks/role-guidance.md"
+	assert_line --index 2 "--setenv"
+	assert_line --index 3 "CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md"
 }
 
 @test "an ordinary session is given nothing: it is not a role" {
-	run nixcage_role_guidance_args /store/guidance.md ""
+	run cageworks_role_guidance_args /store/guidance.md ""
 	assert_success
 	assert_output ""
 }
@@ -44,7 +48,7 @@ teardown() {
 }
 
 @test "the guidance says where to record an outcome and that silence is failure" {
-	run grep -c "NIXCAGE_TASK" "$GUIDE"
+	run grep -c "CAGEWORKS_TASK" "$GUIDE"
 	assert_success
 	run grep -iE "outcome" "$GUIDE"
 	assert_success
@@ -53,9 +57,9 @@ teardown() {
 }
 
 @test "the guidance says how to add to the record and ask for a role" {
-	run grep -c "NIXCAGE_TASK/comments" "$GUIDE"
+	run grep -c "CAGEWORKS_TASK/comments" "$GUIDE"
 	assert_success
-	run grep -c "NIXCAGE_TASK/mentions" "$GUIDE"
+	run grep -c "CAGEWORKS_TASK/mentions" "$GUIDE"
 	assert_success
 }
 
@@ -82,7 +86,7 @@ teardown() {
 @test "the guidance says work arrives by capability and stays with its taker" {
 	# A role that assumes a pipeline named it will not understand why a peer
 	# is working the same kind of task, or why its own retry came back to it.
-	run cat "$NIXCAGE_ROOT/modules/role-guidance.md"
+	run cat "$CAGEWORKS_ROOT/modules/role-guidance.md"
 	assert_output --partial "declared you can do it"
 	assert_output --partial "stays yours"
 }

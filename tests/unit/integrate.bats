@@ -6,10 +6,10 @@ load ../test_helper/common
 
 setup() {
 	setup_temp_dir
-	# shellcheck source=../../modules/role-uid.sh
-	source "$NIXCAGE_ROOT/modules/role-uid.sh"
+	# shellcheck source=../../modules/names.sh
+	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/integrate.sh
-	source "$NIXCAGE_ROOT/modules/integrate.sh"
+	source "$CAGEWORKS_ROOT/modules/integrate.sh"
 	STATE="$TEST_TEMP_DIR/state"
 	REPO="$TEST_TEMP_DIR/operator"
 	CLONE="$TEST_TEMP_DIR/clone"
@@ -44,7 +44,7 @@ commit_in_clone() { # message -> prints the new sha
 }
 
 @test "two repositories that agree have not diverged" {
-	run nixcage_integrate_diverged "$CLONE" "$REPO" main
+	run cageworks_integrate_diverged "$CLONE" "$REPO" main
 	assert_failure
 }
 
@@ -52,7 +52,7 @@ commit_in_clone() { # message -> prints the new sha
 	git -C "$CLONE" switch -q -c work main
 	commit_in_clone two >/dev/null
 	git -C "$CLONE" branch -f main work
-	run nixcage_integrate_diverged "$CLONE" "$REPO" main
+	run cageworks_integrate_diverged "$CLONE" "$REPO" main
 	assert_failure
 }
 
@@ -61,7 +61,7 @@ commit_in_clone() { # message -> prints the new sha
 	echo two >>"$REPO/a.txt"
 	git -C "$REPO" commit -aqm two
 	git -C "$REPO" switch -q operator/work
-	run nixcage_integrate_diverged "$CLONE" "$REPO" main
+	run cageworks_integrate_diverged "$CLONE" "$REPO" main
 	assert_failure
 }
 
@@ -73,39 +73,39 @@ commit_in_clone() { # message -> prints the new sha
 	git -C "$REPO" switch -q main
 	git -C "$REPO" commit -q --amend -m "one, rewritten"
 	git -C "$REPO" switch -q operator/work
-	run nixcage_integrate_diverged "$CLONE" "$REPO" main
+	run cageworks_integrate_diverged "$CLONE" "$REPO" main
 	assert_success
 }
 
 @test "a halted factory says so, and says why" {
-	nixcage_integrate_halt "$STATE" acme "the operator rewrote main"
-	run nixcage_integrate_halted "$STATE" acme
+	cageworks_integrate_halt "$STATE" acme "the operator rewrote main"
+	run cageworks_integrate_halted "$STATE" acme
 	assert_success
 	assert_output --partial "rewrote main"
 }
 
 @test "a factory nobody halted is not halted" {
-	run nixcage_integrate_halted "$STATE" acme
+	run cageworks_integrate_halted "$STATE" acme
 	assert_failure
 }
 
 @test "halting one factory leaves the others running" {
-	nixcage_integrate_halt "$STATE" acme "reason"
-	run nixcage_integrate_halted "$STATE" other
+	cageworks_integrate_halt "$STATE" acme "reason"
+	run cageworks_integrate_halted "$STATE" other
 	assert_failure
 }
 
 @test "resuming is explicit, and undoes the halt" {
-	nixcage_integrate_halt "$STATE" acme "reason"
-	nixcage_integrate_resume "$STATE" acme
-	run nixcage_integrate_halted "$STATE" acme
+	cageworks_integrate_halt "$STATE" acme "reason"
+	cageworks_integrate_resume "$STATE" acme
+	run cageworks_integrate_halted "$STATE" acme
 	assert_failure
 }
 
 @test "advancing the shared branch to a descendant works" {
 	git -C "$CLONE" switch -q -c work main
 	sha="$(commit_in_clone two)"
-	run nixcage_integrate_advance "$CLONE" main "$sha"
+	run cageworks_integrate_advance "$CLONE" main "$sha"
 	assert_success
 	[ "$(git -C "$CLONE" rev-parse main)" = "$sha" ]
 }
@@ -117,7 +117,7 @@ commit_in_clone() { # message -> prints the new sha
 	# A commit on a branch that left main behind is not a fast-forward.
 	git -C "$CLONE" switch -q -c sideways HEAD~1
 	side="$(commit_in_clone sideways)"
-	run nixcage_integrate_advance "$CLONE" main "$side"
+	run cageworks_integrate_advance "$CLONE" main "$side"
 	assert_failure
 	assert_output --partial "fast-forward"
 }
@@ -125,8 +125,8 @@ commit_in_clone() { # message -> prints the new sha
 @test "the operator's checkout receives what the factory advanced" {
 	git -C "$CLONE" switch -q -c work main
 	sha="$(commit_in_clone two)"
-	nixcage_integrate_advance "$CLONE" main "$sha"
-	run nixcage_integrate_publish "$CLONE" "$REPO" main
+	cageworks_integrate_advance "$CLONE" main "$sha"
+	run cageworks_integrate_publish "$CLONE" "$REPO" main
 	assert_success
 	[ "$(git -C "$REPO" rev-parse main)" = "$sha" ]
 }
@@ -138,6 +138,6 @@ commit_in_clone() { # message -> prints the new sha
 	git -C "$REPO" switch -q main
 	git -C "$REPO" commit -q --amend -m "one, rewritten"
 	git -C "$REPO" switch -q operator/work
-	run nixcage_integrate_publish "$CLONE" "$REPO" main
+	run cageworks_integrate_publish "$CLONE" "$REPO" main
 	assert_failure
 }

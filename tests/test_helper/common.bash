@@ -57,3 +57,47 @@ SSH_PORT=$port
 WORKSPACE_ROOTS=$roots
 EOF
 }
+
+CAGEWORKS_ROOT="$NIXCAGE_ROOT"
+CAGEWORKS_CONTAINER_BIN="${CAGEWORKS_ROOT}/cageworks-container"
+CAGEWORKS_BIN="${CAGEWORKS_ROOT}/cageworks"
+
+# Run the guest program as a command. It is a real script rather than a Nix
+# string so the suite can drive it directly, which is what makes the seam
+# something a test asserts on rather than something it crosses.
+run_cageworks_container() {
+	run bash "$CAGEWORKS_CONTAINER_BIN" "$@"
+}
+
+# Run the operator's CLI as a command.
+run_cageworks() {
+	run bash "$CAGEWORKS_BIN" "$@"
+}
+
+# The transport, stubbed. cageworks reaches its guest program through
+# 'nixcage exec' and knows nothing else about where the cages are, so this is
+# the whole of what the CLI tests have to stand in for.
+stub_nixcage() {
+	STUB_DIR="$TEST_TEMP_DIR/bin"
+	NIXCAGE_CALLS="$TEST_TEMP_DIR/nixcage-calls"
+	NIXCAGE_ARGV="$TEST_TEMP_DIR/nixcage-argv"
+	mkdir -p "$STUB_DIR"
+	export PATH="$STUB_DIR:$PATH" NIXCAGE_CALLS NIXCAGE_ARGV
+	cat >"$STUB_DIR/nixcage" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >>"$NIXCAGE_CALLS"
+printf '%s\n' "\$@" >>"$NIXCAGE_ARGV"
+STUB
+	chmod +x "$STUB_DIR/nixcage"
+}
+
+# One line per invocation, for asserting on the shape of a call.
+nixcage_calls() {
+	cat "$NIXCAGE_CALLS"
+}
+
+# One line per argument, for asserting that a word with spaces in it stayed
+# one word.
+nixcage_argv() {
+	cat "$NIXCAGE_ARGV"
+}

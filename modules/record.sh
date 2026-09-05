@@ -8,15 +8,15 @@
 ## there is exactly one acting identity at a time, and it is set before each
 ## write.
 ##
-## Sourced by store path into nixcage-container alongside role-uid.sh.
+## Sourced by store path into cageworks-container alongside names.sh.
 
 ## The identity git-bug writes as, for one role. Created on first use and found
 ## again after. The full id matters: git-bug accepts a truncated one and then
 ## fails silently, which is how a builder's comment was once attributed to the
 ## architect.
-nixcage_record_identity() {
+cageworks_record_identity() {
 	local repo="$1" role="$2"
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$role" || return 1
 
 	## git-bug has no -C: it works on the repository it is run in, so every
 	## call happens in a subshell that has moved there.
@@ -38,11 +38,11 @@ nixcage_record_identity() {
 ## Write as this role for the duration of one command. Nothing else may write
 ## the record concurrently, which holds because the supervisor is the only
 ## writer and it works one item at a time.
-nixcage_record_as() {
+cageworks_record_as() {
 	local repo="$1" role="$2"
 	shift 2
 	local id
-	id="$(nixcage_record_identity "$repo" "$role")" || return 1
+	id="$(cageworks_record_identity "$repo" "$role")" || return 1
 	[ -n "$id" ] || return 1
 	git -C "$repo" config git-bug.identity "$id" || return 1
 	(cd "$repo" && "$@")
@@ -50,25 +50,25 @@ nixcage_record_as() {
 
 ## File an item. The body comes from standard input, so nothing about it
 ## reaches a command line; git-bug takes the first line as the title.
-nixcage_record_new() {
+cageworks_record_new() {
 	local repo="$1" role="$2"
-	nixcage_record_as "$repo" "$role" \
+	cageworks_record_as "$repo" "$role" \
 		git-bug bug new --non-interactive -F - |
 		tail -1 | cut -d' ' -f1
 }
 
-nixcage_record_comment() {
+cageworks_record_comment() {
 	local repo="$1" item="$2" role="$3"
-	nixcage_record_as "$repo" "$role" \
+	cageworks_record_as "$repo" "$role" \
 		git-bug bug comment new --non-interactive -F - "$item" >/dev/null
 }
 
-nixcage_record_show() {
+cageworks_record_show() {
 	local repo="$1" item="$2"
 	(cd "$repo" && git-bug bug show "$item" 2>/dev/null)
 }
 
-nixcage_record_participants() {
+cageworks_record_participants() {
 	local repo="$1" item="$2"
 	(cd "$repo" && git-bug bug show "$item" 2>/dev/null) |
 		sed -n 's/^participants: //p'
@@ -77,24 +77,24 @@ nixcage_record_participants() {
 ## A mention is metadata, never prose: the supervisor acts on it without
 ## reading anything an agent wrote. A colon would break git-bug's own query
 ## parser, so the label is written with a dash.
-nixcage_record_mention_label() {
+cageworks_record_mention_label() {
 	local role="$1"
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$role" || return 1
 	echo "needs-$role"
 }
 
-nixcage_record_mention() {
+cageworks_record_mention() {
 	local repo="$1" item="$2" role="$3"
 	local label
-	label="$(nixcage_record_mention_label "$role")" || return 1
+	label="$(cageworks_record_mention_label "$role")" || return 1
 	(cd "$repo" && git-bug bug label new "$item" "$label" >/dev/null 2>&1)
 }
 
 ## Everything marked for a role, found by label alone.
-nixcage_record_needing() {
+cageworks_record_needing() {
 	local repo="$1" role="$2"
 	local label
-	label="$(nixcage_record_mention_label "$role")" || return 1
+	label="$(cageworks_record_mention_label "$role")" || return 1
 	(cd "$repo" && git-bug bug "label:$label" --format id 2>/dev/null)
 }
 
@@ -105,7 +105,7 @@ nixcage_record_needing() {
 ##
 ## A malformed mention is refused rather than failing the turn: the work the
 ## role did is not less real because it asked for someone who does not exist.
-nixcage_record_ingest() {
+cageworks_record_ingest() {
 	local repo="$1" run_dir="$2" role="$3" item="$4"
 
 	local file
@@ -113,7 +113,7 @@ nixcage_record_ingest() {
 		for file in "$run_dir/comments"/*; do
 			[ -f "$file" ] || continue
 			[ -s "$file" ] || continue
-			nixcage_record_comment "$repo" "$item" "$role" <"$file" || return 1
+			cageworks_record_comment "$repo" "$item" "$role" <"$file" || return 1
 		done
 	fi
 
@@ -121,8 +121,8 @@ nixcage_record_ingest() {
 		local mentioned
 		while IFS= read -r mentioned; do
 			[ -n "$mentioned" ] || continue
-			nixcage_record_mention "$repo" "$item" "$mentioned" ||
-				echo "nixcage: not a role, so not mentioned: $mentioned" >&2
+			cageworks_record_mention "$repo" "$item" "$mentioned" ||
+				echo "cageworks: not a role, so not mentioned: $mentioned" >&2
 		done <"$run_dir/mentions"
 	fi
 }
@@ -130,10 +130,10 @@ nixcage_record_ingest() {
 ## How much of an item a role has already been shown. Markers are the
 ## supervisor's bookkeeping rather than part of the record: what a role has
 ## read is nobody else's business and does not belong in a shared history.
-nixcage_record_seen() {
+cageworks_record_seen() {
 	local root="$1" factory="$2" role="$3" item="$4"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$role" || return 1
 	local file="$root/$factory/$role/$item"
 	if [ -f "$file" ]; then
 		cat "$file"
@@ -142,10 +142,10 @@ nixcage_record_seen() {
 	fi
 }
 
-nixcage_record_mark_seen() {
+cageworks_record_mark_seen() {
 	local root="$1" factory="$2" role="$3" item="$4" count="$5"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$role" || return 1
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$role" || return 1
 	local dir="$root/$factory/$role"
 	mkdir -p "$dir"
 	local tmp="$dir/.$item.$$"
@@ -153,17 +153,17 @@ nixcage_record_mark_seen() {
 }
 
 ## The number of comments on an item, which is what a marker counts.
-nixcage_record_count() {
+cageworks_record_count() {
 	local repo="$1" item="$2"
-	nixcage_record_show "$repo" "$item" | grep -cE '^ *[0-9a-f]{7} #[0-9]+ ' || true
+	cageworks_record_show "$repo" "$item" | grep -cE '^ *[0-9a-f]{7} #[0-9]+ ' || true
 }
 
 ## Only what arrived after the first n comments. A role opening its turn is
 ## shown the whole item for context and this for attention, because replaying
 ## everything as though it were new is how a record stops being read.
-nixcage_record_since() {
+cageworks_record_since() {
 	local repo="$1" item="$2" skip="$3"
-	nixcage_record_show "$repo" "$item" |
+	cageworks_record_show "$repo" "$item" |
 		awk -v skip="$skip" '
 			/^ *[0-9a-f]{7} #[0-9]+ / { seen++; show = (seen > skip) }
 			show { print }

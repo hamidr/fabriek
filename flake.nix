@@ -1,11 +1,15 @@
 {
-  description = "One shared NixOS microVM with per-project containers for AI coding agents";
+  description = "A factory of named roles working one repository, each in a cage of its own";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    microvm = {
-      url = "github:astro/microvm.nix";
+    ## The cages. Pinned from its own remote rather than taken as a path
+    ## input: a path input would make the two one repository again with extra
+    ## steps, and there would be no version for the interface to break at
+    ## (ADR-018).
+    nixcage = {
+      url = "github:hamidr/nixcage";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -23,37 +27,18 @@
       perSystem =
         { pkgs, lib, ... }:
         let
-          runtimeDeps = with pkgs; [
-            jq
-            coreutils
-            gnused
-            bash
-            openssh
-          ];
+          cageworks = import ./modules/package.nix { inherit pkgs; };
         in
         {
-          packages.default = pkgs.stdenv.mkDerivation {
-            pname = "nixcage";
-            version = "3.1.0";
-
-            src = ./.;
-
-            nativeBuildInputs = [ pkgs.makeWrapper ];
-
-            installPhase = ''
-              mkdir -p $out/bin
-              cp nixcage $out/bin/nixcage
-              chmod +x $out/bin/nixcage
-
-              wrapProgram $out/bin/nixcage \
-                --prefix PATH : ${lib.makeBinPath runtimeDeps}
-            '';
-
-            meta = {
-              description = "One shared NixOS microVM with per-project containers for AI coding agents";
-              license = lib.licenses.gpl3Only;
-              platforms = lib.platforms.unix;
-            };
+          packages = {
+            default = cageworks.cli;
+            cageworks = cageworks.cli;
+          }
+          ## The guest program runs on the machine the cages are on, which on
+          ## macOS is the VM and never this one. It is not offered here at
+          ## all: it needs setfacl, and acl does not build on darwin.
+          // lib.optionalAttrs pkgs.stdenv.isLinux {
+            cageworks-container = cageworks.container;
           };
 
           devShells.default = pkgs.mkShell {
@@ -64,7 +49,6 @@
               bats
               bats.libraries.bats-support
               bats.libraries.bats-assert
-              openssh
               ## The record is git-bug (ADR-013), and the tests drive it for
               ## real rather than stubbing it, so it belongs in the shell.
               git
@@ -77,56 +61,21 @@
               export PATH="$PWD:$PATH"
             '';
           };
+
+          formatter = pkgs.nixfmt-rfc-style;
         };
 
       flake.overlays.default = final: _prev: {
-        nixcage =
-          let
-            runtimeDeps = [
-              final.jq
-              final.coreutils
-              final.gnused
-              final.bash
-              final.openssh
-            ];
-          in
-          final.stdenv.mkDerivation {
-            pname = "nixcage";
-            version = "3.1.0";
-
-            src = ./.;
-
-            nativeBuildInputs = [ final.makeWrapper ];
-
-            installPhase = ''
-              mkdir -p $out/bin
-              cp nixcage $out/bin/nixcage
-              chmod +x $out/bin/nixcage
-
-              wrapProgram $out/bin/nixcage \
-                --prefix PATH : ${final.lib.makeBinPath runtimeDeps}
-            '';
-
-            meta = {
-              description = "One shared NixOS microVM with per-project containers for AI coding agents";
-              license = final.lib.licenses.gpl3Only;
-              platforms = final.lib.platforms.unix;
-            };
-          };
+        cageworks = (import ./modules/package.nix { pkgs = final; }).cli;
+        cageworks-container = (import ./modules/package.nix { pkgs = final; }).container;
       };
 
-      flake.nixosModules.nixcage = import ./modules/nixcage.nix;
-      flake.nixosModules.host = import ./modules/host.nix;
 
-      flake.templates.config = {
-        path = ./templates/config;
-        description = "nixcage shared VM configuration flake";
-      };
-      ## The documented bootstrap is plain 'nix flake new -t <nixcage>',
-      ## which resolves templates.default.
-      flake.templates.default = {
-        path = ./templates/config;
-        description = "nixcage shared VM configuration flake";
-      };
+      ## The factories a machine declares, and how they are supervised. It
+      ## needs nixcage's own module beside it: the workspace roots, the
+      ## container layer and the uid range a role's number comes from are all
+      ## nixcage's (ADR-018).
+      flake.nixosModules.cageworks = import ./modules/cageworks.nix;
+      flake.nixosModules.default = import ./modules/cageworks.nix;
     };
 }

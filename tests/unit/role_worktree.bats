@@ -6,12 +6,10 @@ load ../test_helper/common
 
 setup() {
 	setup_temp_dir
-	# shellcheck source=../../modules/role-uid.sh
-	source "$NIXCAGE_ROOT/modules/role-uid.sh"
-	# shellcheck source=../../modules/storage.sh
-	source "$NIXCAGE_ROOT/modules/storage.sh"
+	# shellcheck source=../../modules/names.sh
+	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/role-worktree.sh
-	source "$NIXCAGE_ROOT/modules/role-worktree.sh"
+	source "$CAGEWORKS_ROOT/modules/role-worktree.sh"
 	STATE="$TEST_TEMP_DIR/state"
 	STUB_DIR="$TEST_TEMP_DIR/bin"
 	mkdir -p "$STUB_DIR"
@@ -24,51 +22,51 @@ teardown() {
 }
 
 @test "a role's worktree lives in nixcage state, not beside the operator's projects" {
-	run nixcage_role_worktree_path "$STATE" acme builder
+	run cageworks_role_worktree_path "$STATE" acme builder
 	assert_success
 	assert_output "$STATE/worktrees/acme/builder"
 }
 
 @test "the same role always resolves to the same worktree" {
-	a="$(nixcage_role_worktree_path "$STATE" acme builder)"
-	b="$(nixcage_role_worktree_path "$STATE" acme builder)"
+	a="$(cageworks_role_worktree_path "$STATE" acme builder)"
+	b="$(cageworks_role_worktree_path "$STATE" acme builder)"
 	[ "$a" = "$b" ]
 }
 
 @test "two factories can hold a role of the same name without colliding" {
-	a="$(nixcage_role_worktree_path "$STATE" acme builder)"
-	b="$(nixcage_role_worktree_path "$STATE" other builder)"
+	a="$(cageworks_role_worktree_path "$STATE" acme builder)"
+	b="$(cageworks_role_worktree_path "$STATE" other builder)"
 	[ "$a" != "$b" ]
 }
 
 @test "a name that could escape the state directory is refused" {
-	run nixcage_role_worktree_path "$STATE" acme "../../etc"
+	run cageworks_role_worktree_path "$STATE" acme "../../etc"
 	assert_failure
-	run nixcage_role_worktree_path "$STATE" "../../etc" builder
+	run cageworks_role_worktree_path "$STATE" "../../etc" builder
 	assert_failure
 }
 
 @test "a role's branch sits inside the role's own namespace" {
-	run nixcage_role_branch builder task-0041
+	run cageworks_role_branch builder task-0041
 	assert_success
 	assert_output "builder/task-0041"
 }
 
 @test "a branch outside the role's namespace cannot be constructed" {
-	run nixcage_role_branch builder "../main"
+	run cageworks_role_branch builder "../main"
 	assert_failure
-	run nixcage_role_branch "../evil" task-0041
+	run cageworks_role_branch "../evil" task-0041
 	assert_failure
 }
 
 @test "phase 1 has no tasks, so a role gets a working branch of its own" {
-	run nixcage_role_branch builder
+	run cageworks_role_branch builder
 	assert_success
 	assert_output "builder/work"
 }
 
 @test "exactly three directories carry a role's ACL" {
-	run nixcage_role_acl_targets /repo/.git builder
+	run cageworks_role_acl_targets /repo/.git builder
 	assert_success
 	assert_line --index 0 "/repo/.git/objects"
 	assert_line --index 1 "/repo/.git/refs/heads/builder"
@@ -77,7 +75,7 @@ teardown() {
 }
 
 @test "the ACL never reaches packed-refs or the git directory itself" {
-	run nixcage_role_acl_targets /repo/.git builder
+	run cageworks_role_acl_targets /repo/.git builder
 	refute_output --partial "packed-refs"
 	for line in "${lines[@]}"; do
 		[ "$line" != "/repo/.git" ]
@@ -85,35 +83,34 @@ teardown() {
 }
 
 @test "an invalid role cannot be given an ACL" {
-	run nixcage_role_acl_targets /repo/.git "../../.."
+	run cageworks_role_acl_targets /repo/.git "../../.."
 	assert_failure
 }
 
-# chown and setfacl need root, and a dataset needs ZFS. Neither is what these
-# tests are about: the worktree is.
+# chown and setfacl need root, and the storage a worktree sits on is nixcage's
+# to give. Neither is what these tests are about: the worktree is.
+#
+# The storage stub makes the directory, which is what a real dataset creation
+# does, and records the argv it was asked with -- the seam is the assertion.
 stub_privileged_tools() {
 	local tool
 	for tool in chown setfacl; do
 		printf '#!/usr/bin/env bash\nexit 0\n' >"$STUB_DIR/$tool"
 		chmod +x "$STUB_DIR/$tool"
 	done
-	cat >"$STUB_DIR/zfs" <<EOF
+	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "zfs \$*" >>"$TEST_TEMP_DIR/zfs-calls"
-case "\$1" in
-list) grep -qx "\${*: -1}" "$TEST_TEMP_DIR/datasets" 2>/dev/null || exit 1 ;;
-create)
-	printf '%s\n' "\${*: -1}" >>"$TEST_TEMP_DIR/datasets"
-	## A real create mounts the dataset, which is the state the worktree has
-	## to cope with: the directory is there and empty.
-	for arg in "\$@"; do
-		case "\$arg" in mountpoint=*) mkdir -p "\${arg#mountpoint=}" ;; esac
-	done
-	;;
-esac
-exit 0
+printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/nixcage-calls"
+if [ "\$1" = storage ]; then
+	mkdir -p "\$3"
+	echo "\$3"
+fi
 EOF
-	chmod +x "$STUB_DIR/zfs"
+	chmod +x "$STUB_DIR/nixcage-container"
+}
+
+storage_calls() {
+	cat "$TEST_TEMP_DIR/nixcage-calls" 2>/dev/null
 }
 
 make_repo() {
@@ -124,31 +121,46 @@ make_repo() {
 	echo "$repo"
 }
 
-@test "a role with no dataset configured still gets its worktree" {
+@test "a worktree is asked for by path and by uid, never as a dataset" {
+	# Whether the path becomes a dataset or an ordinary directory is nixcage's
+	# decision, and cageworks is not told which it got (ADR-018).
 	stub_privileged_tools
 	repo="$(make_repo)"
-	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 700000
 	assert_success
-	[ -e "$STATE/worktrees/acme/builder/.git" ]
-	[ ! -s "$TEST_TEMP_DIR/zfs-calls" ]
+	run storage_calls
+	assert_output "storage ensure $STATE/worktrees/acme/builder 700000 "
+	refute_output --partial "zfs"
+	refute_output --partial "dataset"
 }
 
-@test "a role's worktree is a dataset mounted where the worktree goes" {
+@test "a declared quota is what the worktree is asked to be bounded by" {
 	stub_privileged_tools
 	repo="$(make_repo)"
-	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0 nixcage/state 20G
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 700000 20G
 	assert_success
-	run cat "$TEST_TEMP_DIR/zfs-calls"
-	assert_output --partial "mountpoint=$STATE/worktrees/acme/builder nixcage/state/worktrees/acme/builder"
-	assert_output --partial "zfs set refquota=20G"
+	run storage_calls
+	assert_output "storage ensure $STATE/worktrees/acme/builder 700000 20G"
 }
 
-@test "the worktree is added into the empty directory the dataset mounts" {
-	# Creating the dataset makes the directory exist, so a worktree recognised
+@test "a worktree nixcage could not give is not worked around" {
+	# A role whose storage failed has nowhere to write; carrying on would put
+	# its work somewhere nobody bounded.
+	stub_privileged_tools
+	printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB_DIR/nixcage-container"
+	chmod +x "$STUB_DIR/nixcage-container"
+	repo="$(make_repo)"
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 700000
+	assert_failure
+	[ ! -e "$STATE/worktrees/acme/builder/.git" ]
+}
+
+@test "the worktree is added into the empty directory it was given" {
+	# Asking for storage makes the directory exist, so a worktree recognised
 	# by its directory rather than by its own pointer would never be added.
 	stub_privileged_tools
 	repo="$(make_repo)"
-	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0 nixcage/state
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 0
 	assert_success
 	[ -e "$STATE/worktrees/acme/builder/.git" ]
 }
@@ -156,8 +168,8 @@ make_repo() {
 @test "a role entered twice keeps the one worktree it has" {
 	stub_privileged_tools
 	repo="$(make_repo)"
-	nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0 nixcage/state
-	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0 nixcage/state
+	cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 0
 	assert_success
 	[ "$(git -C "$repo" worktree list | wc -l)" -eq 2 ]
 }
@@ -167,9 +179,9 @@ make_repo() {
 	# for it, which blocks the add until it is pruned.
 	stub_privileged_tools
 	repo="$(make_repo)"
-	nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 0
 	rm -rf "$STATE/worktrees/acme/builder"
-	run nixcage_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	run cageworks_role_worktree_ensure "$STATE" acme builder "$repo" 0
 	assert_success
 	[ -e "$STATE/worktrees/acme/builder/.git" ]
 }

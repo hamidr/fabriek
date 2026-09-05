@@ -1,27 +1,13 @@
 #!/usr/bin/env bats
-# 'nixcage task' files a goal into a factory and reads back what is there.
+# 'cageworks task' files a goal into a factory and reads back what is there.
+# It reaches the guest program through nixcage's transport and knows nothing
+# else about where the cages are.
 
 load ../test_helper/common
 
 setup() {
 	setup_temp_dir
-	mkdir -p "$TEST_TEMP_DIR/bin"
-	export PATH="$TEST_TEMP_DIR/bin:$PATH"
-	cat >"$TEST_TEMP_DIR/bin/ssh" <<EOF
-#!/usr/bin/env bash
-echo "\$@" >>"$TEST_TEMP_DIR/ssh-calls"
-EOF
-	cat >"$TEST_TEMP_DIR/bin/sudo" <<EOF
-#!/usr/bin/env bash
-echo "\$@" >>"$TEST_TEMP_DIR/sudo-calls"
-EOF
-	cat >"$TEST_TEMP_DIR/bin/ps" <<'EOF'
-#!/usr/bin/env bash
-echo "microvm-run"
-EOF
-	chmod +x "$TEST_TEMP_DIR/bin/ssh" "$TEST_TEMP_DIR/bin/sudo" "$TEST_TEMP_DIR/bin/ps"
-	echo "$$" >"$XDG_STATE_HOME/nixcage/vm.pid"
-	write_cache
+	stub_nixcage
 }
 
 teardown() {
@@ -29,77 +15,92 @@ teardown() {
 }
 
 @test "filing a goal names the workflow, not a role" {
-	run_nixcage task file acme ship --acceptance "tests pass"
-	[ "$status" -eq 0 ]
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "nixcage-container task-file acme ship"
+	run_cageworks task file acme ship --acceptance "tests pass"
+	assert_success
+	run nixcage_calls
+	assert_output --partial "exec -- cageworks-container task-file acme ship"
 	# Who does the work is the workflow's first stage, never the caller's pick.
 	refute_output --partial "builder"
 }
 
-@test "a goal carries its acceptance criteria, quoted for the remote shell" {
-	run_nixcage task file acme ship --acceptance "tests pass and the tracker is clean"
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "tests\\ pass\\ and\\ the\\ tracker\\ is\\ clean"
+@test "a goal carries its acceptance criteria as one argument" {
+	# Every word reaches the guest as argv, so prose with spaces in it is one
+	# thing rather than several.
+	run_cageworks task file acme ship --acceptance "tests pass and the tracker is clean"
+	assert_success
+	run nixcage_argv
+	assert_line --index 6 "tests pass and the tracker is clean"
 }
 
 @test "filing without a factory and a workflow explains itself" {
-	run_nixcage task file acme
+	run_cageworks task file acme
 	assert_failure
 	assert_output --partial "task file <factory> <workflow>"
 }
 
 @test "an option filing does not understand is refused rather than ignored" {
-	run_nixcage task file acme ship --owner builder
+	run_cageworks task file acme ship --owner builder
 	assert_failure
 	assert_output --partial "--owner"
 }
 
 @test "listing a factory's tasks reaches the guest" {
-	run_nixcage task list acme
-	[ "$status" -eq 0 ]
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "nixcage-container task-list acme"
+	run_cageworks task list acme
+	assert_success
+	run nixcage_calls
+	assert_output --partial "cageworks-container task-list acme"
 }
 
 @test "listing can be narrowed to one state" {
-	run_nixcage task list acme ready
-	run cat "$TEST_TEMP_DIR/ssh-calls"
+	run_cageworks task list acme ready
+	run nixcage_calls
 	assert_output --partial "task-list acme ready"
 }
 
 @test "showing one task reaches the guest" {
-	run_nixcage task show acme task-0001
-	run cat "$TEST_TEMP_DIR/ssh-calls"
+	run_cageworks task show acme task-0001
+	run nixcage_calls
 	assert_output --partial "task-show acme task-0001"
 }
 
+@test "the thread of a task reaches the guest" {
+	run_cageworks task thread acme task-0001
+	run nixcage_calls
+	assert_output --partial "task-thread acme task-0001"
+}
+
+@test "answering a gate carries the answer and its reason" {
+	run_cageworks task answer acme task-0001 reject "the tests do not run"
+	run nixcage_argv
+	assert_line --index 6 "reject"
+	assert_line --index 7 "the tests do not run"
+}
+
 @test "running a task reaches the guest with the factory and the id" {
-	run_nixcage task run acme task-0001
-	[ "$status" -eq 0 ]
-	run cat "$TEST_TEMP_DIR/ssh-calls"
-	assert_output --partial "nixcage-container task-run acme task-0001"
+	run_cageworks task run acme task-0001
+	assert_success
+	run nixcage_calls
+	assert_output --partial "cageworks-container task-run acme task-0001"
 }
 
 @test "running without a task explains itself" {
-	run_nixcage task run acme
+	run_cageworks task run acme
 	assert_failure
 	assert_output --partial "task run <factory> <id>"
 }
 
 @test "an unknown task subcommand explains itself rather than guessing" {
-	run_nixcage task frobnicate acme
+	run_cageworks task frobnicate acme
 	assert_failure
 	assert_output --partial "task"
 }
 
-@test "on linux task goes through sudo rather than ssh" {
-	export NIXCAGE_OS=linux
-	export NIXCAGE_HOST_CONFIG="$TEST_TEMP_DIR/hostconfig"
-	echo "WORKSPACE_ROOTS=$TEST_TEMP_DIR/src" >"$NIXCAGE_HOST_CONFIG"
-	run_nixcage task list acme
-	[ "$status" -eq 0 ]
-	run cat "$TEST_TEMP_DIR/sudo-calls"
-	assert_output --partial "nixcage-container task-list acme"
-	[ ! -f "$TEST_TEMP_DIR/ssh-calls" ]
+@test "no task command asks for a terminal or forwards an agent" {
+	# Reading and filing are quick, unattended-safe reads. Only entering a
+	# role by hand is a person at a keyboard with keys of their own.
+	run_cageworks task list acme
+	run_cageworks task run acme task-0001
+	run nixcage_calls
+	refute_output --partial "--tty"
+	refute_output --partial "--agent"
 }

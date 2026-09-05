@@ -4,21 +4,20 @@
 ## The declaration is a directory tree rather than a parsed format: a shell
 ## script reads a file without a parser, and a value that is its own file
 ## cannot be confused with a neighbouring one. Sourced by store path into
-## nixcage-container beside role-uid.sh, whose nixcage_role_name_ok it uses,
-## and beside dev-shell.sh, whose nixcage_shell_name_ok validates a declared
-## devShell name.
+## cageworks-container beside names.sh, whose cageworks_name_ok and
+## cageworks_shell_name_ok this file relies on.
 
 ## The repository a factory works. One repository per factory, so this is a
 ## single value rather than a list.
-nixcage_factory_repository() {
+cageworks_factory_repository() {
 	local root="$1" factory="$2"
-	nixcage_role_name_ok "$factory" || {
-		echo "nixcage: invalid factory name: $factory" >&2
+	cageworks_name_ok "$factory" || {
+		echo "cageworks: invalid factory name: $factory" >&2
 		return 1
 	}
 	local file="$root/$factory/repository"
 	if [ ! -f "$file" ]; then
-		echo "nixcage: no factory declared as $factory" >&2
+		echo "cageworks: no factory declared as $factory" >&2
 		return 1
 	fi
 	cat "$file"
@@ -27,9 +26,9 @@ nixcage_factory_repository() {
 ## The roles a factory declares, one per line. A factory with none is a
 ## declaration mistake rather than an empty factory, so it is refused here
 ## instead of producing a factory nothing can run in.
-nixcage_factory_roles() {
+cageworks_factory_roles() {
 	local root="$1" factory="$2"
-	nixcage_role_name_ok "$factory" || return 1
+	cageworks_name_ok "$factory" || return 1
 	local dir="$root/$factory/roles"
 	local -a roles=()
 	if [ -d "$dir" ]; then
@@ -40,7 +39,7 @@ nixcage_factory_roles() {
 		done
 	fi
 	if [ "${#roles[@]}" -eq 0 ]; then
-		echo "nixcage: factory $factory declares no roles" >&2
+		echo "cageworks: factory $factory declares no roles" >&2
 		return 1
 	fi
 	printf '%s\n' "${roles[@]}"
@@ -50,19 +49,19 @@ nixcage_factory_roles() {
 ## never a shell line, so nothing in it is re-split or expanded on the way. A
 ## role may declare nothing, in which case the session is the ordinary one:
 ## which coding agent a role runs is a property of its declaration, never of
-## nixcage.
-nixcage_factory_role_command() {
+## cageworks.
+cageworks_factory_role_command() {
 	local root="$1" factory="$2" role="$3"
-	nixcage_role_name_ok "$factory" || return 1
-	nixcage_role_name_ok "$role" || {
-		echo "nixcage: invalid role name: $role" >&2
+	cageworks_name_ok "$factory" || return 1
+	cageworks_name_ok "$role" || {
+		echo "cageworks: invalid role name: $role" >&2
 		return 1
 	}
 	local dir="$root/$factory/roles/$role"
 	if [ ! -d "$dir" ]; then
 		{
-			echo "nixcage: factory $factory declares no role $role; it has:"
-			nixcage_factory_roles "$root" "$factory" | sed 's/^/  /'
+			echo "cageworks: factory $factory declares no role $role; it has:"
+			cageworks_factory_roles "$root" "$factory" | sed 's/^/  /'
 		} >&2
 		return 1
 	fi
@@ -73,20 +72,20 @@ nixcage_factory_role_command() {
 ## The devShell a role works in, or nothing when it names none. A specialist
 ## is a role with its own toolchain, and the toolchain is one devShell of the
 ## project's own flake: the repository declares what a JVM specialist or a
-## frontend specialist has to hand, and nixcage only carries the name across.
+## frontend specialist has to hand, and cageworks only carries the name across.
 ##
 ## Validated here rather than where it is used. The name reaches a flake
 ## reference, so a declaration mistake is refused before a session is built
 ## around it.
-nixcage_factory_role_shell() {
+cageworks_factory_role_shell() {
 	local root="$1" factory="$2" role="$3"
-	nixcage_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
+	cageworks_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
 	local file="$root/$factory/roles/$role/shell"
 	[ -f "$file" ] || return 0
 	local want
 	want="$(cat "$file")"
-	if ! nixcage_shell_name_ok "$want"; then
-		echo "nixcage: role $role declares an unusable devShell name: $want" >&2
+	if ! cageworks_shell_name_ok "$want"; then
+		echo "cageworks: role $role declares an unusable devShell name: $want" >&2
 		return 1
 	fi
 	printf '%s\n' "$want"
@@ -95,9 +94,9 @@ nixcage_factory_role_shell() {
 ## What a role can do, one capability per line. A role that declares none can
 ## take no stage's work: capability is what a stage resolves through, so an
 ## undeclared one is a role with a cage and nothing to do (ADR-015).
-nixcage_factory_role_provides() {
+cageworks_factory_role_provides() {
 	local root="$1" factory="$2" role="$3"
-	nixcage_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
+	cageworks_factory_role_command "$root" "$factory" "$role" >/dev/null || return 1
 	local file="$root/$factory/roles/$role/provides"
 	[ -f "$file" ] || return 0
 	cat "$file"
@@ -106,7 +105,7 @@ nixcage_factory_role_provides() {
 ## The roles that provide a capability, in declaration order. Order is the
 ## whole tie-break: among idle capable roles the first one takes the task, so
 ## a factory replays the same way twice (ADR-015).
-nixcage_factory_roles_providing() {
+cageworks_factory_roles_providing() {
 	local root="$1" factory="$2" capability="$3"
 	[ -n "$capability" ] || return 1
 	local role line
@@ -116,6 +115,6 @@ nixcage_factory_roles_providing() {
 			[ "$line" = "$capability" ] || continue
 			echo "$role"
 			break
-		done < <(nixcage_factory_role_provides "$root" "$factory" "$role")
-	done < <(nixcage_factory_roles "$root" "$factory")
+		done < <(cageworks_factory_role_provides "$root" "$factory" "$role")
+	done < <(cageworks_factory_roles "$root" "$factory")
 }
