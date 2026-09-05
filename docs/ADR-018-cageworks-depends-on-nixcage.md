@@ -120,6 +120,28 @@ operator's config flake is edited once; no compatibility alias is kept, because
 an alias would leave two names for one option and no date on which the old one
 dies.
 
+One option inside `supervisor.*` does not move with the rest.
+`roleUidRange` becomes `nixcage.principalUidRange`, because point 3 makes
+allocation nixcage's: a range of the host's uid space is a fact about the
+machine the cages run on, and the program that hands numbers out is the only
+one that can promise never to reissue one. What is left in
+`cageworks.supervisor.*` -- the attempt limit, the run timeout, the
+concurrency, the quota -- is about work rather than about a machine.
+
+What a role session sees does move, and is forced to. The consequences below
+have nixcage refuse a bind over `/etc/nixcage`, so the guidance a role is given
+becomes `/etc/cageworks/role-guidance.md` and what it is handed at run time
+becomes `/run/cageworks/{task,signing-key,allowed_signers}`. The variables
+naming them follow: `CAGEWORKS_ROLE_GUIDANCE` and `CAGEWORKS_TASK`.
+`NIXCAGE_SHELL` keeps its name, because `--shell` is nixcage's flag and the
+devShell it selects is read by nixcage's own code.
+
+Nothing under `/var/lib/nixcage` moves either. The clone, the worktrees, the
+homes, the tasks and the keys stay at the paths they have today, because
+ADR-017 puts that directory on the pool and the storage primitive can only
+name a dataset for a path it already mounts. A second state root would have
+bought a tidier name and cost every existing factory its datasets.
+
 **6. The documents stay here and nothing is renumbered.** ADR-001 through
 ADR-008 describe code that now lives upstream. They remain as the record of why
 the cage is shaped as it is, and are historical rather than authoritative here:
