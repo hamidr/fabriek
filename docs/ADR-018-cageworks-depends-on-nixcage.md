@@ -4,7 +4,7 @@ title: The factory becomes cageworks, a separate project that depends on nixcage
 status: proposed
 date: 2026-09-05
 status_date: 2026-09-05
-summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses three exported primitives
+summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives
 depends_on: [ADR-002, ADR-004, ADR-010, ADR-017]
 supersedes: []
 superseded_by: []
@@ -54,14 +54,17 @@ So do `modules/role-uid.sh` and `modules/storage.sh`, which need the host's uid
 space and its pool and become the primitives of point 3 with their factory
 vocabulary stripped. `factory-*.sh`, `workflow-config.sh`, `task-store.sh`,
 `caps.sh`, `record.sh`, `integrate.sh`, `role-worktree.sh`, `signing.sh`,
-`role-guidance.*`, `models/` and `examples/factory-project/` stay.
+`role-guidance.*`, `models/` and `examples/factory-project/` stay. The CLI
+leaves as a file, not as a whole: its `role`, `task` and `factory` verbs are
+what a person does to a factory rather than to a cage, and they stay as the
+`cageworks` CLI of point 4.
 
 Signing is the one that looks like it belongs upstream and does not. ADR-009
 puts a key in the cage instead of forwarding the agent, and the cage's whole
 part in that is refusing to forward one, which is `--no-agent`. That the key is
 per role, where it lives and what it signs are facts about a role.
 
-**3. nixcage exports three primitives, and cageworks uses nothing else.**
+**3. nixcage exports four primitives, and cageworks uses nothing else.**
 Each is argv on a program, because argv is what `flake.lock` can pin and what a
 test can stub:
 
@@ -77,14 +80,29 @@ test can stub:
   [quota]` gives a dataset where the host has a pool and an ordinary directory
   where it does not (ADR-017). Which of the two it is stays nixcage's decision;
   that a role's worktree gets one, and with which quota, stays cageworks'.
+- *A way to reach the cage host.* `nixcage exec [--tty] [--agent] -- <argv...>`
+  runs argv as root wherever the cages are: on the invoking machine on Linux,
+  and inside the shared VM over its SSH on macOS. Every word is passed through
+  as argv, so nothing a caller hands it is re-split by a remote shell.
 
-cageworks writes no nspawn arguments, runs no `zfs`, and allocates no uid
-itself. When it needs something it cannot express through these three, the
-interface changes in nixcage first.
+The fourth is on the `nixcage` CLI rather than on `nixcage-container`, because
+it is what carries a caller to `nixcage-container` in the first place. Without
+it the other three are only reachable on Linux, and cageworks would have to
+read nixcage's SSH key, port and state layout to reach a macOS VM -- which is
+the coupling this document exists to remove, relocated to a worse place. It
+grants no authority a caller lacks: `nixcage enter` already runs argv in the VM
+as root for anyone who can run the CLI at all.
 
-**4. cageworks ships its own guest program.** `cageworks-container`, installed
+cageworks writes no nspawn arguments, runs no `zfs`, allocates no uid and opens
+no SSH connection itself. When it needs something it cannot express through
+these four, the interface changes in nixcage first.
+
+**4. cageworks ships its own two programs.** `cageworks-container`, installed
 by cageworks' own NixOS module, holds the `task-*`, `role-*` and `factory-*`
-verbs and calls `nixcage-container` as a subprocess.
+verbs and calls `nixcage-container` as a subprocess. The `cageworks` CLI is
+what an operator types, and holds what `nixcage role`, `nixcage task` and
+`nixcage factory` hold today; it reaches its guest program through
+`nixcage exec` and knows nothing else about how a cage host is reached.
 
 The alternative was for nixcage to export a sourceable shell library that
 cageworks sources by store path, the way `container.nix` sources its modules
@@ -124,6 +142,13 @@ was implicit in "only factory code adds binds" is now explicit and has to be
 written: nixcage validates destinations and refuses a bind over `/etc/nixcage`
 or over the store.
 
+`nixcage exec` widens it in the same shape and for the same reason. It runs
+argv as root on the cage host, which `nixcage enter` already did for anyone who
+could run the CLI; what changes is that the capability is now named, so it can
+be reasoned about instead of being a side effect of entering a project. It is
+not a shell: argv is passed through word for word, and on macOS every word is
+quoted for the remote shell exactly as `enter` quotes a session command today.
+
 A cageworks change that needs a new nixcage flag becomes two commits in two
 repositories and a lock bump. That cost is the boundary; paying it is how the
 interface stays small. Bisecting a regression across the seam gets harder for
@@ -137,7 +162,7 @@ stub `nixcage-container` on `PATH` exactly as they stub `ssh` and `sudo` today,
 which makes the seam something the suite asserts on rather than something it
 crosses.
 
-Sequencing is forced: cageworks does not build until nixcage ships the three
+Sequencing is forced: cageworks does not build until nixcage ships the four
 primitives. The exports land and are tagged upstream first, then this
 repository drops the cage files and pins the input.
 
