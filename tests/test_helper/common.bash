@@ -28,6 +28,11 @@ setup_temp_dir() {
 	# An agent inherited from the machine running the suite would make the
 	# forwarding tests depend on the developer's own session.
 	unset SSH_AUTH_SOCK
+	# Both programs source their shell modules by store path. In the suite that
+	# path is the working tree, which is what lets bats drive them directly.
+	export CAGEWORKS_LIB="$CAGEWORKS_ROOT/modules"
+	# The operator's own config, kept out of the way of the developer's.
+	export CAGEWORKS_CONFIG="$TEST_TEMP_DIR/cageworks.toml"
 	mkdir -p "$XDG_STATE_HOME/nixcage" "$NIXCAGE_FLAKE"
 }
 

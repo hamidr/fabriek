@@ -9,9 +9,8 @@ setup() {
 	setup_temp_dir
 	export CAGEWORKS_LIB="$CAGEWORKS_ROOT/modules"
 	export CAGEWORKS_STATE="$TEST_TEMP_DIR/state"
-	export CAGEWORKS_FACTORIES="$TEST_TEMP_DIR/factories"
 	export CAGEWORKS_CONFIG="$TEST_TEMP_DIR/supervisor"
-	mkdir -p "$CAGEWORKS_STATE" "$CAGEWORKS_FACTORIES"
+	mkdir -p "$CAGEWORKS_STATE"
 }
 
 teardown() {

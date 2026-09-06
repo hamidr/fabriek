@@ -70,12 +70,5 @@
         cageworks-container = (import ./modules/package.nix { pkgs = final; }).container;
       };
 
-
-      ## The factories a machine declares, and how they are supervised. It
-      ## needs nixcage's own module beside it: the workspace roots, the
-      ## container layer and the uid range a role's number comes from are all
-      ## nixcage's (ADR-018).
-      flake.nixosModules.cageworks = import ./modules/cageworks.nix;
-      flake.nixosModules.default = import ./modules/cageworks.nix;
     };
 }

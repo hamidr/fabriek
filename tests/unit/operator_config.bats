@@ -144,7 +144,14 @@ TOML
 }
 
 @test "the config lives where the operator's own config lives" {
+	unset CAGEWORKS_CONFIG
 	XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" run cageworks_operator_config_path
 	assert_success
 	assert_output "$TEST_TEMP_DIR/xdg/cageworks/config.toml"
+}
+
+@test "an operator with more than one config says which, and it wins" {
+	CAGEWORKS_CONFIG="$TEST_TEMP_DIR/other.toml" run cageworks_operator_config_path
+	assert_success
+	assert_output "$TEST_TEMP_DIR/other.toml"
 }

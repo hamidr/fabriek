@@ -28,23 +28,14 @@ setup() {
 	setup_temp_dir
 
 	STATE="$TEST_TEMP_DIR/state"
-	FACTORIES="$TEST_TEMP_DIR/factories"
 	STUB_DIR="$TEST_TEMP_DIR/bin"
 	CALLS="$TEST_TEMP_DIR/nixcage-container-calls"
 	mkdir -p "$STATE" "$STUB_DIR"
 	PATH="$STUB_DIR:$PATH"
-	export PATH STATE FACTORIES
+	export PATH STATE
 
 	export CAGEWORKS_LIB="$CAGEWORKS_ROOT/modules"
 	export CAGEWORKS_STATE="$STATE"
-	export CAGEWORKS_FACTORIES="$FACTORIES"
-	export CAGEWORKS_CONFIG="$TEST_TEMP_DIR/supervisor"
-	cat >"$CAGEWORKS_CONFIG" <<'EOF'
-TASK_MAX_ATTEMPTS=3
-TASK_TIMEOUT_SECONDS=3600
-RUN_CONCURRENCY=0
-ROLE_QUOTA=
-EOF
 
 	# The seam itself. Only 'enter' is recorded; the other two primitives
 	# answer so that role-enter gets far enough to emit one.
@@ -73,23 +64,31 @@ teardown() {
 	teardown_temp_dir
 }
 
-# A repository for the factory to work, and a declaration naming one role with
-# a toolchain and a command of its own -- the case that exercises every flag.
+# A repository that declares the factory working it (ADR-020), naming one role
+# with a toolchain and a command of its own -- the case that exercises every
+# flag. The declaration is committed, because that is what is read.
 declare_factory() {
 	REPO="$TEST_TEMP_DIR/repo"
 	mkdir -p "$REPO"
 	git -C "$REPO" init --quiet -b main
 	git -C "$REPO" config user.email test@example.invalid
 	git -C "$REPO" config user.name test
-	: >"$REPO/README"
-	git -C "$REPO" add README
+	cat >"$REPO/flake.nix" <<'EOF'
+{
+  outputs = { self }: {
+    cageworks = {
+      name = "acme";
+      roles.builder = {
+        command = [ "agent" "--print" ];
+        provides = [ "build" ];
+        shell = "backend";
+      };
+    };
+  };
+}
+EOF
+	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit --quiet -m "first"
-
-	mkdir -p "$FACTORIES/acme/roles/builder"
-	echo "$REPO" >"$FACTORIES/acme/repository"
-	echo backend >"$FACTORIES/acme/roles/builder/shell"
-	printf 'agent\n--print\n' >"$FACTORIES/acme/roles/builder/command"
-	printf 'build\n' >"$FACTORIES/acme/roles/builder/provides"
 }
 
 recorded() {
@@ -98,7 +97,7 @@ recorded() {
 
 @test "a supervised role session reaches nixcage-container as one invocation" {
 	mkdir -p "$TEST_TEMP_DIR/run"
-	run_cageworks_container role-enter \
+	run_cageworks_container role-enter --repository "$REPO" \
 		--task-dir "$TEST_TEMP_DIR/run" --signing-key builder \
 		acme builder
 	assert_success
@@ -108,7 +107,7 @@ recorded() {
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
-	run_cageworks_container role-enter --auth-sock /tmp/agent.sock acme builder
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 
 	run recorded
@@ -116,7 +115,7 @@ recorded() {
 }
 
 @test "the uid comes from nixcage rather than from a store cageworks keeps" {
-	run_cageworks_container role-enter --auth-sock /tmp/agent.sock acme builder
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 	# Nothing under cageworks' own state records an allocation: the number
 	# is nixcage's to hand out and never to reissue.
@@ -127,13 +126,13 @@ recorded() {
 @test "a role's worktree asks nixcage for its storage rather than running zfs" {
 	# The primitive is what creates the directory in this test, so a
 	# worktree that exists is proof it was asked for.
-	run_cageworks_container role-enter --auth-sock /tmp/agent.sock acme builder
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 	[ -d "$STATE/worktrees/acme/builder" ]
 }
 
 @test "the role's own identity is what the session's gitconfig says" {
-	run_cageworks_container role-enter \
+	run_cageworks_container role-enter --repository "$REPO" \
 		--task-dir "$TEST_TEMP_DIR/run" --signing-key builder \
 		acme builder
 	assert_success

@@ -19,7 +19,9 @@ cageworks_resource_fields() {
 		memory size \
 		cores count \
 		roleQuota size \
-		concurrency count
+		concurrency count \
+		taskAttempts count \
+		runTimeoutSeconds count
 }
 
 ## The same table as a JSON array, for the schemas that need to say which keys

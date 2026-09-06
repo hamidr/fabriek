@@ -1,5 +1,10 @@
 #!/usr/bin/env bats
-# Reading a declared factory: its repository, its roles, and what each runs.
+# The roles a factory declares: what each runs, what toolchain it has to hand,
+# and what it can be given to do.
+#
+# The declaration is a file rather than a directory tree now (ADR-020), and it
+# is fed here unvalidated on purpose: these readers guard what they use, so a
+# declaration that reached them by some other route still cannot get through.
 
 load ../test_helper/common
 
@@ -9,38 +14,41 @@ setup() {
 	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/factory-config.sh
 	source "$CAGEWORKS_ROOT/modules/factory-config.sh"
-	ROOT="$TEST_TEMP_DIR/factories"
-	mkdir -p "$ROOT/acme/roles/builder" "$ROOT/acme/roles/reviewer"
-	echo "/srv/acme" >"$ROOT/acme/repository"
-	printf 'claude\n--permission-mode\nacceptEdits\n' >"$ROOT/acme/roles/builder/command"
-	# reviewer declares no command: it gets the ordinary session shell
+	DECL="$TEST_TEMP_DIR/declaration.json"
+	cat >"$DECL" <<'JSON'
+{
+  "name": "acme",
+  "roles": {
+    "builder": {
+      "command": ["claude", "--permission-mode", "acceptEdits"],
+      "provides": ["build"]
+    },
+    "reviewer": { "provides": ["review", "build"] }
+  }
+}
+JSON
 }
 
 teardown() {
 	teardown_temp_dir
 }
 
-@test "a factory names the repository it works" {
-	run cageworks_factory_repository "$ROOT" acme
-	assert_success
-	assert_output "/srv/acme"
-}
-
-@test "an undeclared factory is refused by name" {
-	run cageworks_factory_repository "$ROOT" ghost
-	assert_failure
-	assert_output --partial "ghost"
+## Replace the declaration with one jq edit applied to it.
+declare_with() {
+	local edited
+	edited="$(jq "$1" "$DECL")"
+	printf '%s\n' "$edited" >"$DECL"
 }
 
 @test "the declared roles are listed in a stable order" {
-	run cageworks_factory_roles "$ROOT" acme
+	run cageworks_factory_roles "$DECL"
 	assert_success
 	assert_line --index 0 "builder"
 	assert_line --index 1 "reviewer"
 }
 
 @test "a role's command is what its declaration says, one word per line" {
-	run cageworks_factory_role_command "$ROOT" acme builder
+	run cageworks_factory_role_command "$DECL" builder
 	assert_success
 	assert_line --index 0 "claude"
 	assert_line --index 1 "--permission-mode"
@@ -48,118 +56,70 @@ teardown() {
 }
 
 @test "a role that declares no command gets none, and that is not an error" {
-	run cageworks_factory_role_command "$ROOT" acme reviewer
+	run cageworks_factory_role_command "$DECL" reviewer
 	assert_success
 	assert_output ""
 }
 
 @test "an undeclared role is refused, and the message says which roles exist" {
-	run cageworks_factory_role_command "$ROOT" acme ghost
+	run cageworks_factory_role_command "$DECL" ghost
 	assert_failure
 	assert_output --partial "builder"
 	assert_output --partial "reviewer"
 }
 
-@test "a factory name that could escape the declaration tree is refused" {
-	run cageworks_factory_repository "$ROOT" "../../etc"
+@test "a role name that could reach a path or a ref is refused" {
+	run cageworks_factory_role_command "$DECL" "../../../etc/passwd"
 	assert_failure
 }
 
-@test "a role name that could escape the declaration tree is refused" {
-	run cageworks_factory_role_command "$ROOT" acme "../../../etc/passwd"
-	assert_failure
-}
-
-@test "a factory declared with no roles is refused rather than silently empty" {
-	mkdir -p "$ROOT/bare"
-	echo "/srv/bare" >"$ROOT/bare/repository"
-	run cageworks_factory_roles "$ROOT" bare
+@test "a declaration with no roles is refused rather than silently empty" {
+	declare_with 'del(.roles)'
+	run cageworks_factory_roles "$DECL"
 	assert_failure
 	assert_output --partial "no roles"
 }
 
-@test "the example configuration shows how a factory is declared" {
-	example="$CAGEWORKS_ROOT/examples/config/flake.nix"
-	run grep -c "factories.acme" "$example"
-	assert_success
-	# The uid a role is mapped onto comes from nixcage, so a configuration
-	# that declares a factory and not the range it draws from does not build.
-	run grep -c "principalUidRange" "$example"
-	assert_success
-	# A command is argv, and the example must not teach otherwise.
-	run grep -E 'command = \[' "$example"
-	assert_success
-}
-
-@test "the example configuration imports both modules, since it needs both" {
-	example="$CAGEWORKS_ROOT/examples/config/flake.nix"
-	run grep -c "nixosModules.cageworks" "$example"
-	assert_success
-	run grep -cE "nixcage.nixosModules.(nixcage|host)" "$example"
-	assert_success
-}
-
 @test "a specialist role names the devShell it works in" {
-	echo "backend-jvm" >"$ROOT/acme/roles/builder/shell"
-	run cageworks_factory_role_shell "$ROOT" acme builder
+	declare_with '.roles.builder.shell = "backend-jvm"'
+	run cageworks_factory_role_shell "$DECL" builder
 	assert_success
 	assert_output "backend-jvm"
 }
 
 @test "a role that names no shell gets none, and that is not an error" {
-	run cageworks_factory_role_shell "$ROOT" acme reviewer
+	run cageworks_factory_role_shell "$DECL" reviewer
 	assert_success
 	assert_output ""
 }
 
+# The last place a devShell name is checked before it reaches a flake
+# reference, which is why it is checked here as well as in the schema.
 @test "a role whose declared shell is not an attribute name is refused" {
-	printf 'not a name\n' >"$ROOT/acme/roles/reviewer/shell"
-	run cageworks_factory_role_shell "$ROOT" acme reviewer
+	declare_with '.roles.reviewer.shell = "not a name"'
+	run cageworks_factory_role_shell "$DECL" reviewer
 	assert_failure
 	assert_output --partial "reviewer"
 }
 
-@test "a shell is only read for a role the factory declares" {
-	run cageworks_factory_role_shell "$ROOT" acme ghost
-	assert_failure
+@test "a role says what it can be given to do" {
+	run cageworks_factory_role_provides "$DECL" reviewer
+	assert_success
+	assert_line --index 0 "review"
+	assert_line --index 1 "build"
 }
 
-@test "the example repository shows one devShell per specialist" {
-	example="$CAGEWORKS_ROOT/examples/factory-project/flake.nix"
-	run grep -c "backend-jvm" "$example"
-	assert_success
-	# A specialist shell is only useful next to a default one: a role that
-	# declares none must still have somewhere to land.
-	run grep -E "^ *default = " "$example"
-	assert_success
-}
-
-@test "a role declares what it can do" {
-	printf 'build\nreview\n' >"$ROOT/acme/roles/builder/provides"
-	run cageworks_factory_role_provides "$ROOT" acme builder
-	assert_success
-	assert_line --index 0 "build"
-	assert_line --index 1 "review"
-}
-
-@test "a role that declares nothing can do nothing, and that is not an error" {
-	run cageworks_factory_role_provides "$ROOT" acme reviewer
-	assert_success
-	assert_output ""
-}
-
-@test "a capability resolves to the roles providing it, in declaration order" {
-	printf 'build\n' >"$ROOT/acme/roles/builder/provides"
-	printf 'build\n' >"$ROOT/acme/roles/reviewer/provides"
-	run cageworks_factory_roles_providing "$ROOT" acme build
+# A stage names a capability rather than a role, so declaring a second role
+# that provides it adds capacity without touching the pipeline (ADR-015).
+@test "every role providing a capability is offered, in a stable order" {
+	run cageworks_factory_roles_providing "$DECL" build
 	assert_success
 	assert_line --index 0 "builder"
 	assert_line --index 1 "reviewer"
 }
 
-@test "a capability nothing provides resolves to nobody" {
-	printf 'build\n' >"$ROOT/acme/roles/builder/provides"
-	run cageworks_factory_roles_providing "$ROOT" acme design
+@test "a capability nobody provides resolves to nobody, and that is not an error" {
+	run cageworks_factory_roles_providing "$DECL" telepathy
 	assert_success
 	assert_output ""
 }

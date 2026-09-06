@@ -132,5 +132,5 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run cageworks_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","concurrency"]'
+	assert_output '["memory","cores","roleQuota","concurrency","taskAttempts","runTimeoutSeconds"]'
 }

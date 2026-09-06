@@ -16,6 +16,11 @@ let
     cp ${../modules/role-worktree.sh} $out/role-worktree.sh
     cp ${../modules/factory-clone.sh} $out/factory-clone.sh
     cp ${../modules/factory-config.sh} $out/factory-config.sh
+    cp ${../modules/schema.sh} $out/schema.sh
+    cp ${../modules/sizes.sh} $out/sizes.sh
+    cp ${../modules/resources.sh} $out/resources.sh
+    cp ${../modules/repo-declaration.sh} $out/repo-declaration.sh
+    cp ${../modules/operator-config.sh} $out/operator-config.sh
     cp ${../modules/task-store.sh} $out/task-store.sh
     cp ${../modules/workflow-config.sh} $out/workflow-config.sh
     cp ${../modules/record.sh} $out/record.sh
@@ -55,6 +60,10 @@ let
               ## The shared record. The supervisor is the only writer
               ## (ADR-013), so this is here rather than in a cage.
               git-bug
+              ## Reading the declaration out of a factory's clone, and shaping
+              ## the JSON it comes back as (ADR-020).
+              nix
+              jq
             ]
           )
         }
@@ -73,7 +82,7 @@ let
     buildInputs = [ pkgs.bash ];
     installPhase = ''
       mkdir -p $out/bin
-      cp $src $out/bin/cageworks
+      substitute $src $out/bin/cageworks --replace-fail '@lib@' '${lib'}'
       chmod +x $out/bin/cageworks
       wrapProgram $out/bin/cageworks \
         --prefix PATH : ${
@@ -85,6 +94,10 @@ let
               ## running. Both are best effort and neither stops a session.
               jq
               netcat
+              ## The operator's config is TOML and nix parses it, which is one
+              ## dependency rather than two: nix is already what reads a
+              ## repository's declaration (ADR-020).
+              nix
             ]
           )
         }

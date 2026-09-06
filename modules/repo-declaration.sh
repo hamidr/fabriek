@@ -25,7 +25,7 @@ cageworks_declaration_program() {
 	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources"]\n'
 	printf '  , role:      ["command", "provides", "shell"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
-	printf '  , stage:     ["needs", "ready", "done", "gate"]\n'
+	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout"]\n'
 	printf '  , budget:    ["runs"]\n'
 	printf '  , resources: %s\n  };\n' "$(cageworks_resource_field_names_json)"
 	cat <<'JQ'
