@@ -373,11 +373,11 @@ cmd_up() {
   ## started in the machine's own: its disk belongs beside its key and its
   ## port, and no factory writes into another's.
   log_info "Starting $factory on port $(cageworks_machine_port "$factory")..."
-  ## Detached on purpose. A machine that ends when the command that started it
-  ## ends is not one anything can be run in later, and every verb after this
-  ## asks whether it is still up.
-  (cd "$dir" && exec nohup "$runner/bin/microvm-run" >>"$dir/console.log" 2>&1) &
-  local runner_pid=$!
+  ## Detached into a session of its own. A machine that ends when the command
+  ## that started it ends is not one anything can be run in later, and every
+  ## verb after this asks whether it is still up.
+  local runner_pid
+  runner_pid="$(cd "$dir" && cageworks_machine_spawn "$dir/console.log" "$runner/bin/microvm-run")"
   disown "$runner_pid" 2>/dev/null || true
   echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
@@ -405,10 +405,16 @@ cmd_down() {
   while IFS= read -r arg; do ssh_args+=("$arg"); done < <(cageworks_machine_ssh_args "$factory")
 
   log_info "Shutting $factory down..."
-  if ! ssh "${ssh_args[@]}" root@localhost systemctl poweroff 2>/dev/null; then
+  ## Asked in two steps because one would conflate two different answers. A
+  ## machine that cannot be reached has refused; a machine that powers off
+  ## takes the connection down with it, so ssh reports a dropped connection
+  ## for the successful case and its verdict on the poweroff itself is worth
+  ## nothing. Whether it stopped is whether the process ended.
+  if ! ssh "${ssh_args[@]}" root@localhost true 2>/dev/null; then
     log_err "$factory would not accept a shutdown; it is still running"
     exit 1
   fi
+  ssh "${ssh_args[@]}" root@localhost systemctl poweroff >/dev/null 2>&1 || true
 
   local pid waited=0
   pid="$(cageworks_machine_pid "$factory")"

@@ -114,6 +114,23 @@ cageworks_machine_list() {
 	done | sort
 }
 
+## Start a command in a session of its own, detached from whatever started it.
+##
+## A machine has to outlive the command that booted it, and backgrounding is
+## not enough: nohup only refuses SIGHUP, and the process stays in the caller's
+## process group where anything that signals the group reaches it too. setsid
+## is the right tool and is not on macOS, so perl is asked for the same call.
+cageworks_machine_spawn() {
+	local log="$1"
+	shift
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" >>"$log" 2>&1 &
+	else
+		perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV or die $!;' "$@" >>"$log" 2>&1 &
+	fi
+	printf '%s\n' "$!"
+}
+
 ## Whether a factory's machine is running, and what is running it. The runner
 ## is an ordinary process on the operator's host, so this is a pid file and the
 ## question every other verb asks first.
