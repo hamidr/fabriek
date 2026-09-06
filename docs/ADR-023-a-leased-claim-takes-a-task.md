@@ -46,11 +46,20 @@ is what makes the compare-and-swap shared, and it means a role can also delete a
 peer's claim. The mechanism stops two agents from racing; it does not stop one
 from misbehaving.
 
-**3. A claim is a lease.** It carries a deadline, and the holder renews it while
-it works. An expired claim may be taken by any capable agent, so an agent that
-crashes, a machine that is stopped and a laptop that is closed do not strand
-work. A lease that is never renewed is indistinguishable from a dead holder,
-which is the point.
+**3. A claim is a lease, and a renewal moves the ref.** The claim carries a
+deadline and the holder renews it while it works, by compare-and-swapping the
+ref to a new value rather than touching anything beside it. An expired claim may
+be taken by any capable agent, so an agent that crashes, a machine that is
+stopped and a laptop that is closed do not strand work. A lease that is never
+renewed is indistinguishable from a dead holder, which is the point.
+
+That the renewal has to move the ref came from the model rather than from
+reasoning. Taking over an expired claim is two operations, a guarded delete and
+then a create, with an arbitrary interleaving between them. If the deadline
+lives beside the ref instead of in it, a renewal leaves the ref's value
+unchanged, an agent that read the claim as expired still holds a matching
+expected value, and its delete succeeds against a claim that is now live. With
+the deadline in the claim, that delete is refused.
 
 **4. Releasing and stealing pass the claim's real value.** `update-ref -d`
 against a mismatched expected value refuses, which is what makes a steal safe:
@@ -100,6 +109,13 @@ claim. Getting this wrong in the safe direction means a peer steals work that is
 still being done, which is the failure this document most has to avoid, and the
 model below is where that is checked rather than argued about.
 
+An agent whose lease lapsed keeps working. The model found this and it is worth
+stating plainly: after a legitimate takeover, the previous holder is still
+working a task another agent may already have finished. It cannot commit, since
+finishing is guarded on holding the claim, but it spends a whole turn before it
+discovers that. Nothing tells it sooner, and the only cure is a holder that
+re-reads the claim before it commits rather than only at the end.
+
 Claims accumulate. A finished task's claim is deleted by its holder, and one
 whose holder never came back is deleted by whoever reclaims it, so nothing
 prunes a claim for a task that was cancelled while held. That is a sweep the
@@ -108,10 +124,22 @@ cages.
 
 The Formal Modeling Gate fires, on exactly the shape it names: a lease handoff
 between processes in separate cages, with a compare-and-swap and an expiry.
-`models/task-claim.qnt` is written and run before the implementation, over
-several capable agents, one record and a clock that may expire a lease at any
-point including during a turn. Two invariants: no two agents ever hold one task,
-and no takeable task stays unclaimed forever.
+`models/task-claim.qnt` is written and run before the implementation, over three
+agents of which two provide one capability, two tasks, and a clock that may
+expire a lease at any point including during a turn.
+
+Four invariants hold, with no violation found over 30000 traces of up to 60
+steps each: a claim ref exists exactly when somebody holds it, no role ever
+holds work outside what it provides, a guarded delete never removes a claim that
+had not expired, and no task is ever finished twice. Three witnesses are stated
+as negations so that a violation is the evidence, and all three violate: a task
+is worked by two agents at once when a hung holder stops renewing, a crashed
+agent's task returns to the pool once its lease lapses, and an agent whose lease
+lapsed keeps working a task a peer has already finished.
+
+The result was checked for vacuity rather than trusted. Making a renewal leave
+the ref's value alone turns the third invariant red, which is what point 3
+records.
 
 `models/factory-structure.als` changes in the same commit, because what a role
 may write changes. Its ref model has a role writing only its own namespace, and
@@ -132,4 +160,5 @@ The compare-and-swap is asserted against real git rather than stubbed, since it
 is the whole decision: two processes creating one claim ref leave one at exit 0
 and one at exit 128, a delete with a mismatched expected value leaves the ref in
 place at exit 1, and a delete with the all-zeros object id is refused by
-cageworks before it reaches git.
+cageworks before it reaches git. Those three exit codes were measured on git
+2.55.0 before this document was written.
