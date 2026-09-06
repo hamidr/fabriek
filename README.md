@@ -11,8 +11,14 @@ becomes part of a command line.
 
 cageworks runs on [nixcage](https://github.com/hamidr/nixcage), which owns the
 cages. Everything about isolation, uid mapping, binds, environment selection,
-secrets, storage and the macOS VM is nixcage's; everything that exists only
-because several named workers share one repository is here (ADR-018).
+secrets and storage is nixcage's; everything that exists only because several
+named workers share one repository is here.
+
+The machine is cageworks' own. A factory runs in a NixOS VM of its own on
+Linux and macOS alike, so the isolation a factory gets does not depend on
+which laptop is open and two factories share no kernel, store or uid space
+(ADR-019). Inside it, nixcage is on an ordinary Linux host running cages
+natively.
 
 ## How it works
 
@@ -85,6 +91,9 @@ handing numbers out is the only one that can promise never to reissue one.
 
 | Command | Description |
 |---|---|
+| `cageworks up <factory>` | Build and boot the machine that factory runs in |
+| `cageworks down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
+| `cageworks vm status` | The machines on this host, what each is doing, and the port it answers on |
 | `cageworks role [--pane] <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid (`--pane`: in a herdr pane of its own) |
 | `cageworks task file <factory> <workflow> [--acceptance <text>]` | File a goal. It enters at the workflow's first stage; you never name a role |
 | `cageworks task list <factory> [state]` | What is filed, and who holds it |

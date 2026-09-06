@@ -184,6 +184,13 @@ one platform out of two by the project that does not own it.
   The schema bounds what the declaration can say, not what evaluating it can do.
   Mitigation is a bound, `--no-allow-import-from-derivation`, and a statement in
   ADR-020 that this is accepted rather than solved.
+- **The machine is written twice.** nixcage's own VM module already carries
+  the volumes, the pool, the shares and the networking, per machine. ADR-019
+  gives the VM to cageworks, so this is a second implementation of that
+  scaffolding, per factory. It was weighed against importing nixcage's module
+  and parameterising it, which is cheaper and is the split ADR-019 rejected.
+  The cost is that a fix upstream does not arrive here, and the mitigation is
+  that the two have different shapes and will diverge anyway.
 - **The cost is per factory now.** A store, a disk image and a boot each. An
   operator running four factories pays four times, where they paid once. If this
   is what stops it being used, the answer is fewer factories rather than a
