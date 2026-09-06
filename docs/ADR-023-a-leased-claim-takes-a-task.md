@@ -142,9 +142,21 @@ the ref's value alone turns the third invariant red, which is what point 3
 records.
 
 `models/factory-structure.als` changes in the same commit, because what a role
-may write changes. Its ref model has a role writing only its own namespace, and
-`refs/bugs/` and `refs/claims/` are now writable by all of them, which is what
-its assertions about ref partition have to be told.
+may write changes. Its ref model had a role writing only its own namespace, and
+`refs/bugs/` and `refs/claims/` are now writable by all of them.
+
+Twelve checks come back UNSAT at scope 6, including the two the widening is
+about: branches stay partitioned, and any ref two roles can both write is one
+of the shared spaces and never a branch or `main`. Six runs come back SAT,
+including two the old model could not produce: work changing hands between two
+roles, which ADR-015's sticky taker forbade, and a role writing a claim it does
+not hold, which is decision 2's cost made visible rather than asserted.
+Removing the widening turns the holder's own claim into a counterexample and
+makes a peer's write unreachable, which is how both were checked for vacuity.
+
+Two assertions leave with the sticky taker. Every attempt at a task sharing one
+role, and a retry never moving to a peer, were true of ADR-015 and are false
+here by decision 6.
 
 ## Verification
 

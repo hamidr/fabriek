@@ -1,7 +1,14 @@
 /*
  * Structural invariants of the software factory in
  * docs/PRD-003-software-factory.md, under the ownership and ref rules of
- * docs/ADR-010-role-cage-identity.md.
+ * docs/ADR-010-role-cage-identity.md, as widened by
+ * docs/ADR-022-the-task-is-a-git-bug-issue.md and
+ * docs/ADR-023-a-leased-claim-takes-a-task.md.
+ *
+ * Agents now write the record themselves and race each other for claims, so
+ * two ref spaces are writable by every role. ADR-010's partition still holds
+ * over branches, and this model is where that boundary is stated: any ref two
+ * roles can both write is one of the shared ones, and nothing else.
  *
  * The facts state only what the mechanism gives: one uid and one worktree per
  * role, an ACL that makes a ref writable exactly by the role whose namespace
@@ -19,6 +26,19 @@ sig Worktree { owner: one Uid, checkedOut: one Ref }
 -- in none, which is the whole mechanism behind "main is writable by no cage".
 sig Ref { namespace: lone Role }
 one sig Main extends Ref {}
+
+-- ADR-022 and ADR-023: refs/bugs and refs/claims carry an ACL for every role
+-- uid rather than for one, because an agent writes its own record entries and
+-- takes its own work. They are in nobody's namespace: they are reached by an
+-- ACL over the directory, which is a different mechanism from the partition.
+abstract sig Shared extends Ref {}
+sig RecordRef extends Shared {}
+sig ClaimRef extends Shared {}
+
+-- ADR-023: a claim is a ref, one per task at most. How a claim is taken, held
+-- and lost over time is models/task-claim.qnt; what is structural is that it
+-- names a role capable of the work and lives in the shared claim space.
+sig Claim { task: one Task, holder: one Role, ref: one ClaimRef }
 
 -- ADR-015: what a role can do, declared. A stage names one of these rather
 -- than naming a role, so a column in the flow and a worker are different
@@ -53,7 +73,13 @@ one sig Proposed, Ready, Running, Blocked, AwaitingReview, Done, Failed, Cancell
 
 /* ---------- the mechanism ---------- */
 
-fun writable[r: Role]: set Ref { namespace.r }
+-- Everything a role's uid can write: its own branch namespace, plus the two
+-- shared spaces every role can write.
+fun writable[r: Role]: set Ref { namespace.r + Shared }
+
+-- The branches a role owns. This is what the ADR-010 partition is about, and
+-- what a worktree and an attempt are restricted to.
+fun branches[r: Role]: set Ref { namespace.r }
 
 -- The roles that may take a stage's work: those providing what it needs.
 fun capable[s: Stage]: set Role { provides.(s.needs) }
@@ -69,10 +95,14 @@ fact RoleIdentity {
 -- ADR-010 decision 5: Main is in nobody's namespace.
 fact MainHasNoNamespace { no Main.namespace }
 
+-- A shared ref is not in anybody's namespace either, so it is not a branch and
+-- cannot be checked out or committed to as one.
+fact SharedRefsAreNotNamespaced { no Shared.namespace }
+
 -- git: a worktree can only be worked in if its role can write the branch it
 -- has checked out. This is a fact about git, not a choice of ours.
 fact CommitNeedsAWritableBranch {
-  all r: Role | r.tree.checkedOut in writable[r]
+  all r: Role | r.tree.checkedOut in branches[r]
 }
 
 -- ADR-015: a stage no declared role can work is rejected when the declaration
@@ -81,21 +111,27 @@ fact EveryStageIsCoverable {
   all s: Stage | some capable[s]
 }
 
--- ADR-015 decision 3 and 4: taking resolves the capability to a role, and the
--- recorded taker answers for every later attempt. What the mechanism gives is
--- these two things; that all attempts agree is a consequence, not a rule.
+-- ADR-023 decision 7 keeps ADR-015's rule that taking resolves a capability.
+-- What it does NOT keep is the recorded taker answering for every later
+-- attempt: a lease any capable agent may reclaim ends that, so there is no
+-- fact here forcing two attempts at one task to share a role.
 fact TakingResolvesACapability {
   all a: Attempt | a.by in capable[a.task.stage]
 }
-fact AttemptsGoToTheRecordedTaker {
-  all disj a, b: Attempt | a.task = b.task implies a.by = b.by
+
+-- ADR-010, and ADR-023 decision 6: an attempt works a branch in its OWN
+-- taker's namespace. An agent taking over an expired claim therefore branches
+-- afresh rather than continuing a branch it cannot write.
+fact AttemptsWorkTheirTakersBranch {
+  all a: Attempt | a.branch in branches[a.by]
 }
 
--- ADR-010 and ADR-015 decision 4: an attempt works a branch in the taker's own
--- namespace, which is why a retry can continue the first attempt's commits
--- without the ref partition needing an exception.
-fact AttemptsWorkTheirTakersBranch {
-  all a: Attempt | a.branch in writable[a.by]
+-- ADR-023: a claim belongs to one task and one ref, and is held by a role that
+-- can actually do the work.
+fact ClaimShape {
+  all disj c, d: Claim | c.task != d.task
+  all disj c, d: Claim | c.ref != d.ref
+  all c: Claim | c.holder in capable[c.task.stage]
 }
 
 -- PRD-003: a pipeline's stages belong to it, its edges stay inside it, and it
@@ -150,9 +186,28 @@ assert NoRoleCanWriteMain {
   all r: Role | Main not in writable[r]
 }
 
--- ADR-010: refs are partitioned, so one role cannot move another's branch.
-assert NoTwoRolesShareAWritableRef {
-  all disj a, b: Role | no writable[a] & writable[b]
+-- ADR-010: branches are partitioned, so one role cannot move another's.
+assert NoTwoRolesShareAWritableBranch {
+  all disj a, b: Role | no branches[a] & branches[b]
+}
+
+-- Where the widening stops. Two roles may both write a ref only when it is one
+-- of the shared spaces; every other ref stays partitioned. This is the whole
+-- content of "the record and the claims are open, and nothing else is".
+assert TheWideningStopsAtTheSharedSpaces {
+  all disj a, b: Role | (writable[a] & writable[b]) in Shared
+}
+
+-- ADR-023: a holder can renew and release its own claim, which is only true
+-- because the claim space is shared. Without the widening this is SAT.
+assert AHolderCanWriteItsOwnClaim {
+  all c: Claim | c.ref in writable[c.holder]
+}
+
+-- Branches stay partitioned even though work changes hands, so two roles never
+-- commit to one branch.
+assert NoTwoRolesShareAnAttemptBranch {
+  all disj a, b: Attempt | a.by != b.by implies a.branch != b.branch
 }
 
 -- PRD-003: "depth is bounded by the number of stages rather than by a counter".
@@ -183,17 +238,9 @@ assert EveryTaskHasACapableRole {
   all t: Task | some capable[t.stage]
 }
 
--- ADR-015 decision 4: every attempt at a task is made by the same role.
-assert AttemptsAtATaskShareOneRole {
-  all disj a, b: Attempt | a.task = b.task implies a.by = b.by
-}
-
--- A retry cannot be handed to an idle peer that provides the same capability:
--- the branch is in the first taker's namespace and no other role can write it.
-assert RetriesCannotMoveToAPeer {
-  all disj a, b: Attempt |
-    a.task = b.task implies a.branch in writable[b.by]
-}
+-- ADR-015's sticky taker is gone, and its two assertions with it. What
+-- replaces them is a witness below: work CAN change hands now, and a model in
+-- which it could not would be modelling the design that was replaced.
 
 -- ADR-015 decision 1: work only ever reaches a role that declared it can do it.
 assert NoRoleWorksOutsideWhatItProvides {
@@ -225,13 +272,14 @@ run ConsultCanPointBackwards {
 
 check MainIsCheckedOutNowhere for 6
 check NoRoleCanWriteMain for 6
-check NoTwoRolesShareAWritableRef for 6
+check NoTwoRolesShareAWritableBranch for 6
+check TheWideningStopsAtTheSharedSpaces for 6
+check AHolderCanWriteItsOwnClaim for 6
+check NoTwoRolesShareAnAttemptBranch for 6
 check PipelinedCascadeNeverRevisitsAStage for 6
 check TaskStageBelongsToItsWorkflow for 6
 check PipelinedStageReachableFromEntry for 6
 check EveryTaskHasACapableRole for 6
-check AttemptsAtATaskShareOneRole for 6
-check RetriesCannotMoveToAPeer for 6
 check NoRoleWorksOutsideWhatItProvides for 6
 check WaitingNeverFormsALoop for 6
 check ConsultsFollowTheDeclaredGraph for 6
@@ -240,6 +288,20 @@ check ConsultsFollowTheDeclaredGraph for 6
 -- two different roles, has to be a legal configuration -- it is the whole
 -- point of the change, and a model that forbade it would be modelling the
 -- pipeline this replaces.
+-- ADR-023 decision 6: work no longer sticks. Two attempts at one task by two
+-- different roles is now a legal configuration, and this SAT is the evidence
+-- that the sticky-taker fact really is gone rather than merely unstated.
+run WorkCanChangeHands {
+  some disj a, b: Attempt | a.task = b.task and a.by != b.by
+} for 6
+
+-- ADR-023 decision 2, stated as something reachable rather than as prose: a
+-- role that does not hold a claim can still write it. The compare-and-swap
+-- stops two agents racing; it does not stop one from deleting a peer's claim.
+run APeerCanWriteAnothersClaim {
+  some c: Claim | some r: Role | r != c.holder and c.ref in writable[r]
+} for 6
+
 run FanOutReachesTwoRoles {
   some disj t1, t2: Task | t1.stage = t2.stage and
     some disj a1, a2: Attempt | a1.task = t1 and a2.task = t2 and a1.by != a2.by

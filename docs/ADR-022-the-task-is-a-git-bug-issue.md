@@ -91,9 +91,15 @@ importer, because the states, stages and attempts a file carries are exactly
 what the labels of point 2 have to be designed to hold, and writing an importer
 before that design has settled would fix it prematurely.
 
-The Formal Modeling Gate does not fire on this document. Moving where a task is
-stored changes no invariant: the same states, the same stages, the same
-ownership. It fires on taking one, which is ADR-023.
+The Formal Modeling Gate does not fire on this document in the sense of needing
+a model of its own. Moving where a task is stored changes no behaviour over
+time: the same states, the same stages, the same lifecycle. It fires on taking
+one, which is ADR-023.
+
+What does change is structural, and it lands in `models/factory-structure.als`
+alongside ADR-023's half of the same widening. That model has each role writing
+only its own namespace, and point 3 makes the record writable by all of them,
+so its ref partition has to be told where the partition now stops.
 
 ## Verification
 
