@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 006
 
-**Next ADR number:** 025
+**Next ADR number:** 026
 
 ## PRDs
 
@@ -32,7 +32,7 @@ document, then regenerate.
 | [ADR-006](ADR-006-direnv-project-environments.md) | A project with an .envrc is entered through direnv | implemented | -- | ADR-005 | sessions run direnv when the project has an .envrc, so those projects get the same environment as on the host |  |
 | [ADR-007](ADR-007-worktree-git-directory-bind.md) | A linked git worktree binds its git directory into the session | implemented | -- | ADR-002 | sessions bind the git directories a linked worktree points at, so git works in a worktree instead of failing outright |  |
 | [ADR-008](ADR-008-session-git-identity-and-signing.md) | Sessions commit under a declared identity and sign through the forwarded ssh-agent | implemented | -- | ADR-007 | sessions get a declared git identity and sign through the forwarded ssh-agent, holding no key of their own |  |
-| [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | implemented | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
+| [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | superseded | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
 | [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | implemented | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
 | [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | implemented | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
 | [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | withdrawn | -- | ADR-011 | tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
@@ -48,3 +48,4 @@ document, then regenerate.
 | [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | accepted | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
 | [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | superseded | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |
 | [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and every git-bug call retries the repository lock | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug locks the whole repository for reads as well as writes |  |
+| [ADR-025](ADR-025-the-machine-holds-the-model-credential.md) | The machine holds the model credential and injects it at egress | accepted | -- | ADR-019, ADR-021 | the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else |  |
