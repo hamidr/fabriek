@@ -1,7 +1,7 @@
 ---
 id: ADR-021
 title: A role's agent is a loop that takes its own work
-status: proposed
+status: accepted
 date: 2026-09-06
 status_date: 2026-09-06
 summary: each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch

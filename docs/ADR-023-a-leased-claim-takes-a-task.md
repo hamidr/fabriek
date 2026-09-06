@@ -1,7 +1,7 @@
 ---
 id: ADR-023
 title: A task is taken by a leased claim on a ref
-status: proposed
+status: accepted
 date: 2026-09-06
 status_date: 2026-09-06
 summary: capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires

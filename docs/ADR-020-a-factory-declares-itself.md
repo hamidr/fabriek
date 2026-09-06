@@ -1,7 +1,7 @@
 ---
 id: ADR-020
 title: A factory declares itself in the repository it works
-status: proposed
+status: accepted
 date: 2026-09-06
 status_date: 2026-09-06
 summary: roles and workflows move into the worked repository's flake output; the operator keeps only caps and a register

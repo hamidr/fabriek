@@ -1,7 +1,7 @@
 ---
 id: ADR-022
 title: The task is a git-bug issue and nothing else
-status: proposed
+status: accepted
 date: 2026-09-06
 status_date: 2026-09-06
 summary: tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted

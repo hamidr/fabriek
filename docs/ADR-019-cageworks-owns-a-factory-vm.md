@@ -1,7 +1,7 @@
 ---
 id: ADR-019
 title: cageworks builds and runs one NixOS VM per factory, on every platform
-status: proposed
+status: accepted
 date: 2026-09-06
 status_date: 2026-09-06
 summary: cageworks owns a per-factory microVM on Linux and macOS alike, with nixcage caging roles inside it
