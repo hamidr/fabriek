@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 004
 
-**Next ADR number:** 020
+**Next ADR number:** 021
 
 ## PRDs
 
@@ -41,3 +41,4 @@ document, then regenerate.
 | [ADR-017](ADR-017-zfs-storage-for-factory-state.md) | The VM keeps nixcage's state on ZFS, one dataset per role worktree | implemented | -- | ADR-010, ADR-011 | factory state moves to a ZFS pool with a dataset and quota per role worktree; worktrees stay, clones are refused |  |
 | [ADR-018](ADR-018-cageworks-depends-on-nixcage.md) | The factory becomes cageworks, a separate project that depends on nixcage | superseded | -- | ADR-002, ADR-004, ADR-010, ADR-017 | the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives |  |
 | [ADR-019](ADR-019-cageworks-owns-a-factory-vm.md) | cageworks builds and runs one NixOS VM per factory, on every platform | proposed | -- | ADR-010, ADR-011, ADR-017 | cageworks owns a per-factory microVM on Linux and macOS alike, with nixcage caging roles inside it |  |
+| [ADR-020](ADR-020-a-factory-declares-itself.md) | A factory declares itself in the repository it works | proposed | -- | ADR-015, ADR-016, ADR-019 | roles and workflows move into the worked repository's flake output; the operator keeps only caps and a register |  |
