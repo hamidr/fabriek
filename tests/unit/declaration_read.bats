@@ -10,6 +10,8 @@ setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
 	source "$CAGEWORKS_ROOT/modules/names.sh"
+	# shellcheck source=../../modules/schema.sh
+	source "$CAGEWORKS_ROOT/modules/schema.sh"
 	# shellcheck source=../../modules/repo-declaration.sh
 	source "$CAGEWORKS_ROOT/modules/repo-declaration.sh"
 	REPO="$TEST_TEMP_DIR/acme"

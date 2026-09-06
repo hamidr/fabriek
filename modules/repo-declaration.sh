@@ -3,23 +3,22 @@
 ##
 ## Two things live here and they are deliberately separable. Validation is
 ## pure: JSON in, either the same JSON out or a message naming what was wrong,
-## with no nix and no git anywhere near it. Reading is the only part that
-## needs either, and it is a thin wrapper that hands what it read to the
-## validator.
+## with no nix and no git anywhere near it. Reading is the only part that needs
+## either, and it is a thin wrapper that hands what it read to the validator.
 ##
-## The schema is closed and it is data. Every check reads the one table in
-## cageworks_declaration_schema, so a field is added by editing one line rather
-## than by finding every place that lists it. A key nobody recognises is
-## refused with its own name rather than ignored, which is the whole of what
-## stops a repository reaching the machine it is given.
+## The schema is closed and it is data. Every check reads the one table below,
+## so a field is added by editing one line rather than by finding every place
+## that lists it. What "closed" means is schema.sh's, shared with the operator's
+## own declaration so the two cannot drift apart.
 ##
 ## Sourced by store path into cageworks-container beside names.sh, whose
 ## cageworks_name_ok and cageworks_shell_name_ok this file relies on rather
 ## than restating the alphabet they accept.
 
-## Everything the schema allows, at every level. jq reads this and nothing else
-## decides what a declaration may say.
-cageworks_declaration_schema() {
+## The schema, and the problems a declaration has against it. One jq program
+## because a declaration is one value: a check that has to see the roles and
+## the stages at once cannot be a separate pass.
+cageworks_declaration_program() {
 	cat <<'JQ'
 def schema:
   { top:       ["name", "roles", "workflows", "resources"]
@@ -29,25 +28,6 @@ def schema:
   , budget:    ["runs"]
   , resources: ["memory", "cores", "roleQuota", "concurrency"]
   };
-JQ
-}
-
-## The problems in a declaration, one sentence per line, empty when there are
-## none. Written as one jq program because a declaration is one value: a check
-## that has to see the roles and the stages at once cannot be a separate pass.
-cageworks_declaration_problems() {
-	local program
-	program="$(cageworks_declaration_schema)
-$(
-		cat <<'JQ'
-# Every level is checked by this one function, which is why adding a level
-# costs a line in schema and a call here rather than a new kind of check.
-def unknown($obj; $allowed; $where):
-  if ($obj | type) == "object"
-  then (($obj | keys_unsorted) - $allowed) | map("\($where): unknown key \(.)")
-  else [] end;
-
-def cat: reduce .[] as $each ([]; . + $each);
 
 . as $d
 | (if ($d.roles | type) == "object" then $d.roles else {} end) as $roles
@@ -130,8 +110,6 @@ def cat: reduce .[] as $each ([]; . + $each);
        ] | cat)
   ] | cat | .[]
 JQ
-	)"
-	jq -r "$program"
 }
 
 ## Every name a declaration puts somewhere a name has to be usable, as
@@ -149,26 +127,12 @@ cageworks_declaration_declared_names() {
     | .[]'
 }
 
-## JSON in, the same JSON out when it is a declaration, and a message naming
-## what was wrong when it is not.
-cageworks_declaration_validate() {
-	local declaration problems failed=0
-	declaration="$(cat)"
-
-	if ! printf '%s' "$declaration" | jq -e . >/dev/null 2>&1; then
-		echo "cageworks: the declaration is not valid JSON" >&2
-		return 1
-	fi
-
-	problems="$(printf '%s' "$declaration" | cageworks_declaration_problems)" || return 1
-	if [ -n "$problems" ]; then
-		while IFS= read -r problem; do
-			echo "cageworks: $problem" >&2
-		done <<<"$problems"
-		failed=1
-	fi
-
-	local kind where value
+## The names a declaration uses, checked against the alphabet each kind of name
+## has to survive. Reported alongside the schema's own problems rather than
+## instead of them, so one read of a bad declaration names everything wrong
+## with it.
+cageworks_declaration_check_names() {
+	local declaration="$1" kind where value failed=0
 	while IFS=$'\t' read -r kind where value; do
 		case "$kind" in
 		shell)
@@ -182,6 +146,23 @@ cageworks_declaration_validate() {
 		esac
 		failed=1
 	done < <(printf '%s' "$declaration" | cageworks_declaration_declared_names)
+	return "$failed"
+}
+
+## JSON in, the same JSON out when it is a declaration, and a message naming
+## what was wrong when it is not.
+cageworks_declaration_validate() {
+	local declaration failed=0
+	declaration="$(cat)"
+
+	if ! printf '%s' "$declaration" | jq -e . >/dev/null 2>&1; then
+		echo "cageworks: the declaration is not valid JSON" >&2
+		return 1
+	fi
+
+	printf '%s' "$declaration" |
+		cageworks_schema_check "$(cageworks_declaration_program)" declaration >/dev/null || failed=1
+	cageworks_declaration_check_names "$declaration" || failed=1
 
 	[ "$failed" -eq 0 ] || return 1
 	printf '%s\n' "$declaration"
@@ -198,10 +179,19 @@ cageworks_nix_string() {
 	printf '"%s"' "$value"
 }
 
+## The rev a declaration is read from, which is what makes which declaration a
+## run used reconstructable afterwards.
+cageworks_declaration_rev() {
+	local repo="$1"
+	git -C "$repo" rev-parse HEAD 2>/dev/null || {
+		echo "cageworks: $repo has no commit to read a declaration from" >&2
+		return 1
+	}
+}
+
 ## The declaration a repository has committed. Read from the commit and never
 ## from the working tree (ADR-020 point 3a): the factory working a repository
-## is the one its history declares, and the rev read is a fact worth recording
-## beside the work.
+## is the one its history declares.
 ##
 ## The attribute is reached through getFlake rather than through a "#cageworks"
 ## fragment, because a fragment resolves packages.<system>.cageworks first and
@@ -212,24 +202,11 @@ cageworks_declaration_read() {
 		echo "cageworks: no such repository: $repo" >&2
 		return 1
 	fi
-	if ! rev="$(git -C "$absolute" rev-parse HEAD 2>/dev/null)"; then
-		echo "cageworks: $absolute has no commit to read a declaration from" >&2
-		return 1
-	fi
+	rev="$(cageworks_declaration_rev "$absolute")" || return 1
 	if ! output="$(nix eval --json --no-allow-import-from-derivation --expr \
 		"(builtins.getFlake $(cageworks_nix_string "git+file://$absolute?rev=$rev")).cageworks" 2>/dev/null)"; then
 		echo "cageworks: $absolute declares no factory: its flake has no cageworks output at $rev" >&2
 		return 1
 	fi
 	printf '%s' "$output" | cageworks_declaration_validate
-}
-
-## The rev a declaration was read from, which is what makes which declaration a
-## run used reconstructable afterwards.
-cageworks_declaration_rev() {
-	local repo="$1"
-	git -C "$repo" rev-parse HEAD 2>/dev/null || {
-		echo "cageworks: $repo has no commit to read a declaration from" >&2
-		return 1
-	}
 }
