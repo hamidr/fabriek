@@ -1,13 +1,13 @@
 ---
 id: PRD-002
 title: A supervisor that runs declared workflows across cages
-status: proposed
+status: superseded
 date: 2026-09-01
 status_date: 2026-09-01
 summary: declared workflows dispatch caged agent runs under gates and caps, so runs start without a human
 depends_on: [PRD-001]
 supersedes: []
-superseded_by: []
+superseded_by: [PRD-005]
 phases_total: 5
 phases_done: 0
 ---
