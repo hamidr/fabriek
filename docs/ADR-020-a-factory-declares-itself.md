@@ -66,9 +66,20 @@ one arbitrary thing it can reach is the devShell a role enters, which runs
 inside that role's cage and is exactly what ADR-016 already grants it.
 
 **3. The declaration is read at run time, not built into the image.** Adding a
-role, changing a stage's `done`, or granting a consult costs nothing but the
-edit. Only `resources` moves the VM, because only `resources` describes the
+role, changing a stage's `done`, or granting a consult costs nothing but a
+commit. Only `resources` moves the VM, because only `resources` describes the
 machine.
+
+**3a. It is read from the commit, never from the working tree.** The read is
+`nix eval --json git+file://<path>?rev=<sha>#cageworks`, with the rev resolved
+from the repository's `HEAD`. The bare `git+file://` form was tested and does
+not do this: on a dirty tree it evaluates the working tree and prints a warning,
+which is the opposite of what is wanted here. Pinning the rev means the factory
+a repository declares is the one in its history, and it means the rev that was
+read is a fact cageworks can record beside the work, so which declaration a run
+used is reconstructable afterwards. The cost is that an experiment needs a
+commit, which is the same cost every other fact about the repository already
+carries.
 
 **4. The operator keeps one plain file,** `~/.config/cageworks/config.toml`,
 identical on Linux and macOS: the ceilings this machine will allow, and the

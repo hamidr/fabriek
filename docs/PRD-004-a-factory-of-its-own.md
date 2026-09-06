@@ -115,7 +115,9 @@ one platform out of two by the project that does not own it.
 ### The declaration
 
 - A repository states the factory that works it, in its own flake, against a
-  schema cageworks defines and closes. Nothing outside that schema is accepted,
+  schema cageworks defines and closes. What is read is what the repository has
+  committed, so the factory working a repository is the one its history
+  declares, and which declaration a run used stays reconstructable. Nothing outside that schema is accepted,
   and an unknown key is an error naming the key rather than a value ignored.
 - The schema carries roles, what they provide, the devShell each enters, the
   workflows and their stages, and what the factory asks of the machine. It
@@ -205,9 +207,6 @@ one platform out of two by the project that does not own it.
 - **What happens to work in flight when `resources` change?** Resizing means
   restarting the machine, and roles may be mid-task. Refusing, queueing until
   idle, and restarting anyway are all plausible; none is chosen here.
-- **Committed or working tree?** Whether the declaration is read from the
-  repository as committed or as it currently sits decides whether editing a role
-  requires a commit before it takes effect.
 - **How does the repository reach the machine?** ADR-011 has roles work a clone
   the supervisor syncs with the operator's checkout. Whether that checkout is
   shared into the machine or fetched over the machine's own transport is not
