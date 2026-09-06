@@ -278,9 +278,14 @@ cmd_role() {
 
 ## The guest is always Linux, whatever the operator is on. A machine that
 ## reported the host's system would build a darwin guest and fail late.
+host_system() {
+  nix eval --impure --raw --expr 'builtins.currentSystem'
+}
+
+## The guest is always Linux, whatever the operator is on.
 guest_system() {
   local host
-  host="$(nix eval --impure --raw --expr 'builtins.currentSystem')" || return 1
+  host="$(host_system)" || return 1
   case "$host" in
   aarch64-*) echo "aarch64-linux" ;;
   x86_64-*) echo "x86_64-linux" ;;
@@ -295,9 +300,10 @@ guest_system() {
 ## the declaration the repository committed, clamped by this host's ceilings,
 ## plus the way in that belongs to this factory alone.
 machine_spec() {
-  local factory="$1" dir declaration caps system
+  local factory="$1" dir declaration caps system host
   dir="$(cageworks_machine_dir "$factory")" || return 1
   system="$(guest_system)" || return 1
+  host="$(host_system)" || return 1
 
   local path config
   config="$(cageworks_operator_config_path)"
@@ -317,8 +323,15 @@ machine_spec() {
     mem="$(cageworks_size_mib "$declared")" || return 1
   fi
 
-  printf '%s' "$declaration" | jq -c     --arg factory "$factory"     --arg system "$system"     --arg key "$(cat "$dir/id_ed25519.pub")"     --argjson port "$(cat "$dir/port")"     --arg mem "$mem" '
-      { system: $system, factory: $factory, sshPort: $port, authorizedKey: $key }
+  printf '%s' "$declaration" | jq -c \
+    --arg factory "$factory" \
+    --arg system "$system" \
+    --arg hostSystem "$host" \
+    --arg key "$(cat "$dir/id_ed25519.pub")" \
+    --argjson port "$(cat "$dir/port")" \
+    --arg mem "$mem" '
+      { system: $system, hostSystem: $hostSystem, factory: $factory,
+        sshPort: $port, authorizedKey: $key }
       + (if .resources.cores then { cpus: .resources.cores } else {} end)
       + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)'
 }

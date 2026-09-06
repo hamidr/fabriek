@@ -127,11 +127,14 @@ EOF
 	run_cageworks up acme
 	assert_success
 
-	run jq -r '.factory, .cpus, .mem, .system' "$BUILD_CALLS"
+	run jq -r '.factory, .cpus, .mem, .system, .hostSystem' "$BUILD_CALLS"
 	assert_line --index 0 "acme"
 	assert_line --index 1 "2"
 	assert_line --index 2 "4096"
+	# The guest is Linux whatever the operator is on, and the runner that
+	# starts it is built for the operator's own host.
 	assert_line --index 3 --regexp '^(aarch64|x86_64)-linux$'
+	assert_line --index 4 --regexp '^(aarch64|x86_64)-(linux|darwin)$'
 }
 
 @test "the machine is told the one key that reaches it, and its own port" {
