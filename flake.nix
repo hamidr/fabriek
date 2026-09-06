@@ -12,6 +12,13 @@
       url = "github:hamidr/nixcage";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    ## The machine a factory runs in is cageworks' now, so what builds one is
+    ## an input of ours rather than something reached through nixcage
+    ## (ADR-019).
+    microvm = {
+      url = "github:astro/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -27,7 +34,10 @@
       perSystem =
         { pkgs, lib, ... }:
         let
-          cageworks = import ./modules/package.nix { inherit pkgs; };
+          cageworks = import ./modules/package.nix {
+            inherit pkgs;
+            inherit (inputs) self;
+          };
         in
         {
           packages = {
@@ -68,9 +78,23 @@
         };
 
       flake.overlays.default = final: _prev: {
-        cageworks = (import ./modules/package.nix { pkgs = final; }).cli;
-        cageworks-container = (import ./modules/package.nix { pkgs = final; }).container;
+        cageworks = (import ./modules/package.nix {
+          pkgs = final;
+          inherit (inputs) self;
+        }).cli;
+        cageworks-container = (import ./modules/package.nix {
+          pkgs = final;
+          inherit (inputs) self;
+        }).container;
       };
 
+
+      ## One factory's machine, built from a spec the operator's side composes.
+      ## A function rather than a nixosConfigurations attribute because how big
+      ## a machine is and what port it answers on are not facts this repository
+      ## can know (ADR-019).
+      flake.lib.machine = import ./modules/vm.nix {
+        inherit (inputs) nixpkgs microvm nixcage;
+      };
     };
 }

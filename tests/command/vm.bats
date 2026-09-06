@@ -34,17 +34,17 @@ teardown() {
 
 	run_cageworks vm status
 	assert_success
-	assert_line --index 0 --regexp '^acme	port [0-9]+	no disk yet$'
-	assert_line --index 1 --regexp '^widgets	port [0-9]+	no disk yet$'
+	assert_line --index 0 --regexp '^acme	port [0-9]+	stopped	no disk yet$'
+	assert_line --index 1 --regexp '^widgets	port [0-9]+	stopped	no disk yet$'
 }
 
-@test "a machine that has a disk is not one that has yet to be built" {
+@test "a machine that has a pool is not one that has yet to be built" {
 	# shellcheck source=../../modules/names.sh
 	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/machine.sh
 	source "$CAGEWORKS_ROOT/modules/machine.sh"
 	cageworks_machine_ensure acme >/dev/null
-	: >"$CAGEWORKS_MACHINES/acme/disk.img"
+	: >"$CAGEWORKS_MACHINES/acme/pool.img"
 
 	run_cageworks vm status
 	assert_success

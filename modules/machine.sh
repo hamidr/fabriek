@@ -113,3 +113,38 @@ cageworks_machine_list() {
 		basename "$path"
 	done | sort
 }
+
+## Whether a factory's machine is running, and what is running it. The runner
+## is an ordinary process on the operator's host, so this is a pid file and the
+## question every other verb asks first.
+cageworks_machine_pid() {
+	local factory="$1" dir
+	dir="$(cageworks_machine_dir "$factory")" || return 1
+	[ -f "$dir/pid" ] || return 1
+	cat "$dir/pid"
+}
+
+cageworks_machine_running() {
+	local pid
+	pid="$(cageworks_machine_pid "$1" 2>/dev/null)" || return 1
+	[ -n "$pid" ] || return 1
+	kill -0 "$pid" 2>/dev/null
+}
+
+## Reaching a machine cageworks built. Its own key, its own port, and a known
+## hosts file of its own: a factory that changes identity is a factory to look
+## at, and it must not be able to look like another one.
+cageworks_machine_ssh_args() {
+	local factory="$1" dir key port
+	dir="$(cageworks_machine_dir "$factory")" || return 1
+	key="$(cageworks_machine_key "$factory")" || return 1
+	port="$(cageworks_machine_port "$factory")" || return 1
+	printf '%s\n' \
+		-i "$key" \
+		-p "$port" \
+		-o "UserKnownHostsFile=$dir/known_hosts" \
+		-o "StrictHostKeyChecking=accept-new" \
+		-o "IdentitiesOnly=yes" \
+		-o "ConnectTimeout=5" \
+		-o "BatchMode=yes"
+}

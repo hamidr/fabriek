@@ -26,8 +26,16 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/resources.sh"
 # shellcheck source=modules/operator-config.sh
 . "$CAGEWORKS_LIB/operator-config.sh"
+# shellcheck source=modules/repo-declaration.sh
+. "$CAGEWORKS_LIB/repo-declaration.sh"
 # shellcheck source=modules/machine.sh
 . "$CAGEWORKS_LIB/machine.sh"
+
+## The flake a machine is built from: cageworks' own. Substituted at package
+## time so an installed cageworks builds the machine its own revision
+## describes, and overridable so a developer and the suite can point at a
+## working tree.
+CAGEWORKS_SELF="${CAGEWORKS_SELF:-@self@}"
 
 ## The pane runs this script again, so it needs a path that resolves from
 ## wherever herdr starts the command rather than from the caller's shell.
@@ -49,6 +57,12 @@ log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
 ## once so the suite can stub it and so there is one place this depends on
 ## nixcage at all.
 NIXCAGE="${CAGEWORKS_NIXCAGE:-nixcage}"
+
+## What builds a machine. Named once for the same reason as the above: it is
+## the one thing here that runs a build, so it is the one thing a test has to
+## stand in for. Evaluation is not routed through it, because reading a
+## declaration is not building anything.
+NIX_BUILD="${CAGEWORKS_NIX_BUILD:-nix}"
 
 ## Run a guest command and return its output. Every word is passed through as
 ## argv by nixcage exec, so nothing here is quoted for a remote shell and
@@ -262,11 +276,136 @@ cmd_role() {
     ${use_agent[@]+"${use_agent[@]}"} ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@"
 }
 
+## The guest is always Linux, whatever the operator is on. A machine that
+## reported the host's system would build a darwin guest and fail late.
+guest_system() {
+  local host
+  host="$(nix eval --impure --raw --expr 'builtins.currentSystem')" || return 1
+  case "$host" in
+  aarch64-*) echo "aarch64-linux" ;;
+  x86_64-*) echo "x86_64-linux" ;;
+  *)
+    log_err "no Linux guest for $host"
+    return 1
+    ;;
+  esac
+}
+
+## What one factory's machine is, as the spec modules/vm.nix takes. Built from
+## the declaration the repository committed, clamped by this host's ceilings,
+## plus the way in that belongs to this factory alone.
+machine_spec() {
+  local factory="$1" dir declaration caps system
+  dir="$(cageworks_machine_dir "$factory")" || return 1
+  system="$(guest_system)" || return 1
+
+  local path config
+  config="$(cageworks_operator_config_path)"
+  path="$(cageworks_operator_factory_path "$config" "$factory")" || return 1
+  declaration="$(cageworks_declaration_read "$path")" || return 1
+
+  caps="$dir/caps.json"
+  cageworks_operator_caps "$config" >"$caps" || return 1
+  declaration="$(printf '%s' "$declaration" | cageworks_resources_clamp "$caps")" || return 1
+
+  ## Memory is declared the way a person writes it and a hypervisor counts it
+  ## in MiB, so it is converted here rather than anywhere a comparison happens.
+  local mem=""
+  local declared
+  declared="$(printf '%s' "$declaration" | jq -r '.resources.memory // empty')"
+  if [[ -n "$declared" ]]; then
+    mem="$(cageworks_size_mib "$declared")" || return 1
+  fi
+
+  printf '%s' "$declaration" | jq -c     --arg factory "$factory"     --arg system "$system"     --arg key "$(cat "$dir/id_ed25519.pub")"     --argjson port "$(cat "$dir/port")"     --arg mem "$mem" '
+      { system: $system, factory: $factory, sshPort: $port, authorizedKey: $key }
+      + (if .resources.cores then { cpus: .resources.cores } else {} end)
+      + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)'
+}
+
 ## The machines on this host. A factory runs in one of its own (ADR-019), and
 ## this says which of them are here and how each is reached.
 ##
 ## Only 'status' is here yet: building and booting a machine is the rest of
 ## PRD-004 phase 2, and a verb that claimed to do it would be a verb that lied.
+## Build and boot one factory's machine. Idempotent: a machine already running
+## is the state this asks for, so saying so and stopping is the whole of it.
+cmd_up() {
+  local factory="${1:-}"
+  if [[ -z "$factory" ]]; then
+    log_err "usage: cageworks up <factory>"
+    exit 1
+  fi
+
+  if cageworks_machine_running "$factory"; then
+    log_ok "$factory is already running"
+    return
+  fi
+
+  local dir spec runner
+  dir="$(cageworks_machine_ensure "$factory")" || exit 1
+  spec="$(machine_spec "$factory")" || exit 1
+
+  ## The spec reaches nix through the environment rather than through the
+  ## expression, so nothing in a declaration can be read as Nix on the way.
+  log_info "Building the machine $factory runs in..."
+  runner="$(CAGEWORKS_MACHINE_SPEC="$spec" "$NIX_BUILD" build --no-link --print-out-paths \
+    --impure --expr \
+    "((builtins.getFlake \"$CAGEWORKS_SELF\").lib.machine (builtins.fromJSON (builtins.getEnv \"CAGEWORKS_MACHINE_SPEC\"))).config.microvm.declaredRunner")" || {
+    log_err "could not build the machine $factory runs in"
+    exit 1
+  }
+
+  ## Volumes are made in the working directory, which is why the runner is
+  ## started in the machine's own: its disk belongs beside its key and its
+  ## port, and no factory writes into another's.
+  log_info "Starting $factory on port $(cageworks_machine_port "$factory")..."
+  (cd "$dir" && exec "$runner/bin/microvm-run" >>"$dir/console.log" 2>&1) &
+  echo $! >"$dir/pid.new"
+  mv "$dir/pid.new" "$dir/pid"
+  printf '%s\n' "$spec" >"$dir/spec.json"
+  log_ok "$factory is running"
+}
+
+## Stop a factory's machine by shutting its guest down. A stop that cannot
+## complete is reported and the machine keeps running: ADR-017 exists because
+## one was ended rather than shut down, and cageworks owns the stopping now.
+cmd_down() {
+  local factory="${1:-}"
+  if [[ -z "$factory" ]]; then
+    log_err "usage: cageworks down <factory>"
+    exit 1
+  fi
+
+  if ! cageworks_machine_running "$factory"; then
+    log_ok "$factory is not running"
+    return
+  fi
+
+  local -a ssh_args=()
+  local arg
+  while IFS= read -r arg; do ssh_args+=("$arg"); done < <(cageworks_machine_ssh_args "$factory")
+
+  log_info "Shutting $factory down..."
+  if ! ssh "${ssh_args[@]}" root@localhost systemctl poweroff 2>/dev/null; then
+    log_err "$factory would not accept a shutdown; it is still running"
+    exit 1
+  fi
+
+  local pid waited=0
+  pid="$(cageworks_machine_pid "$factory")"
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ "$waited" -ge 60 ]]; then
+      log_err "$factory has not stopped after 60s; it is still running and has not been killed"
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  rm -f "$(cageworks_machine_dir "$factory")/pid"
+  log_ok "$factory has stopped"
+}
+
 cmd_vm() {
   local sub="${1:-}"
   case "$sub" in
@@ -276,10 +415,12 @@ cmd_vm() {
       [ -n "$factory" ] || continue
       port="$(cageworks_machine_port "$factory" 2>/dev/null)" || port="-"
       dir="$(cageworks_machine_dir "$factory")" || continue
-      if [ -f "$dir/disk.img" ]; then
-        printf '%s\tport %s\tdisk\n' "$factory" "$port"
+      local state="stopped"
+      cageworks_machine_running "$factory" && state="running"
+      if [ -f "$dir/pool.img" ]; then
+        printf '%s\tport %s\t%s\tdisk\n' "$factory" "$port" "$state"
       else
-        printf '%s\tport %s\tno disk yet\n' "$factory" "$port"
+        printf '%s\tport %s\t%s\tno disk yet\n' "$factory" "$port" "$state"
       fi
     done < <(cageworks_machine_list)
     ;;
@@ -350,6 +491,8 @@ ${BOLD}Commands:${NC}
   factory integrate <factory> <commit>
                      What a factory is doing, handing its work to you, and
                      starting it again after it stopped itself
+  up <factory>       Build and boot the machine a factory runs in
+  down <factory>     Shut it down, reporting a stop that cannot complete
   vm status          The machines on this host, and how each is reached
   version            Print version
   help               Show this help
@@ -383,6 +526,8 @@ main() {
   shift || true
   case "$command" in
   role)    cmd_role "$@" ;;
+  up)      cmd_up "$@" ;;
+  down)    cmd_down "$@" ;;
   vm)      cmd_vm "$@" ;;
   task)    cmd_task "$@" ;;
   factory) cmd_factory "$@" ;;

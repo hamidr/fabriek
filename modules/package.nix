@@ -5,7 +5,7 @@
 ## suite drives them directly. That is what makes the seam with nixcage
 ## something the suite asserts on rather than something it crosses: a test
 ## stubs nixcage-container on PATH and records the argv it was given.
-{ pkgs }:
+{ pkgs, self }:
 let
   ## Everything the guest program sources, plus the guidance it binds into a
   ## role's session. One directory so the program needs a single path rather
@@ -83,7 +83,9 @@ let
     buildInputs = [ pkgs.bash ];
     installPhase = ''
       mkdir -p $out/bin
-      substitute $src $out/bin/cageworks --replace-fail '@lib@' '${lib'}'
+      substitute $src $out/bin/cageworks \
+        --replace-fail '@lib@' '${lib'}' \
+        --replace-fail '@self@' '${self}'
       chmod +x $out/bin/cageworks
       wrapProgram $out/bin/cageworks \
         --prefix PATH : ${

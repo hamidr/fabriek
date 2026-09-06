@@ -24,3 +24,12 @@ cageworks_size_bytes() {
 	*) echo "$number" ;;
 	esac
 }
+
+## A declared size in MiB, which is what a hypervisor counts memory and disks
+## in. Rounded down, because handing a machine more than the operator allowed
+## is the direction that matters.
+cageworks_size_mib() {
+	local bytes
+	bytes="$(cageworks_size_bytes "$1")" || return 1
+	echo $((bytes / 1024 / 1024))
+}

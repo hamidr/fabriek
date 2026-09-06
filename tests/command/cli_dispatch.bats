@@ -82,10 +82,23 @@ teardown() {
 	# are. A second way to reach them would be a second thing to keep true.
 	run grep -cE '"\$NIXCAGE" exec' "$CAGEWORKS_BIN"
 	assert_output "2"
-	# Comments stripped: what matters is what runs, and both words are worth
-	# writing about in prose.
-	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE '(^|[^a-z])(ssh|sudo)[[:space:]]'"
+	# Comments stripped: what matters is what runs.
+	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE '(^|[^a-z])sudo[[:space:]]'"
 	assert_output "0"
+}
+
+# ADR-018 had cageworks open no SSH connection at all. ADR-019 reverses that
+# for one case and one only: cageworks owns the way into a machine it built
+# itself. So ssh is here now, and every use of it has to carry the arguments
+# that name one factory's key, port and known hosts -- never an ad hoc one.
+@test "ssh reaches a machine cageworks built, and nothing else" {
+	local uses named
+	uses="$(grep -vE '^[[:space:]]*#' "$CAGEWORKS_BIN" |
+		grep -cE '(^|[^a-z_])ssh[[:space:]]' || true)"
+	named="$(grep -vE '^[[:space:]]*#' "$CAGEWORKS_BIN" |
+		grep -cF 'ssh "${ssh_args[@]}"' || true)"
+	[ "$uses" = "$named" ]
+	[ "$uses" -ge 1 ]
 }
 
 @test "nothing here reads nixcage's own state" {
