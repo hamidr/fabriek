@@ -373,8 +373,13 @@ cmd_up() {
   ## started in the machine's own: its disk belongs beside its key and its
   ## port, and no factory writes into another's.
   log_info "Starting $factory on port $(cageworks_machine_port "$factory")..."
-  (cd "$dir" && exec "$runner/bin/microvm-run" >>"$dir/console.log" 2>&1) &
-  echo $! >"$dir/pid.new"
+  ## Detached on purpose. A machine that ends when the command that started it
+  ## ends is not one anything can be run in later, and every verb after this
+  ## asks whether it is still up.
+  (cd "$dir" && exec nohup "$runner/bin/microvm-run" >>"$dir/console.log" 2>&1) &
+  local runner_pid=$!
+  disown "$runner_pid" 2>/dev/null || true
+  echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
   printf '%s\n' "$spec" >"$dir/spec.json"
   log_ok "$factory is running"

@@ -39,6 +39,7 @@ machine_facts() {
       (builtins.head c.users.users.root.openssh.authorizedKeys.keys)
       (if c.boot.zfs.forceImportRoot then "forces" else "refuses")
       (if c.services.openssh.settings.PasswordAuthentication then "passwords" else "keys-only")
+      (builtins.head c.services.openssh.hostKeys).path
     ]' 2>/dev/null
 }
 
@@ -72,6 +73,15 @@ field() {
 	facts="$(machine_facts acme)"
 	[ "$(field "$facts" 7)" = "ssh-ed25519 AAAAtest cageworks-acme" ]
 	[ "$(field "$facts" 9)" = "keys-only" ]
+}
+
+# A machine that generates host keys every boot is a different machine every
+# boot, and cageworks pins what it connected to. Found by stopping and starting
+# one ten times, which failed on the second.
+@test "a machine keeps its identity across a stop, because its keys persist" {
+	local facts
+	facts="$(machine_facts acme)"
+	[ "$(field "$facts" 10)" = "/var/lib/nixcage/ssh/ssh_host_ed25519_key" ]
 }
 
 # ADR-017 exists because worktrees came back empty. Forcing an import is how a

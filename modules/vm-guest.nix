@@ -142,8 +142,19 @@ in
 
     ## The way in. Password authentication is off and one key is trusted, which
     ## is the whole of the transport ADR-019 point 4 describes.
+    ##
+    ## The host keys live on the pool rather than on the rootfs. A machine that
+    ## generates new ones every boot is a different machine every boot, and
+    ## cageworks, which pins what it connected to, refuses the second one: a
+    ## factory would stop and start exactly once.
     services.openssh = {
       enable = true;
+      hostKeys = [
+        {
+          path = "${stateDir}/ssh/ssh_host_ed25519_key";
+          type = "ed25519";
+        }
+      ];
       settings = {
         PasswordAuthentication = false;
         PermitRootLogin = "prohibit-password";
@@ -158,7 +169,12 @@ in
       ## Nothing that touches the state may start before the pool carrying it
       ## is mounted, or it writes into the directory the pool is about to
       ## cover.
-      before = [ "sshd.service" ];
+      before = [
+        "sshd.service"
+        ## Host keys are generated into the pool, so the pool has to be there
+        ## before anything generates one.
+        "sshd-keygen.service"
+      ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -201,6 +217,11 @@ in
         zfs mount -a
         mountpoint -q ${stateDir}
         chmod 0755 ${stateDir}
+
+        ## Where this machine keeps its own identity, as opposed to the
+        ## factory's work.
+        mkdir -p ${stateDir}/ssh
+        chmod 0700 ${stateDir}/ssh
       '';
     };
 
