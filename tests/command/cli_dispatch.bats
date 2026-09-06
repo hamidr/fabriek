@@ -39,11 +39,30 @@ teardown() {
 	done
 }
 
-@test "the help advertises nothing the dispatcher would reject" {
+# nixcage's own verbs are enter, rebuild, down and status, and none of them is
+# a command here. Checked on the first word of each usage line rather than on
+# any word anywhere, because a subcommand may legitimately share a name with
+# one of them: 'vm status' is ours, a bare 'status' would be nixcage's.
+@test "the help advertises no top-level command the dispatcher would reject" {
 	run_cageworks help
-	for word in enter rebuild down status; do
-		[[ "$output" != *" $word "* ]]
-	done
+	assert_success
+	local accepted first
+	# Some cases carry their flag spellings, as 'version | --version | -v)', so
+	# the label is taken up to the paren and then split rather than matched
+	# whole.
+	accepted="$(sed -n '/^  local command=/,/^  esac/p' "$CAGEWORKS_BIN" |
+		grep -oE '^  [a-z][a-z |-]*\)' | sed 's/)$//' | tr '|' '\n' |
+		sed 's/^ *//; s/ *$//' | grep -vE '^(--|-)' | grep -v '^$')"
+	[ -n "$accepted" ]
+	while IFS= read -r first; do
+		[ -n "$first" ] || continue
+		grep -qx "$first" <<<"$accepted" || {
+			echo "the help advertises a command the dispatcher rejects: $first"
+			return 1
+		}
+	done < <(printf '%s\n' "$output" |
+		awk '/Commands:/ { on = 1; next } /Configuration:/ { on = 0 } on' |
+		grep -oE '^  [a-z][a-z-]*' | tr -d ' ')
 }
 
 @test "version prints the version" {

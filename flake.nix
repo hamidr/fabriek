@@ -53,6 +53,8 @@
               ## real rather than stubbing it, so it belongs in the shell.
               git
               git-bug
+              ## A machine's key is made with ssh-keygen (ADR-019).
+              openssh
             ];
 
             BATS_LIB_PATH = "${pkgs.bats.libraries.bats-support}/share/bats:${pkgs.bats.libraries.bats-assert}/share/bats";

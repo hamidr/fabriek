@@ -21,6 +21,7 @@ let
     cp ${../modules/resources.sh} $out/resources.sh
     cp ${../modules/repo-declaration.sh} $out/repo-declaration.sh
     cp ${../modules/operator-config.sh} $out/operator-config.sh
+    cp ${../modules/machine.sh} $out/machine.sh
     cp ${../modules/task-store.sh} $out/task-store.sh
     cp ${../modules/workflow-config.sh} $out/workflow-config.sh
     cp ${../modules/record.sh} $out/record.sh
@@ -98,6 +99,9 @@ let
               ## dependency rather than two: nix is already what reads a
               ## repository's declaration (ADR-020).
               nix
+              ## A key per factory's machine, made here because cageworks owns
+              ## the way into a machine it built (ADR-019).
+              openssh
             ]
           )
         }
