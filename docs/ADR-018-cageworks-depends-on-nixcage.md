@@ -1,13 +1,13 @@
 ---
 id: ADR-018
 title: The factory becomes cageworks, a separate project that depends on nixcage
-status: implemented
+status: superseded
 date: 2026-09-05
 status_date: 2026-09-06
 summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives
 depends_on: [ADR-002, ADR-004, ADR-010, ADR-017]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-019]
 ---
 
 ## Context
