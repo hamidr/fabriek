@@ -125,10 +125,27 @@ cageworks_machine_spawn() {
 	shift
 	if command -v setsid >/dev/null 2>&1; then
 		setsid "$@" >>"$log" 2>&1 &
-	else
-		perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV or die $!;' "$@" >>"$log" 2>&1 &
+		printf '%s\n' "$!"
+		return 0
 	fi
-	printf '%s\n' "$!"
+	## perl forks first so that whatever calls setsid is never a process group
+	## leader, which is the one case setsid refuses. Backgrounding the perl
+	## itself is not enough: depending on how the caller was started it may
+	## already lead a group, and then the call silently does nothing.
+	##
+	## The parent prints the pid it made and exits; the child reopens its own
+	## output on the log, so what the caller reads is the pid and nothing else.
+	CAGEWORKS_SPAWN_LOG="$log" perl -e '
+		use POSIX qw(setsid);
+		my $pid = fork();
+		die "fork: $!" unless defined $pid;
+		if ($pid) { print "$pid\n"; exit 0; }
+		setsid() or exit 1;
+		open(STDIN, "<", "/dev/null") or exit 1;
+		open(STDOUT, ">>", $ENV{CAGEWORKS_SPAWN_LOG}) or exit 1;
+		open(STDERR, ">&", \*STDOUT) or exit 1;
+		exec @ARGV or exit 1;
+	' "$@"
 }
 
 ## Whether a factory's machine is running, and what is running it. The runner

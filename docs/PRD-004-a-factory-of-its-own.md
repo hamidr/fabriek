@@ -9,7 +9,7 @@ depends_on: [PRD-003]
 supersedes: []
 superseded_by: []
 phases_total: 5
-phases_done: 1
+phases_done: 2
 ---
 
 ## Problem
@@ -240,6 +240,23 @@ deleted before the thing replacing it exists.
    `up`, `down` and a status that says which machines are here. No roles in it
    yet. Exits on the stop-and-start test, because the storage that phase 3
    depends on is only trustworthy if stopping is.
+
+   Done. `tests/manual/stop-and-start.sh` ran ten cycles on an aarch64-darwin
+   host with an aarch64-linux guest: three hundred files on the pool, every one
+   checked against a manifest after every cycle, ten intact and none truncated.
+   What it cost, from the same run: stopping three to ten seconds, starting six
+   to eighty-six with a warm store, and three to four seconds from start to a
+   usable session. A factory's disk grew to 1.6G of store and 560M of pool, and
+   the runner's own closure is 3.2 GiB.
+
+   Four faults were found by running it and none by reading it. The runner was
+   built for the guest's system rather than the host's, so on macOS it reached
+   for chattr and stopped. A machine ended with the command that started it,
+   twice: backgrounding is not detaching, and setsid refuses when the caller
+   already leads a process group. The guest generated SSH host keys on the
+   rootfs, so it was a different machine every boot and cageworks refused the
+   second one. And a successful shutdown looked like a refusal, because
+   powering off takes the connection down with it.
 3. **The factory moves in.** The transport, the clone on the machine's own pool,
    worktrees as datasets, and the three primitives called inside the guest.
    `cageworks role` and `cageworks task run` work against the machine on both

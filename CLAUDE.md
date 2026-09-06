@@ -80,10 +80,19 @@ A change to what a role session is shows up there as a diff.
   declaration's schema, the operator's schema and the clamp all read it.
 - `modules/sizes.sh` -- a declared size as bytes. Comparing the strings would
   put 8G above 16G.
+- `modules/machine.sh` -- where a factory's machine lives on the operator's
+  host, its key, its port, and the session it is spawned into. The half of a
+  machine that needs no hypervisor to be true.
+- `modules/vm.nix`, `modules/vm-guest.nix` -- the machine itself (ADR-019):
+  one microVM per factory, nixcage's host module inside it, and a ZFS pool
+  named after the factory that a wrong disk refuses to import into.
 - `modules/role-guidance.md` -- what every role is told about working in a
   cage, bound read-only into a role session.
 - `modules/package.nix` -- the two programs, wrapped with the module directory
   they source and the tools they run.
+- `tests/manual/` -- what cannot be a bats test because it needs a real
+  machine. `stop-and-start.sh` is PRD-004 phase 2's exit condition: ten stop
+  and start cycles with the pool checked against a manifest each time.
 - `models/` -- the Alloy and Quint models the design gate requires. They
   describe the factory, and change in the same commit as the invariants they
   constrain.
@@ -97,7 +106,8 @@ A change to what a role session is shows up there as a diff.
 ```bash
 nix develop                          # bash, jq, shellcheck, bats, git, git-bug
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
-nix develop --command bats --recursive tests/       # ~300 tests, a few minutes
+nix develop --command bats --recursive tests/       # ~340 tests, a few minutes
+CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/stop-and-start.sh   # needs a real machine
 nix develop --command bats tests/unit/task_store.bats
 nix develop --command bats -f "sticks to the role" tests/unit/task_store.bats
 ```

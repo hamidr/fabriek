@@ -136,3 +136,30 @@ teardown() {
 	assert_success
 	assert_output "$TEST_TEMP_DIR/xdg/cageworks/machines"
 }
+
+# The fix for a machine dying with the command that started it. nohup only
+# refuses SIGHUP and leaves the process in the caller's process group, where
+# anything signalling the group reaches it anyway.
+# Read as a process group rather than a session id, because macOS ps has no
+# sid keyword and a new session brings a new group with it either way. A plain
+# background job keeps the caller's group, which is the case this rules out.
+@test "a machine is spawned out of the process group that started it" {
+	local pid group mine
+	pid="$(cageworks_machine_spawn "$TEST_TEMP_DIR/log" sleep 5)"
+	[ -n "$pid" ]
+	group="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+	mine="$(ps -o pgid= -p $$ | tr -d ' ')"
+	kill "$pid" 2>/dev/null || true
+	[ -n "$group" ]
+	[ -n "$mine" ]
+	[ "$group" != "$mine" ]
+}
+
+@test "what a spawned machine writes goes to the log it was given" {
+	local pid
+	pid="$(cageworks_machine_spawn "$TEST_TEMP_DIR/log" sh -c 'echo booted')"
+	sleep 1
+	kill "$pid" 2>/dev/null || true
+	run cat "$TEST_TEMP_DIR/log"
+	assert_output "booted"
+}
