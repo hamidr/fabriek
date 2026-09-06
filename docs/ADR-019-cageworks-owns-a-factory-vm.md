@@ -117,6 +117,20 @@ fail after the disk is created, a stop can race a session, a rebuild can land
 while roles hold worktrees. `models/vm-lifecycle.qnt` is written and run before
 the implementation.
 
+Five invariants hold there, with no violation found over 30000 traces of up to
+60 steps each: a session exists only inside a machine that is up, nothing is
+ever up without the disk its state lives on, a resize only reaches a machine
+that is not running, the disk outlives every transition but the one that exists
+to remove it, and a running machine runs the image it booted with. Two
+witnesses violate, which is what they are for: the declaration can drift ahead
+of the machine running it, and a machine can still be ended mid-write by the
+host dying, which is the residual risk ADR-017 puts the pool underneath.
+
+The model has no action that forces a stop. That is the design rather than an
+omission: a stop that cannot complete returns the machine to running and is
+reported. Allowing a rebuild to reach a running machine turns two of the five
+invariants red, which is how the guard was checked rather than assumed.
+
 It does not fire on `models/factory-structure.als`. That model already describes
 a single factory in isolation, and per-factory VMs make factories disjoint
 rather than changing what a role owns, which ref it may write, or who takes a
