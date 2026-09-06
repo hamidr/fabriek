@@ -1,13 +1,13 @@
 ---
 id: ADR-023
 title: A task is taken by a leased claim on a ref
-status: accepted
+status: superseded
 date: 2026-09-06
 status_date: 2026-09-06
 summary: capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires
 depends_on: [ADR-010, ADR-021, ADR-022]
 supersedes: [ADR-015]
-superseded_by: []
+superseded_by: [ADR-024]
 ---
 
 ## Context

@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 006
 
-**Next ADR number:** 024
+**Next ADR number:** 025
 
 ## PRDs
 
@@ -46,4 +46,5 @@ document, then regenerate.
 | [ADR-020](ADR-020-a-factory-declares-itself.md) | A factory declares itself in the repository it works | accepted | -- | ADR-015, ADR-016, ADR-019 | roles and workflows move into the worked repository's flake output; the operator keeps only caps and a register |  |
 | [ADR-021](ADR-021-the-agent-is-a-loop.md) | A role's agent is a loop that takes its own work | accepted | -- | ADR-009, ADR-010, ADR-016 | each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch |  |
 | [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | accepted | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
-| [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | accepted | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |
+| [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | superseded | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |
+| [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and every git-bug call retries the repository lock | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug locks the whole repository for reads as well as writes |  |
