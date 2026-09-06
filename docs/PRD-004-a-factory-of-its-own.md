@@ -1,7 +1,7 @@
 ---
 id: PRD-004
 title: A factory brings its own machine and declares itself
-status: proposed
+status: implementing
 date: 2026-09-06
 status_date: 2026-09-06
 summary: a factory is declared in the repository it works and runs in a VM cageworks builds for it on either platform
@@ -9,7 +9,7 @@ depends_on: [PRD-003]
 supersedes: []
 superseded_by: []
 phases_total: 5
-phases_done: 0
+phases_done: 1
 ---
 
 ## Problem
