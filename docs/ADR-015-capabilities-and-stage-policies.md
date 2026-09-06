@@ -1,13 +1,13 @@
 ---
 id: ADR-015
 title: A stage needs a capability and states its own policy; roles provide capabilities
-status: implemented
+status: superseded
 date: 2026-09-03
 status_date: 2026-09-04
 summary: stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy
 depends_on: [ADR-010, ADR-011]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-023]
 ---
 
 ## Context

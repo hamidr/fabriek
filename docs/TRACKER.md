@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 005
 
-**Next ADR number:** 021
+**Next ADR number:** 024
 
 ## PRDs
 
@@ -35,11 +35,14 @@ document, then regenerate.
 | [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | implemented | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
 | [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | implemented | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
 | [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | withdrawn | -- | ADR-011 | tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
-| [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | implemented | -- | ADR-011, ADR-014 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
-| [ADR-014](ADR-014-one-file-per-task.md) | A task's mutable fields live in one file, written by rename | implemented | -- | ADR-011 | every mutable field of a task is written together in one file, so a change cannot half-happen without a database |  |
-| [ADR-015](ADR-015-capabilities-and-stage-policies.md) | A stage needs a capability and states its own policy; roles provide capabilities | implemented | -- | ADR-010, ADR-011 | stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy |  |
+| [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | superseded | -- | ADR-011, ADR-014 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
+| [ADR-014](ADR-014-one-file-per-task.md) | A task's mutable fields live in one file, written by rename | superseded | -- | ADR-011 | every mutable field of a task is written together in one file, so a change cannot half-happen without a database |  |
+| [ADR-015](ADR-015-capabilities-and-stage-policies.md) | A stage needs a capability and states its own policy; roles provide capabilities | superseded | -- | ADR-010, ADR-011 | stages name a capability, roles declare what they provide, and each stage states its own entry and exit policy |  |
 | [ADR-016](ADR-016-specialist-toolchains.md) | A specialist role works in a devShell the project's own flake names | implemented | -- | ADR-005, ADR-010, ADR-015 | a role declares which devShell of the assigned repository it enters, so specialists get different toolchains |  |
 | [ADR-017](ADR-017-zfs-storage-for-factory-state.md) | The VM keeps nixcage's state on ZFS, one dataset per role worktree | implemented | -- | ADR-010, ADR-011 | factory state moves to a ZFS pool with a dataset and quota per role worktree; worktrees stay, clones are refused |  |
 | [ADR-018](ADR-018-cageworks-depends-on-nixcage.md) | The factory becomes cageworks, a separate project that depends on nixcage | superseded | -- | ADR-002, ADR-004, ADR-010, ADR-017 | the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives |  |
 | [ADR-019](ADR-019-cageworks-owns-a-factory-vm.md) | cageworks builds and runs one NixOS VM per factory, on every platform | proposed | -- | ADR-010, ADR-011, ADR-017 | cageworks owns a per-factory microVM on Linux and macOS alike, with nixcage caging roles inside it |  |
 | [ADR-020](ADR-020-a-factory-declares-itself.md) | A factory declares itself in the repository it works | proposed | -- | ADR-015, ADR-016, ADR-019 | roles and workflows move into the worked repository's flake output; the operator keeps only caps and a register |  |
+| [ADR-021](ADR-021-the-agent-is-a-loop.md) | A role's agent is a loop that takes its own work | proposed | -- | ADR-009, ADR-010, ADR-016 | each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch |  |
+| [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | proposed | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
+| [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | proposed | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |

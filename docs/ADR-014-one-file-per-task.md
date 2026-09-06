@@ -1,13 +1,13 @@
 ---
 id: ADR-014
 title: A task's mutable fields live in one file, written by rename
-status: implemented
+status: superseded
 date: 2026-09-03
 status_date: 2026-09-03
 summary: every mutable field of a task is written together in one file, so a change cannot half-happen without a database
 depends_on: [ADR-011]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-022]
 ---
 
 ## Context
