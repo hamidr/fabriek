@@ -13,6 +13,8 @@ setup() {
 	source "$CAGEWORKS_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/schema.sh
 	source "$CAGEWORKS_ROOT/modules/schema.sh"
+	# shellcheck source=../../modules/resources.sh
+	source "$CAGEWORKS_ROOT/modules/resources.sh"
 	# shellcheck source=../../modules/repo-declaration.sh
 	source "$CAGEWORKS_ROOT/modules/repo-declaration.sh"
 }

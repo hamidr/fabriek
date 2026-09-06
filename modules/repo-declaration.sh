@@ -19,15 +19,16 @@
 ## because a declaration is one value: a check that has to see the roles and
 ## the stages at once cannot be a separate pass.
 cageworks_declaration_program() {
+	## resources is not written out here. What a factory may ask of the machine
+	## is one table in resources.sh, read by this schema, by the operator's own
+	## schema and by the clamp that meets one against the other.
+	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources"]\n'
+	printf '  , role:      ["command", "provides", "shell"]\n'
+	printf '  , workflow:  ["stages", "budget", "consults"]\n'
+	printf '  , stage:     ["needs", "ready", "done", "gate"]\n'
+	printf '  , budget:    ["runs"]\n'
+	printf '  , resources: %s\n  };\n' "$(cageworks_resource_field_names_json)"
 	cat <<'JQ'
-def schema:
-  { top:       ["name", "roles", "workflows", "resources"]
-  , role:      ["command", "provides", "shell"]
-  , workflow:  ["stages", "budget", "consults"]
-  , stage:     ["needs", "ready", "done", "gate"]
-  , budget:    ["runs"]
-  , resources: ["memory", "cores", "roleQuota", "concurrency"]
-  };
 
 . as $d
 | (if ($d.roles | type) == "object" then $d.roles else {} end) as $roles
