@@ -180,3 +180,30 @@ validate_with() {
 	assert_failure
 	assert_output --partial "ship"
 }
+
+## The example a person copies. Kept in a file of its own so this can evaluate
+## it without the flake's inputs, which is also why a repository can check its
+## own declaration cheaply.
+validate_example() {
+	nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
+		cageworks_declaration_validate
+}
+
+@test "the example repository declares a factory this reader accepts" {
+	run validate_example
+	assert_success
+	assert_output --partial "example"
+}
+
+# The example is what somebody copies, so a role in it naming a devShell the
+# flake beside it does not define would teach the mistake rather than the
+# pattern (ADR-016).
+@test "every devShell the example's roles name is one the example defines" {
+	local shell
+	while IFS= read -r shell; do
+		[ -n "$shell" ] || continue
+		run grep -qE "^ *$shell = pkgs.mkShell" "$CAGEWORKS_ROOT/examples/factory-project/flake.nix"
+		assert_success
+	done < <(nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
+		jq -r '[.roles[].shell // empty] | .[]')
+}

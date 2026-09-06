@@ -38,26 +38,48 @@ which is what a cage is for.
 
 ## Install
 
-cageworks is two programs and a NixOS module. The module goes beside nixcage's
-in the configuration that declares your cages -- on macOS the VM flake at
-`~/.config/nixcage`, on Linux the host's own configuration.
+cageworks is two programs. There is no NixOS module to import and no rebuild to
+run: a repository declares the factory that works it, and the operator keeps one
+file saying what a factory may cost here.
 
-`examples/config/flake.nix` is a complete machine; copy the cageworks parts of
-it. The shortest declaration that works:
+The repository's own flake gains a `cageworks` output. The shortest one that
+works:
 
 ```nix
-nixcage.principalUidRange = { base = 700000; size = 64; };
-
-cageworks.factories.acme = {
-  repository = "/home/me/Src/acme";
+cageworks = {
+  name = "acme";
   roles.builder = { command = [ "claude" ]; provides = [ "build" ]; };
   workflows.ship.stages = [ { needs = "build"; } ];
 };
 ```
 
-The uid range is nixcage's because a range of the host's uid space is a fact
-about the machine, and the program handing numbers out is the only one that can
-promise never to reissue one.
+It is read from the commit rather than from the working tree, so the factory
+working a repository is the one its history declares. `examples/factory-project`
+is a complete one, with its declaration in `cageworks.nix` beside the devShells
+its roles name.
+
+The operator's side is `~/.config/cageworks/config.toml`, the same file on Linux
+and on macOS:
+
+```toml
+[caps]
+memory = "16G"
+cores = 8
+roleQuota = "50G"
+concurrency = 4
+
+[factories.acme]
+path = "/home/me/Src/acme"
+```
+
+A repository states what it needs and this caps it; cageworks says which field
+it clamped rather than sizing down quietly. Both files are closed schemas: a key
+cageworks does not recognise is refused with its own name rather than ignored,
+which is what stops a repository reaching the machine it is given.
+
+nixcage still needs `principalUidRange` set where it declares your cages, because
+a range of the host's uid space is a fact about the machine and the program
+handing numbers out is the only one that can promise never to reissue one.
 
 ## Commands
 

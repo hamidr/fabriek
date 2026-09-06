@@ -20,6 +20,11 @@ integration, the supervisor). ADR-018 is that decision;
 `docs/PRD-003-software-factory.md` is what was built; `docs/TRACKER.md`
 indexes the rest.
 
+A factory is declared in the repository it works rather than in the
+configuration of the machine running it (ADR-020), and the operator keeps one
+plain file saying what a factory may cost here. There is no NixOS module and
+no `nixos-rebuild` in the operator's path.
+
 ## The interface with nixcage
 
 cageworks uses four exported primitives and nothing else. It writes no nspawn
@@ -53,26 +58,38 @@ A change to what a role session is shows up there as a diff.
 - `modules/names.sh` -- the names cageworks accepts, checked where they are
   declared. A factory, role or capability name reaches a path, a ref and a
   container name; a devShell name reaches someone else's flake.
-- `modules/*.sh` -- everything the guest program sources by store path.
+- `modules/*.sh` -- everything the two programs source by store path.
   `role-worktree.sh` gives a role its worktree and the ACLs it needs;
   `signing.sh` gives it an identity; `factory-config.sh`,
   `workflow-config.sh`, `factory-clone.sh` read the declaration and the clone;
   `task-store.sh`, `caps.sh`, `record.sh`, `integrate.sh` are the supervisor's
   mechanics. Shell files rather than inline strings so the suite can source
   them.
+- `modules/repo-declaration.sh` -- the factory a repository declares about
+  itself (ADR-020), read from the commit. Validation is pure and needs neither
+  nix nor git; reading is a thin wrapper around one `nix eval`.
+- `modules/operator-config.sh` -- the one file the operator owns:
+  `~/.config/cageworks/config.toml`, the ceilings a factory may reach here and
+  the register of which factories live here. nix parses the TOML, because nix
+  is already what reads a declaration.
+- `modules/schema.sh` -- what "a closed schema" means, shared by both of the
+  above. Two implementations of closed would drift, and the way they would
+  drift is one accepting what the other refuses.
+- `modules/resources.sh` -- what a factory may ask of the machine, and the
+  clamp that meets it against the operator's ceiling. One table, because the
+  declaration's schema, the operator's schema and the clamp all read it.
+- `modules/sizes.sh` -- a declared size as bytes. Comparing the strings would
+  put 8G above 16G.
 - `modules/role-guidance.md` -- what every role is told about working in a
   cage, bound read-only into a role session.
-- `modules/cageworks.nix` -- the NixOS module: `cageworks.factories.*` and
-  `cageworks.supervisor.*`, rendered as `/etc/cageworks/{factories,supervisor}`.
-  Needs nixcage's own module beside it.
 - `modules/package.nix` -- the two programs, wrapped with the module directory
   they source and the tools they run.
 - `models/` -- the Alloy and Quint models the design gate requires. They
   describe the factory, and change in the same commit as the invariants they
   constrain.
-- `examples/config/` -- a complete machine running a factory.
-- `examples/factory-project/` -- a repository worked by a factory: one devShell
-  per specialist, which is what a role's `shell` names (ADR-016).
+- `examples/factory-project/` -- a repository worked by a factory: its
+  `cageworks.nix` declares the factory (ADR-020) and its flake defines one
+  devShell per specialist, which is what a role's `shell` names (ADR-016).
 - `docs/` -- ADRs, PRDs and generated TRACKER.md.
 
 ## Development
@@ -80,7 +97,7 @@ A change to what a role session is shows up there as a diff.
 ```bash
 nix develop                          # bash, jq, shellcheck, bats, git, git-bug
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
-nix develop --command bats --recursive tests/       # ~240 tests, a few minutes
+nix develop --command bats --recursive tests/       # ~300 tests, a few minutes
 nix develop --command bats tests/unit/task_store.bats
 nix develop --command bats -f "sticks to the role" tests/unit/task_store.bats
 ```
