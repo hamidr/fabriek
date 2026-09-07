@@ -85,6 +85,12 @@ without leaving. Root is accepted, because the daemon has to substitute. The
 proxy's own uid is accepted. Everything else is dropped, which is every role
 and every build user.
 
+The proxy's uid is declared rather than allocated, and the rule names the
+number. nftables resolves a user name when a ruleset is parsed, NixOS parses
+it once at build time in a sandbox where no such user exists, and a name there
+fails the build. That was found by building the machine rather than by
+evaluating its configuration, which is the difference between the two.
+
 A role therefore needs no rule of its own: it is denied by there being no rule
 for it, which is the only kind of denial that stays true when a role is added.
 That works because a role's session runs under its allocated uid on the

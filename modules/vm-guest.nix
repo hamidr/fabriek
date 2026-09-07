@@ -261,6 +261,17 @@ in
     users.users.cageworks-egress = {
       isSystemUser = true;
       group = "cageworks-egress";
+      ## Declared rather than allocated, because the rule below has to name it
+      ## as a number: nftables resolves a user name when the ruleset is
+      ## parsed, and the ruleset is parsed once at build time in a sandbox
+      ## where no such user exists. A name there fails the build, which is how
+      ## this was found.
+      ##
+      ## 500 is unassigned in nixpkgs' static table and is far below any
+      ## principal range an operator would declare for roles, which nixcage
+      ## allocates from and which starts in the hundreds of thousands. A role
+      ## sharing this uid would be a role that may leave the machine.
+      uid = 500;
       description = "Holds this factory's model credential and is the only way out";
     };
     users.groups.cageworks-egress = { };
@@ -302,8 +313,10 @@ in
             meta skuid 0 accept
 
             ## The one uid that may reach a host on a factory's behalf. What
-            ## it may reach is the proxy's allowlist, not this chain's.
-            meta skuid "cageworks-egress" accept
+            ## it may reach is the proxy's allowlist, not this chain's. It is
+            ## a number because the ruleset is checked at build time, where
+            ## the name resolves to nothing.
+            meta skuid ${toString config.users.users.cageworks-egress.uid} accept
 
             ## Everything else is dropped, which is every role, and every
             ## build user. A derivation that fetches from the network at build

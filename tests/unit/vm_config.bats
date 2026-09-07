@@ -138,11 +138,14 @@ egress_ruleset() {
 	assert_output --partial "policy drop"
 }
 
+# The rule names a number and not a name. nftables resolves a user name when
+# the ruleset is parsed, and NixOS parses it once at build time in a sandbox
+# where the user does not exist, so a name here fails the build.
 @test "the proxy is the one uid that may leave the machine on a factory's behalf" {
 	run egress_ruleset
 	assert_success
-	assert_output --partial "skuid"
-	assert_output --partial "cageworks-egress"
+	assert_output --partial "meta skuid 500 accept"
+	refute_output --partial 'skuid "cageworks-egress"'
 }
 
 @test "a role reaches the proxy, which is on the machine, so loopback stays open" {
