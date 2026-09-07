@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 006
 
-**Next ADR number:** 027
+**Next ADR number:** 028
 
 ## PRDs
 
@@ -50,3 +50,4 @@ document, then regenerate.
 | [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and no git-bug call is trusted bare | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug's lock and search index both fail under concurrent agents |  |
 | [ADR-025](ADR-025-the-machine-holds-the-model-credential.md) | The machine holds the model credential and injects it at egress | accepted | -- | ADR-019, ADR-021 | the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else |  |
 | [ADR-026](ADR-026-the-console-is-the-loop.md) | The operator's console is the loop, not a terminal | proposed | -- | ADR-021, ADR-024, ADR-025 | the loop owns the agent stdio and relays a role-owned socket the operator watches and steers, so nothing detaches |  |
+| [ADR-027](ADR-027-observed-from-three-sources.md) | A factory is observed from three sources, and a role owns none of them | proposed | -- | ADR-018, ADR-019, ADR-025, ADR-026 | three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel |  |
