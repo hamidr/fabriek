@@ -82,12 +82,19 @@ evidence a matter of writing enough of it. What point 4 promises is that an
 entry's identity is not forgeable; it does not promise an entry survives, and a
 shared bucket is where that distinction gets expensive.
 
-**7. The tap never blocks the agent.** The journal socket is a datagram socket
-and a full queue is a real state, so a synchronous write in the loop would
-backpressure pi's stdout and stall the turn. The tap writes without blocking
-and a refused write becomes a counted gap in the ledger rather than a pause in
-the factory. A ledger with a hole in it that says so is worth more than a
-factory that stops to keep one.
+**7. The tap never blocks the agent, and that covers both sinks.** The journal
+socket is a datagram socket and a full queue is a real state, so a synchronous
+write in the loop would backpressure pi's stdout and stall the turn. The same
+is true of the console socket ADR-026 point 3 relays to, which is a thing this
+document said nothing about until `models/ledger-tap.qnt` was run: a watcher
+reading slower than the agent writes is a loop that waits, and a loop that
+waits is a pipe that fills and an agent that stops. Both writes are made
+without blocking. A refused ledger write becomes a counted gap in the ledger; a
+refused relay drops that frame for the watchers, who recover by asking the
+agent for the transcript, which ADR-026 point 3 already has a joiner do. A
+ledger with a hole in it that says so is worth more than a factory that stops
+to keep one, and a watcher that missed a frame it can ask for again is worth
+more than either.
 
 **8. The journal lives on the pool, asked for the way everything else is.**
 microvm.nix gives the guest a tmpfs root, so a persistent journal is one that
@@ -155,6 +162,14 @@ the decision to read it is always a deliberate one.
 now has no ledger either. The proxy and the kernel still see it, which is the
 argument for not having built this on the agent alone.
 
+**A loop that dies holding a gap leaves a hole nothing names.** A refused
+ledger write is counted in the loop and reaches the journal at the next free
+slot, because naming it any sooner needs the slot that was just refused.
+`models/ledger-tap.qnt` reaches the state where the unit dies inside that
+window: the records are gone and the ledger does not say so. Closing it means
+waiting for the slot, which is the blocking write point 7 exists to remove, so
+it is not closed. The kernel source is again what does not go quiet.
+
 **The probes cost the factory.** The RSS and the CPU come out of the memory and
 the cores the declaration asked for and the operator allowed. What that costs
 is measured rather than asserted, below.
@@ -176,10 +191,24 @@ commit as the implementation.
 A second gate fires on point 7. The tap is in line with the pipe, so it has
 none of the join ADR-026 sends to `models/console-watch.qnt`, but it does have
 a bounded queue between a reader that must not stall and a writer that may
-refuse. `models/ledger-tap.qnt` is written and run before the tap is built,
-over the interleavings of read, relay and ledger write against a queue that
-fills, with two invariants: the agent is never blocked on the ledger, and every
-record is either in the ledger or accounted for by a gap the ledger names.
+refuse. `models/ledger-tap.qnt` was written and run before any of this was
+built, over the interleavings of read, relay, ledger write, drain, gap
+announcement and a unit that dies. It carries four invariants: the tap never
+waits, no record leaves the pipe without a disposition, every refusal is named
+in the ledger or held for the next slot or lost with the loop, and a dropped
+console frame costs the ledger nothing. `quint run --invariant=allInvariants
+--max-steps=60 --max-samples=200000` reports no violation. Four witnesses
+stated as negations all violate, so the model reaches the refusal, the stalled
+agent, the dropped frame and the crash rather than passing by never getting
+there, and turning either refusal back into a write that waits turns
+`theTapNeverWaits` red.
+
+The model changed the design twice. Point 7 covered only the ledger, and
+`theTapNeverWaits` violated in 632ms through the console relay, which is why
+point 7 now names both sinks. And `noSilentHoleFromACrash` violates and is
+deliberately left out of `allInvariants`, because the window it finds cannot be
+closed without the write point 7 exists to remove; it is recorded in the
+consequences instead of repaired.
 
 ## Measurement plan
 
@@ -218,7 +247,7 @@ nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix develop --command bats tests/command/seam.bats
 alloy6 exec models/factory-structure.als
-quint run models/ledger-tap.qnt --invariant=allInvariants --max-steps=60
+quint run models/ledger-tap.qnt --invariant=allInvariants --max-steps=60 --max-samples=200000
 docmeta-check docs && docmeta-tracker --check docs
 CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/observe.sh
 ```
