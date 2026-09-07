@@ -365,6 +365,61 @@ in
     ## storage lands on the pool above rather than on the rootfs.
     nixcage.storage.dataset = "${pool}/state";
 
+    ## What the kernel says a role did (ADR-027 point 9).
+    ##
+    ## A probe in the machine's init namespace sees every process in every cage
+    ## of this factory, attributed by the uid nixcage allocated, because cages
+    ## share this kernel: the same fact ADR-025's uid filter rests on.
+    ##
+    ## Three probes and no more. Not openat, which is orders of magnitude more
+    ## traffic for a question nobody has asked. The connection probe reports
+    ## who opened one and not where to: where a request went is the proxy's
+    ## account, and keeping the two separate is the whole of point 1.
+    ##
+    ## Observing only. CONFIG_BPF_LSM is available and is not used, and nothing
+    ## here sends a signal or overrides a return: denying a role an exec is the
+    ## shape of a cage, and a cage is nixcage's (ADR-018).
+    environment.etc."cageworks/probes.bt".text = ''
+      /* The kernel's account of this factory, in its own journal namespace.
+       * Filtered here rather than downstream: a predicate compiles into the
+       * program, so an event the machine does not want never leaves the
+       * kernel. uid 0 is the machine itself; no role is ever root, because
+       * --private-users maps a cage onto one allocated uid. */
+      tracepoint:sched:sched_process_exec / uid != 0 /
+      {
+        printf("exec uid=%d pid=%d comm=%s\n", uid, pid, comm);
+      }
+
+      tracepoint:sched:sched_process_exit / uid != 0 /
+      {
+        printf("exit uid=%d pid=%d comm=%s\n", uid, pid, comm);
+      }
+
+      kprobe:tcp_connect / uid != 0 /
+      {
+        printf("connect uid=%d pid=%d comm=%s\n", uid, pid, comm);
+      }
+    '';
+
+    systemd.services.cageworks-probes = {
+      description = "What the kernel says this factory ran";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "cageworks-journal.service" ];
+      serviceConfig = {
+        ## Its stdout is the ledger's third source, so it goes to the same
+        ## journal a role writes to and the proxy logs into. LogNamespace also
+        ## pulls in that namespace's socket units, which is one fewer ordering
+        ## to state (systemd.exec(5)).
+        LogNamespace = cfg.factory;
+        ## -q so the only lines on this stream are events, and -f text so a
+        ## later default cannot turn the ledger into something else. Both read
+        ## off bpftrace(8) at 0.26.1.
+        ExecStart = "${lib.getExe pkgs.bpftrace} -q -f text /etc/cageworks/probes.bt";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
+
     ## The machine's own way of being handed a secret. Present only where
     ## there is somewhere to reach, which is the same condition the proxy has.
     environment.systemPackages = lib.mkIf (cfg.egress != [ ]) [ egressCredential ];
@@ -459,6 +514,29 @@ in
       user = "cageworks-egress";
       group = "cageworks-egress";
       recommendedProxySettings = true;
+
+      ## What a request cost, and nothing about what it carried (ADR-027 point
+      ## 10). Every field here is the proxy's own account or the upstream's
+      ## answer: the request line, the status on both sides, the timings, the
+      ## byte counts, and what the upstream said about its own rate limits.
+      ##
+      ## No $http_ and no $sent_http_. A request header is where this factory's
+      ## credential is, and a log format naming one would put it in a log,
+      ## which is the thing ADR-025 exists to prevent. $request_body is absent
+      ## for the same reason one step further in.
+      ##
+      ## A header the upstream did not send renders as "-", so the format is
+      ## the same width whichever endpoint answered.
+      appendHttpConfig = ''
+        log_format cageworks_egress
+          '$request $status $upstream_status '
+          'req=$request_length resp=$body_bytes_sent '
+          'time=$request_time upstream=$upstream_response_time '
+          'retry_after=$upstream_http_retry_after '
+          'ratelimit_requests=$upstream_http_anthropic_ratelimit_requests_remaining '
+          'ratelimit_tokens=$upstream_http_anthropic_ratelimit_tokens_remaining';
+      '';
+
       virtualHosts."cageworks-egress" = {
         listen = [
           {
@@ -466,7 +544,16 @@ in
             port = cfg.egressPort;
           }
         ];
-        extraConfig = lib.concatMapStrings (host: ''
+        extraConfig = ''
+          ## To the factory's own journal rather than to a file: the root here
+          ## is a tmpfs, so a file is a log that ends at the next stop. The
+          ## namespaced dev-log socket is the same one the roles write to, so
+          ## the proxy's account and a role's land in one place and can be read
+          ## against each other (ADR-027 points 6 and 10).
+          access_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks-egress,nohostname cageworks_egress;
+          error_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks-egress,nohostname;
+        ''
+        + lib.concatMapStrings (host: ''
           location /${host}/ {
             proxy_pass https://${host}/;
             proxy_set_header Host ${host};

@@ -407,3 +407,123 @@ journal_facts() {
 	assert_output --partial "systemd-journald@acme.socket"
 	assert_output --partial "cageworks-storage.service"
 }
+
+## What the proxy is configured to write about a request, and where.
+proxy_log() {
+	local factory="${1:-acme}"
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "'"$factory"'";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        egress = [ "api.anthropic.com" ];
+      };
+      c = m.config;
+    in c.services.nginx.appendHttpConfig
+       + c.services.nginx.virtualHosts."cageworks-egress".extraConfig
+  ' 2>/dev/null
+}
+
+# ADR-027 point 10. A log format naming a request header would put this
+# factory's credential in a log, which is the thing ADR-025 exists to keep out
+# of the store and out of a build log.
+@test "the proxy records what a request cost and never what it carried" {
+	run proxy_log
+	assert_success
+	assert_output --partial '$request'
+	assert_output --partial '$status'
+	assert_output --partial '$request_time'
+	assert_output --partial '$body_bytes_sent'
+	# Request headers are where the credential is. Not one of them is named.
+	refute_output --partial '$http_'
+	refute_output --partial '$request_body'
+	refute_output --partial '$sent_http_'
+}
+
+@test "the proxy says what the upstream said about its own rate limits" {
+	run proxy_log
+	assert_success
+	assert_output --partial '$upstream_http_retry_after'
+	assert_output --partial '$upstream_status'
+}
+
+# A file on a tmpfs root is a log that ends at the next stop, so the proxy
+# writes into the factory's own journal like everything else here.
+@test "the proxy writes to the factory's journal and not to a file" {
+	run proxy_log
+	assert_success
+	assert_output --partial "syslog:server=unix:/run/systemd/journal.acme/dev-log"
+	assert_output --partial "tag=cageworks-egress"
+	refute_output --partial "/var/log/nginx"
+}
+
+## The probe unit: what it runs, where it logs, and what it is allowed to do.
+probe_facts() {
+	local factory="${1:-acme}"
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "'"$factory"'";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+      };
+      c = m.config;
+      u = c.systemd.services.cageworks-probes;
+    in builtins.concatStringsSep "\n" [
+      (builtins.toString u.serviceConfig.ExecStart)
+      (u.serviceConfig.LogNamespace or "")
+      (builtins.readFile c.environment.etc."cageworks/probes.bt".source)
+    ]' 2>/dev/null
+}
+
+# ADR-027 point 9. The kernel answers about a role independently of the role,
+# which is what makes the loop's own account checkable rather than merely
+# present.
+@test "the kernel is asked what a role ran, and what it opened a connection to" {
+	run probe_facts
+	assert_success
+	assert_output --partial "sched_process_exec"
+	assert_output --partial "sched_process_exit"
+	assert_output --partial "tcp_connect"
+}
+
+# Orders of magnitude more traffic for a question nobody has asked.
+@test "the kernel is not asked what a role opened, because nobody asked" {
+	run probe_facts
+	assert_success
+	refute_output --partial "openat"
+	refute_output --partial "sys_enter_read"
+}
+
+# Filtered where the events are, not after they arrive: a predicate compiles
+# into the program, and root is the machine rather than any role.
+@test "the machine's own noise is dropped in the kernel and not in a pipe" {
+	run probe_facts
+	assert_success
+	assert_output --partial "uid != 0"
+	refute_output --partial "grep"
+}
+
+# Denying a role an exec is the shape of a cage, and a cage is nixcage's.
+@test "the probes observe and do not enforce" {
+	run probe_facts
+	assert_success
+	refute_output --partial "bpf_send_signal"
+	refute_output --partial "override"
+	refute_output --partial "lsm:"
+}
+
+# The kernel's account goes into the same journal as the role's own, so the
+# two can be read against each other without either being told about the other.
+@test "the kernel's account lands in the factory's journal, attributed by uid" {
+	run probe_facts acme
+	assert_success
+	assert_output --partial "bpftrace"
+	assert_output --partial "acme"
+	assert_output --partial "uid=%d"
+}
