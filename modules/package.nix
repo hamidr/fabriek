@@ -58,8 +58,9 @@ let
               ## cannot have (ADR-010).
               git
               acl
-              ## The shared record. The supervisor is the only writer
-              ## (ADR-013), so this is here rather than in a cage.
+              ## The shared record (ADR-022). Every call to it is retried and
+              ## bounded, which is what coreutils' timeout above is for
+              ## (ADR-024).
               git-bug
               ## Reading the declaration out of a factory's clone, and shaping
               ## the JSON it comes back as (ADR-020).

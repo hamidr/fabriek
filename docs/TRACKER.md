@@ -4,7 +4,7 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-06
+**Generated:** 2026-09-07
 
 **Next PRD number:** 006
 
@@ -47,5 +47,5 @@ document, then regenerate.
 | [ADR-021](ADR-021-the-agent-is-a-loop.md) | A role's agent is a loop that takes its own work | accepted | -- | ADR-009, ADR-010, ADR-016 | each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch |  |
 | [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | accepted | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
 | [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | superseded | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |
-| [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and every git-bug call retries the repository lock | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug locks the whole repository for reads as well as writes |  |
+| [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and no git-bug call is trusted bare | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug's lock and search index both fail under concurrent agents |  |
 | [ADR-025](ADR-025-the-machine-holds-the-model-credential.md) | The machine holds the model credential and injects it at egress | accepted | -- | ADR-019, ADR-021 | the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else |  |
