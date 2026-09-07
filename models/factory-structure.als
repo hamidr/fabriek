@@ -3,7 +3,9 @@
  * docs/PRD-003-software-factory.md, under the ownership and ref rules of
  * docs/ADR-010-role-cage-identity.md, as widened by
  * docs/ADR-022-the-task-is-a-git-bug-issue.md and
- * docs/ADR-023-a-leased-claim-takes-a-task.md.
+ * docs/ADR-023-a-leased-claim-takes-a-task.md, and widened again by
+ * docs/ADR-027-observed-from-three-sources.md, which gives every role a
+ * ledger and a transcript beside its worktree.
  *
  * Agents now write the record themselves and race each other for claims, so
  * two ref spaces are writable by every role. ADR-010's partition still holds
@@ -16,11 +18,27 @@
  * out, and the local rule for where a task may be created. Everything the
  * documents *claim* is an assertion, so a claim that does not follow from the
  * mechanism shows up as SAT.
+ *
+ * Every command runs at scope 6 but 18 Path. A role now holds three paths, so
+ * six of them is two roles' worth and NonTrivialFactory, which wants three
+ * roles, went UNSAT the moment the ledger arrived. A witness that stops being
+ * reachable because the scope ran out is a scope bug reported as a design one.
  */
 
 sig Uid {}
 
-sig Worktree { owner: one Uid, checkedOut: one Ref }
+-- ADR-027: a place on the machine, and whose it is. Introduced because a role
+-- now owns three of them and the difference between them is the whole of
+-- points 3 and 4: what a role commits from, what records what it did, and what
+-- records what it saw.
+sig Path { pathOwner: one Uid }
+
+sig Worktree { owner: one Uid, checkedOut: one Ref, at: one Path }
+
+-- ADR-027 point 4: an entry carries the uid journald read off SO_PEERCRED, and
+-- not one the writer supplied. A role can write a line that lies about what it
+-- did; it cannot write one that lies about who it is.
+sig Entry { writer: one Role, stamped: one Uid }
 
 -- ADR-010: a ref lives in at most one role's namespace. refs/heads/main lives
 -- in none, which is the whole mechanism behind "main is writable by no cage".
@@ -45,7 +63,22 @@ sig Claim { task: one Task, holder: one Role, ref: one ClaimRef }
 -- objects.
 sig Capability {}
 
-sig Role { uid: one Uid, tree: one Worktree, provides: set Capability }
+-- ADR-027 point 3: one stream splits into a ledger of metadata and a
+-- transcript of content, on two paths, because only the ledger is read by
+-- anything of ours and the decision to read the other should always be a
+-- deliberate one.
+sig Role {
+  uid: one Uid,
+  tree: one Worktree,
+  ledger: one Path,
+  transcript: one Path,
+  provides: set Capability
+}
+
+-- ADR-027 point 12: the supervisor is given no reader for the ledger and none
+-- for the transcript either. It is here so that content-blindness is a
+-- property of what it holds rather than of what it chooses to open.
+one sig Supervisor { reads: set Path }
 
 sig Workflow { stages: set Stage, entry: one Stage }
 -- next: pipeline edges, acyclic. consults: who this stage may ask, and it may
@@ -90,6 +123,42 @@ fact RoleIdentity {
   all disj a, b: Role | a.tree != b.tree
   all r: Role | r.tree.owner = r.uid
   all w: Worktree | some r: Role | r.tree = w
+}
+
+-- ADR-027 point 4: journald reads SO_PEERCRED off its own socket. The uid on
+-- an entry is the writer's, whatever the entry says about itself.
+fact JournaldStampsThePeer {
+  all e: Entry | e.stamped = e.writer.uid
+}
+
+-- ADR-027 points 3 and 8: three paths per role, none of them the same as
+-- another role's and none of them the same as each other. The ledger and the
+-- transcript sit under the state directory rather than in the tree the role
+-- commits from.
+fact ARolesPathsAreItsOwn {
+  all r: Role | r.tree.at != r.ledger and r.tree.at != r.transcript
+  all r: Role | r.ledger != r.transcript
+  all disj a, b: Role |
+    no (a.tree.at + a.ledger + a.transcript) & (b.tree.at + b.ledger + b.transcript)
+  all p: Path | some r: Role | p in (r.tree.at + r.ledger + r.transcript)
+}
+
+-- ADR-027 point 4: nothing writes the ledger as a plain file under a role's
+-- uid, which would be a record a role could edit. journald owns it, and
+-- journald is not any role.
+fact TheLedgerIsNotARolesToOwn {
+  all r: Role | r.ledger.pathOwner not in Role.uid
+}
+
+-- ADR-010: a role's worktree is the role's, which is what the ACLs are for.
+fact AWorktreeIsItsRolesToOwn {
+  all r: Role | r.tree.at.pathOwner = r.uid
+}
+
+-- ADR-027 point 12: what the supervisor was handed, and it was handed no
+-- reader at all.
+fact TheSupervisorIsGivenNoReader {
+  no Supervisor.reads
 }
 
 -- ADR-010 decision 5: Main is in nobody's namespace.
@@ -262,27 +331,65 @@ assert ConsultsFollowTheDeclaredGraph {
     some r: t.parent.stage.consults | t.stage.needs in r.provides
 }
 
+-- ADR-027 point 4: "a role can write a line that lies about what it did; it
+-- cannot write a line that lies about who it is". The uid on an entry
+-- identifies exactly one role, and it is the one that wrote it.
+assert NoRoleWritesAnothersLedgerEntry {
+  all e: Entry, r: Role | e.stamped = r.uid implies e.writer = r
+}
+
+-- ADR-027 point 4: "nothing writes the ledger as a plain file under a role's
+-- uid, which would be a record a role could edit".
+assert NoRoleOwnsTheLedgerItWrites {
+  all r: Role | r.ledger.pathOwner != r.uid
+}
+
+-- ADR-027 point 3: the transcript is "not in the role's worktree, for the
+-- reason ADR-026 point 2 keeps the console socket out of it: a worktree is a
+-- git working tree the role commits from". A transcript that were one would be
+-- prompts and file contents committed to the repository and pushed with it.
+assert NoTranscriptIsSomethingARoleCommitsFrom {
+  no Role.transcript & Worktree.at
+}
+
+-- The same for the ledger, and for the same reason.
+assert NoLedgerIsSomethingARoleCommitsFrom {
+  no Role.ledger & Worktree.at
+}
+
+-- ADR-027 point 3: "the supervisor is content-blind and stays so". Point 12
+-- gives it no reader, so this has to follow from what it holds rather than
+-- from what it is trusted to avoid opening.
+assert TheSupervisorReachesNoTranscript {
+  no Supervisor.reads & Role.transcript
+}
+
 -- The consult graph is allowed to point backwards. Confirm the model permits
 -- it, so ConsultsAreLeaves is not quietly doing the work acyclicity would.
 run ConsultCanPointBackwards {
   some s1, s2: Stage | s1 in s2.^next and
     some r: s2.consults | s1.needs in r.provides
   some t: Task | t.kind = Consult
-} for 6
+} for 6 but 18 Path
 
-check MainIsCheckedOutNowhere for 6
-check NoRoleCanWriteMain for 6
-check NoTwoRolesShareAWritableBranch for 6
-check TheWideningStopsAtTheSharedSpaces for 6
-check AHolderCanWriteItsOwnClaim for 6
-check NoTwoRolesShareAnAttemptBranch for 6
-check PipelinedCascadeNeverRevisitsAStage for 6
-check TaskStageBelongsToItsWorkflow for 6
-check PipelinedStageReachableFromEntry for 6
-check EveryTaskHasACapableRole for 6
-check NoRoleWorksOutsideWhatItProvides for 6
-check WaitingNeverFormsALoop for 6
-check ConsultsFollowTheDeclaredGraph for 6
+check MainIsCheckedOutNowhere for 6 but 18 Path
+check NoRoleCanWriteMain for 6 but 18 Path
+check NoTwoRolesShareAWritableBranch for 6 but 18 Path
+check TheWideningStopsAtTheSharedSpaces for 6 but 18 Path
+check AHolderCanWriteItsOwnClaim for 6 but 18 Path
+check NoTwoRolesShareAnAttemptBranch for 6 but 18 Path
+check PipelinedCascadeNeverRevisitsAStage for 6 but 18 Path
+check TaskStageBelongsToItsWorkflow for 6 but 18 Path
+check PipelinedStageReachableFromEntry for 6 but 18 Path
+check EveryTaskHasACapableRole for 6 but 18 Path
+check NoRoleWorksOutsideWhatItProvides for 6 but 18 Path
+check WaitingNeverFormsALoop for 6 but 18 Path
+check ConsultsFollowTheDeclaredGraph for 6 but 18 Path
+check NoRoleWritesAnothersLedgerEntry for 6 but 18 Path
+check NoRoleOwnsTheLedgerItWrites for 6 but 18 Path
+check NoTranscriptIsSomethingARoleCommitsFrom for 6 but 18 Path
+check NoLedgerIsSomethingARoleCommitsFrom for 6 but 18 Path
+check TheSupervisorReachesNoTranscript for 6 but 18 Path
 
 -- ADR-015 decision 2: fan-out parallelises. Two tasks at one stage, taken by
 -- two different roles, has to be a legal configuration -- it is the whole
@@ -293,19 +400,19 @@ check ConsultsFollowTheDeclaredGraph for 6
 -- that the sticky-taker fact really is gone rather than merely unstated.
 run WorkCanChangeHands {
   some disj a, b: Attempt | a.task = b.task and a.by != b.by
-} for 6
+} for 6 but 18 Path
 
 -- ADR-023 decision 2, stated as something reachable rather than as prose: a
 -- role that does not hold a claim can still write it. The compare-and-swap
 -- stops two agents racing; it does not stop one from deleting a peer's claim.
 run APeerCanWriteAnothersClaim {
   some c: Claim | some r: Role | r != c.holder and c.ref in writable[r]
-} for 6
+} for 6 but 18 Path
 
 run FanOutReachesTwoRoles {
   some disj t1, t2: Task | t1.stage = t2.stage and
     some disj a1, a2: Attempt | a1.task = t1 and a2.task = t2 and a1.by != a2.by
-} for 6
+} for 6 but 18 Path
 
 -- A generalist providing several capabilities can be pulled into stages of
 -- different workflows. ADR-015 accepts this and says the record will show it.
@@ -315,7 +422,22 @@ run OneRoleCoversTwoStages {
     some disj s1, s2: Stage | s1.needs != s2.needs and
       r in capable[s1] and r in capable[s2]
   }
-} for 6
+} for 6 but 18 Path
+
+-- ADR-027's first consequence, stated as something reachable rather than as
+-- prose: one journal holds entries from several roles, which is what makes a
+-- flood by one of them an eviction of the rest. Point 6 buys a bucket per
+-- factory and not one per role, and this SAT is that cost.
+run OneJournalHoldsSeveralRolesEntries {
+  some disj e, f: Entry | e.writer != f.writer
+} for 6 but 18 Path
+
+-- Not vacuous: a role really does hold three separate places, so the
+-- assertions above are about a configuration the model can build.
+run ARoleHoldsAWorktreeALedgerAndATranscript {
+  some r: Role | #(r.tree.at + r.ledger + r.transcript) = 3
+  some Entry
+} for 6 but 18 Path
 
 -- Not vacuous: a factory with several roles, a real cascade, and a pipeline of
 -- more than one stage is possible.
@@ -323,4 +445,4 @@ run NonTrivialFactory {
   #Role > 2
   some t: Task | some t.parent.parent
   some w: Workflow | #w.stages > 2
-} for 6
+} for 6 but 18 Path

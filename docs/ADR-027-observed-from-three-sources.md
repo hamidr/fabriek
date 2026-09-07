@@ -191,11 +191,19 @@ back is a ledger nobody can rely on after the first restart.
 
 The Formal Modeling Gate fires on points 3 and 4: this is a permission model,
 and the entities are a role, its loop, the journal and two streams with
-different readers. `models/factory-structure.als` gains the journal beside the
-worktree, the console socket and the refs it already carries, with the
-constraint that no role's principal writes another role's ledger entries and
-that no reader of the ledger reaches the transcript. It changes in the same
-commit as the implementation.
+different readers. `models/factory-structure.als` now carries a ledger and a
+transcript beside the worktree and the refs it already had, over five
+assertions: an entry's uid identifies exactly the role that wrote it, no role
+owns the ledger it writes to, neither the ledger nor the transcript is
+somewhere a role commits from, and the supervisor reaches no transcript.
+`alloy6 exec models/factory-structure.als` reports UNSAT for all five at scope
+6 but 18 Path, and deleting the facts they rest on turns all five SAT. The
+console socket joins them when ADR-026 is built.
+
+The scope is not the uniform 6 it was. A role holds three paths now, so six of
+them is two roles' worth and `NonTrivialFactory`, which wants three roles, went
+UNSAT the moment the ledger arrived: a witness that stops being reachable
+because the scope ran out is a scope bug reported as a design one.
 
 A second gate fires on point 7. The tap is in line with the pipe, so it has
 none of the join ADR-026 sends to `models/console-watch.qnt`, but it does have
