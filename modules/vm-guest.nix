@@ -72,6 +72,21 @@ in
       default = 512;
       description = "ARC ceiling in MiB. Uncapped it would take half the machine.";
     };
+    egressHeaders = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = ''
+        Which header carries the credential for which endpoint, as the
+        operator's own config says (ADR-025). The value is never here: the
+        machine reads it from its state directory at run time, so nothing
+        about a credential is in the store or in a build log.
+      '';
+    };
+    egressPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8118;
+      description = "Where on loopback a role's agent finds the proxy.";
+    };
     egress = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -296,6 +311,79 @@ in
           }
         '';
       };
+    };
+
+    ## The proxy (ADR-025 point 2). A cage holds no credential, so it cannot
+    ## speak TLS to the model itself and have the request authenticated: it
+    ## speaks plain HTTP to this, on loopback, and this speaks TLS onward with
+    ## the credential added.
+    ##
+    ## One listener and one location per endpoint rather than a port each. A
+    ## port each would be a number to allocate, record and keep stable across
+    ## a change to the allowlist, and a path is none of those.
+    ##
+    ## The upstream is a literal host, so nginx resolves it when it starts. A
+    ## variable would make it resolve per request and would also stop nginx
+    ## rewriting the location away, which is the part worth having. What that
+    ## costs is a restart when an address moves.
+    services.nginx = lib.mkIf (cfg.egress != [ ]) {
+      enable = true;
+      user = "cageworks-egress";
+      group = "cageworks-egress";
+      recommendedProxySettings = true;
+      virtualHosts."cageworks-egress" = {
+        listen = [
+          {
+            addr = "127.0.0.1";
+            port = cfg.egressPort;
+          }
+        ];
+        extraConfig = lib.concatMapStrings (host: ''
+          location /${host}/ {
+            proxy_pass https://${host}/;
+            proxy_set_header Host ${host};
+            ## The credential, written at run time and never in the store. It
+            ## is always written, empty when nobody holds one, because nginx
+            ## refuses to start on an include it cannot read.
+            include /run/cageworks-egress/${host}.conf;
+          }
+        '') cfg.egress;
+      };
+    };
+
+    ## What the include above reads, made before nginx opens it. The secret
+    ## comes off the machine's own state directory, which the operator writes
+    ## and no cage can read.
+    systemd.services.cageworks-egress-credentials = lib.mkIf (cfg.egress != [ ]) {
+      description = "Compose this factory's credential headers for the egress proxy";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "nginx.service" ];
+      requiredBy = [ "nginx.service" ];
+      after = [ "cageworks-storage.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [ pkgs.coreutils ];
+      script = ''
+        set -eu
+        install -d -m 0750 -o cageworks-egress -g cageworks-egress /run/cageworks-egress
+        ${lib.concatMapStrings (host: ''
+          conf=/run/cageworks-egress/${host}.conf
+          secret=${stateDir}/egress/${host}
+          : >"$conf"
+          ${
+            lib.optionalString (cfg.egressHeaders ? ${host}) ''
+              if [ -s "$secret" ]; then
+                printf 'proxy_set_header %s "%s";\n' \
+                  ${lib.escapeShellArg cfg.egressHeaders.${host}} "$(cat "$secret")" >"$conf"
+              fi
+            ''
+          }
+          chown cageworks-egress:cageworks-egress "$conf"
+          chmod 0400 "$conf"
+        '') cfg.egress}
+      '';
     };
 
     system.stateVersion = "24.11";

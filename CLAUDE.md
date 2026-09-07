@@ -97,6 +97,8 @@ A change to what a role session is shows up there as a diff.
 - `tests/manual/` -- what cannot be a bats test because it needs a real
   machine. `stop-and-start.sh` is PRD-004 phase 2's exit condition: ten stop
   and start cycles with the pool checked against a manifest each time.
+  `egress.sh` is ADR-025's: which uid may leave the machine, who may read the
+  credential, and whether a uid that reaches no host still reaches the proxy.
 - `models/` -- the Alloy and Quint models the design gate requires. They
   describe the factory, and change in the same commit as the invariants they
   constrain.

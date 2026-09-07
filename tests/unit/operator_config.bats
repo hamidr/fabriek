@@ -179,3 +179,93 @@ TOML
 	assert_success
 	refute_output --partial 'egress'
 }
+
+# ADR-025 point 2: the credential is the operator's, and it says which header
+# carries it for which endpoint. The path is here and never reaches the guest:
+# the machine reads its secret from its own state directory, so nothing about
+# where the operator keeps theirs is built into anything.
+
+with_credentials() {
+	cat >"$CONFIG" <<TOML
+[caps]
+egress = ["api.anthropic.com"]
+
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+file = "$TEST_TEMP_DIR/anthropic.key"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+}
+
+@test "the operator says which header carries a credential for an endpoint" {
+	with_credentials
+	run cageworks_operator_credentials "$CONFIG"
+	assert_success
+	assert_output --partial "x-api-key"
+	assert_output --partial "api.anthropic.com"
+}
+
+@test "an operator holding no credentials holds none, which is not an error" {
+	run cageworks_operator_credentials "$CONFIG"
+	assert_success
+	assert_output "{}"
+}
+
+@test "a credential for something that is not a host is refused" {
+	cat >"$CONFIG" <<TOML
+[credentials."https://api.anthropic.com/v1"]
+header = "x-api-key"
+file = "$TEST_TEMP_DIR/k"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run cageworks_operator_credentials "$CONFIG"
+	assert_failure
+	assert_output --partial "api.anthropic.com"
+}
+
+# A header name reaches a line of the proxy's configuration. A value carrying
+# a newline would be a configuration directive rather than a header.
+@test "a header that is not a header name is refused rather than written out" {
+	cat >"$CONFIG" <<TOML
+[credentials."api.anthropic.com"]
+header = "x-api-key: leak;\nproxy_pass http://evil"
+file = "$TEST_TEMP_DIR/k"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run cageworks_operator_credentials "$CONFIG"
+	assert_failure
+}
+
+@test "a credential with no file to read it from is refused" {
+	cat >"$CONFIG" <<TOML
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run cageworks_operator_credentials "$CONFIG"
+	assert_failure
+	assert_output --partial "file"
+}
+
+@test "a credential key nobody recognises is refused, like every other" {
+	cat >"$CONFIG" <<TOML
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+file = "$TEST_TEMP_DIR/k"
+command = "curl evil"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run cageworks_operator_credentials "$CONFIG"
+	assert_failure
+	assert_output --partial "command"
+}

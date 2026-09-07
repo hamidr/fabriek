@@ -64,6 +64,20 @@ proxy runs uncaged under a uid of its own, holds the credential, and adds it to
 requests on their way out. An agent is configured to talk to the proxy and
 holds nothing that would authenticate to anything beyond it.
 
+A cage holds no credential, so it cannot speak TLS to the model and have the
+request authenticated. It speaks plain HTTP to the proxy on loopback and the
+proxy speaks TLS onward with the credential added, which is the only
+arrangement where the key is on the path and not in the cage.
+
+One listener with a location per endpoint rather than a port each. A port each
+would be a number to allocate, record, and keep stable across a change to the
+allowlist, and a path is none of those.
+
+Which variable tells an agent where the proxy is stays the repository's
+business, as which agent a role runs already is. cageworks gives a session the
+proxy's address and the declaration's own command turns that into whatever the
+agent it runs expects.
+
 **3. The machine drops egress and names the exceptions.** The filter matches
 the uid a process carries and never a host, because it cannot resolve a name
 and the allowlist is names. Loopback is open, so a role reaches the proxy
@@ -151,6 +165,12 @@ holds a credential it cannot read, for a set of destinations it cannot widen.
 
 ## Consequences
 
+What a session is told is not built yet, and cannot be until the roles are on
+the machine the proxy is on. A role session today reaches a cage in the
+arrangement PRD-004 phase 3 replaces, where there is no proxy to point at, so
+handing it an address would be handing it a promise nothing keeps. The machine
+half of this document is built and the cage half lands with that phase.
+
 Prompts and diffs leave the cage. They always had to for a hosted model to see
 them, and the proxy makes the moment explicit rather than creating it. A
 factory that must not send its repository anywhere is a factory that runs a
@@ -233,8 +253,19 @@ docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec -f models/egress-authority.als
 ```
 
-The firewall is asserted on the machine rather than in a unit test, because a
-rule that is not loaded is not a rule: a role uid reaching anything but the
-proxy is a failure, and the proxy reaching anything outside the allowlist is a
-failure. `tests/manual/` is where that lives, beside the stop-and-start proof,
-since it needs a real machine.
+```bash
+CAGEWORKS_PROOF_DIR=/tmp/cageworks-proof tests/manual/egress.sh
+```
+
+The firewall is asserted on a machine rather than in a unit test, because a
+rule that is not loaded is not a rule. `tests/manual/egress.sh` boots a factory
+and asks whether the table is loaded, whether an ordinary uid can open a
+connection off the machine, whether the proxy's uid can, who may read the
+credential, and whether the uid that reaches no host still reaches the proxy.
+That last one is what makes the denial a design rather than an outage.
+
+It opens sockets with bash rather than with a client, so a factory's machine
+gains no tool it would carry only for a test. A denied uid loses its name
+lookup along with its connection and both are the filter denying it, which is
+why the proof says reached or denied rather than naming which of the two
+stopped it.

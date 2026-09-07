@@ -41,13 +41,21 @@ EOF
 	chmod +x "$STUB_DIR/cw-nix-build"
 	export CAGEWORKS_NIX_BUILD="$STUB_DIR/cw-nix-build"
 
-	cat >"$STUB_DIR/ssh" <<EOF
+		cat >"$STUB_DIR/ssh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$SSH_CALLS"
+# What arrives on stdin is the interesting half of giving a machine a
+# credential, and it is not in the arguments by design.
+if printf '%s' "\$*" | grep -q 'nixcage/egress/'; then
+	cat >>"$TEST_TEMP_DIR/ssh-stdin"
+fi
 [ -f "$TEST_TEMP_DIR/refuse-shutdown" ] && exit 1
-# A guest that accepts a shutdown stops the machine that is running it.
-if [ -f "$CAGEWORKS_MACHINES/acme/pid" ]; then
-	kill "\$(cat "$CAGEWORKS_MACHINES/acme/pid")" 2>/dev/null || true
+# Only a shutdown stops the machine. Every other command is one run on a
+# machine that stays up.
+if printf '%s' "\$*" | grep -q poweroff; then
+	if [ -f "$CAGEWORKS_MACHINES/acme/pid" ]; then
+		kill "\$(cat "$CAGEWORKS_MACHINES/acme/pid")" 2>/dev/null || true
+	fi
 fi
 exit 0
 EOF
@@ -101,9 +109,14 @@ memory = "16G"
 cores = 8
 egress = ["api.anthropic.com"]
 
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+file = "$TEST_TEMP_DIR/anthropic.key"
+
 [factories.acme]
 path = "$REPO"
 EOF
+	printf 'sk-secret-value' >"$TEST_TEMP_DIR/anthropic.key"
 }
 
 @test "a factory nobody registered here has no machine to start" {
@@ -235,4 +248,52 @@ EOF
 	run_cageworks up acme
 	assert_success
 	assert_output --partial "api.openai.com"
+}
+
+@test "the machine is told which header carries a credential, and never the credential" {
+	run_cageworks up acme
+	assert_success
+
+	run jq -c '.egressHeaders' "$BUILD_CALLS"
+	assert_output '{"api.anthropic.com":"x-api-key"}'
+
+	run cat "$BUILD_CALLS"
+	refute_output --partial "sk-secret-value"
+}
+
+@test "the credential goes to the machine on stdin, never as an argument" {
+	run_cageworks up acme
+	assert_success
+
+	run cat "$TEST_TEMP_DIR/ssh-stdin"
+	assert_output "sk-secret-value"
+
+	# /proc is readable by everything on a machine, so a secret that was an
+	# argument would be a secret every uid there had.
+	run cat "$SSH_CALLS"
+	refute_output --partial "sk-secret-value"
+}
+
+@test "a credential the operator says is somewhere it is not stops the machine being trusted with it" {
+	rm -f "$TEST_TEMP_DIR/anthropic.key"
+	run_cageworks up acme
+	assert_failure
+	assert_output --partial "anthropic.key"
+}
+
+@test "an endpoint nobody holds a credential for asks the machine for nothing" {
+	cat >"$CAGEWORKS_CONFIG" <<EOF
+[caps]
+memory = "16G"
+cores = 8
+egress = ["api.anthropic.com"]
+
+[factories.acme]
+path = "$REPO"
+EOF
+	run_cageworks up acme
+	assert_success
+	run jq -c '.egressHeaders' "$BUILD_CALLS"
+	assert_output '{}'
+	[ ! -f "$TEST_TEMP_DIR/ssh-stdin" ]
 }

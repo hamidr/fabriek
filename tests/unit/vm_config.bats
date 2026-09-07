@@ -204,3 +204,79 @@ egress_ruleset() {
 	assert_success
 	assert_output '[]'
 }
+
+## The proxy's configuration, from one evaluation.
+egress_proxy_conf() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" "example.invalid" ];
+        egressHeaders = { "api.anthropic.com" = "x-api-key"; };
+      };
+    in m.config.services.nginx.virtualHosts."cageworks-egress".extraConfig
+      + (builtins.head m.config.services.nginx.virtualHosts."cageworks-egress".listen).addr'
+}
+
+@test "the proxy answers on loopback and nowhere else, since a cage is on this machine" {
+	run egress_proxy_conf
+	assert_success
+	assert_output --partial "127.0.0.1"
+}
+
+@test "each endpoint the factory may reach is a place on the proxy" {
+	run egress_proxy_conf
+	assert_success
+	assert_output --partial "api.anthropic.com"
+	assert_output --partial "example.invalid"
+}
+
+@test "an endpoint nobody holds a credential for is still reachable, unauthenticated" {
+	run egress_proxy_conf
+	assert_success
+	# example.invalid has no credential and is a location all the same: not
+	# every host wants authenticating to.
+	assert_output --partial "example.invalid"
+}
+
+@test "the credential is included from a file, never written into the configuration" {
+	run egress_proxy_conf
+	assert_success
+	assert_output --partial "include"
+	assert_output --partial "/run/cageworks-egress"
+}
+
+@test "the proxy is the uid the firewall lets out, and not root" {
+	run nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" ];
+      };
+    in m.config.services.nginx.user'
+	assert_success
+	assert_output "cageworks-egress"
+}
+
+@test "a factory allowed nothing runs no proxy, because there is nothing for it to reach" {
+	run nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in if m.config.services.nginx.enable then "runs" else "does not run"'
+	assert_success
+	assert_output "does not run"
+}

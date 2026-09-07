@@ -323,18 +323,34 @@ machine_spec() {
     mem="$(cageworks_size_mib "$declared")" || return 1
   fi
 
+  ## Which header carries which credential, for the endpoints this factory is
+  ## allowed. The credential itself is not here and never is: a spec is built,
+  ## logged and written beside the machine, and a secret in one would be a
+  ## secret in all three (ADR-025).
+  local creds
+  creds="$(cageworks_operator_credentials "$config")" || return 1
+
   printf '%s' "$declaration" | jq -c \
     --arg factory "$factory" \
     --arg system "$system" \
     --arg hostSystem "$host" \
     --arg key "$(cat "$dir/id_ed25519.pub")" \
     --argjson port "$(cat "$dir/port")" \
+    --argjson creds "$creds" \
     --arg mem "$mem" '
-      { system: $system, hostSystem: $hostSystem, factory: $factory,
-        sshPort: $port, authorizedKey: $key }
-      + (if .resources.cores then { cpus: .resources.cores } else {} end)
+      . as $d
+      | { system: $system, hostSystem: $hostSystem, factory: $factory,
+          sshPort: $port, authorizedKey: $key }
+      + (if $d.resources.cores then { cpus: $d.resources.cores } else {} end)
       + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
-      + (if .resources.egress then { egress: .resources.egress } else {} end)'
+      + (if $d.resources.egress then
+           { egress: $d.resources.egress
+           , egressHeaders:
+               ( $creds
+               | with_entries(select(.key as $k | ($d.resources.egress | index($k))))
+               | map_values(.header) )
+           }
+         else {} end)'
 }
 
 ## The machines on this host. A factory runs in one of its own (ADR-019), and
@@ -383,7 +399,65 @@ cmd_up() {
   echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
   printf '%s\n' "$spec" >"$dir/spec.json"
+  give_credentials "$factory" "$spec" || exit 1
   log_ok "$factory is running"
+}
+
+## Put this factory's credentials where only its proxy can read them
+## (ADR-025 point 1). They go over the machine's own transport after it is up,
+## because the pool they land on does not exist until it has booted.
+##
+## Each secret is piped into a remote install(1) rather than passed to it. An
+## argument is readable from /proc by anything on the machine, and the whole
+## point of the credential being here is that it is readable by one uid.
+give_credentials() {
+  local factory="$1" spec="$2" config creds hosts host file
+  hosts="$(printf '%s' "$spec" | jq -r '(.egressHeaders // {}) | keys[]?')"
+  [[ -n "$hosts" ]] || return 0
+
+  config="$(cageworks_operator_config_path)"
+  creds="$(cageworks_operator_credentials "$config")" || return 1
+
+  local -a ssh_args=()
+  local arg
+  while IFS= read -r arg; do ssh_args+=("$arg"); done < <(cageworks_machine_ssh_args "$factory")
+
+  ## The machine was started a moment ago and is not answering yet.
+  local waited=0
+  until ssh "${ssh_args[@]}" root@localhost true 2>/dev/null; do
+    if [[ "$waited" -ge 60 ]]; then
+      log_err "$factory did not answer in time to be given its credentials"
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  while IFS= read -r host; do
+    [[ -n "$host" ]] || continue
+    file="$(printf '%s' "$creds" | jq -r --arg h "$host" '.[$h].file // empty')"
+    if [[ ! -f "$file" ]]; then
+      log_err "the credential for $host is not at $file"
+      return 1
+    fi
+    ## $host expands here on purpose. The operator's config is refused when a
+    ## credential is keyed by something that is not a host, so what reaches the
+    ## far side is a name and never an expression.
+    # shellcheck disable=SC2029
+    if ! ssh "${ssh_args[@]}" root@localhost \
+      "install -d -m 0700 /var/lib/nixcage/egress && install -m 0400 -o cageworks-egress -g cageworks-egress /dev/stdin /var/lib/nixcage/egress/$host" \
+      <"$file"; then
+      log_err "could not give $factory the credential for $host"
+      return 1
+    fi
+  done <<<"$hosts"
+
+  ## The proxy read its headers when it started, which was before any of this.
+  if ! ssh "${ssh_args[@]}" root@localhost \
+    "systemctl restart cageworks-egress-credentials nginx" >/dev/null 2>&1; then
+    log_err "$factory has its credentials but its proxy would not pick them up"
+    return 1
+  fi
 }
 
 ## Stop a factory's machine by shutting its guest down. A stop that cannot

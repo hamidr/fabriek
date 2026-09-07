@@ -43,3 +43,11 @@ cageworks_host_ok() {
 	[ "${#host}" -le 253 ] || return 1
 	[[ "$host" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$ ]]
 }
+
+## A header name, which reaches a line of the proxy's configuration (ADR-025).
+## The HTTP token alphabet, narrowed to what a header is actually called: a
+## value carrying a newline, a colon or a space would be a directive rather
+## than a header, and would be one the operator did not write.
+cageworks_header_name_ok() {
+	[[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]
+}

@@ -31,7 +31,11 @@ cageworks_operator_config_path() {
 cageworks_operator_config_program() {
 	printf 'def capFields: %s;\n' "$(cageworks_resource_field_names_json)"
 	cat <<'JQ'
-def schema: { top: ["caps", "factories"], factory: ["path"] };
+def schema:
+  { top: ["caps", "factories", "credentials"]
+  , factory: ["path"]
+  , credential: ["header", "file"]
+  };
 
 . as $c
 | [
@@ -43,6 +47,15 @@ def schema: { top: ["caps", "factories"], factory: ["path"] };
        [ unknown($v; schema.factory; "factory \($f)"),
          (if ($v.path? | type) != "string" or ($v.path | length) == 0
           then ["factory \($f): is registered here with no path"] else [] end)
+       ] | cat) | cat),
+    ((if ($c.credentials | type) == "object" then $c.credentials else {} end)
+     | to_entries | map(
+       .key as $e | .value as $v |
+       [ unknown($v; schema.credential; "credential \($e)"),
+         (if ($v.header? | type) != "string" or ($v.header | length) == 0
+          then ["credential \($e): says no header to carry it in"] else [] end),
+         (if ($v.file? | type) != "string" or ($v.file | length) == 0
+          then ["credential \($e): says no file to read it from"] else [] end)
        ] | cat) | cat)
   ] | cat | .[]
 JQ
@@ -75,6 +88,24 @@ cageworks_operator_config() {
 		echo "cageworks: $file registers $factory, which is not a usable factory name" >&2
 		failed=1
 	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | keys[]?')
+
+	## A credential is keyed by the endpoint it opens and carried in a named
+	## header, and both reach somewhere that would otherwise have to escape
+	## them: the endpoint becomes a location in the proxy and the header
+	## becomes a directive beside it.
+	local endpoint header
+	while IFS=$'\t' read -r endpoint header; do
+		[ -n "$endpoint" ] || continue
+		if ! cageworks_host_ok "$endpoint"; then
+			echo "cageworks: $file holds a credential for $endpoint, which is not a host" >&2
+			failed=1
+		fi
+		if ! cageworks_header_name_ok "$header"; then
+			echo "cageworks: $file carries the credential for $endpoint in $header, which is not a header name" >&2
+			failed=1
+		fi
+	done < <(printf '%s' "$json" |
+		jq -r '(.credentials // {}) | to_entries[]? | "\(.key)\t\(.value.header // "")"')
 
 	[ "$failed" -eq 0 ] || return 1
 	printf '%s\n' "$json"
@@ -115,4 +146,13 @@ cageworks_operator_factory_path() {
 		return 1
 	fi
 	printf '%s\n' "$path"
+}
+
+## The credentials this operator holds, keyed by the endpoint each one opens.
+## An operator holding none holds none: not every host wants authenticating to,
+## and a factory reaching one that does not is not a mistake.
+cageworks_operator_credentials() {
+	local json
+	json="$(cageworks_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq '.credentials // {}'
 }
