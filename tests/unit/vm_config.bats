@@ -315,3 +315,36 @@ socket_wants() {
 	assert_line "systemd-journald@other.socket"
 	refute_line "systemd-journald@acme.socket"
 }
+
+## The names of the commands a machine puts on its own PATH.
+machine_commands() {
+	local factory="${1:-acme}" egress="${2:-[ \"api.anthropic.com\" ]}"
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "'"$factory"'";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        egress = '"$egress"';
+      };
+    in builtins.concatStringsSep "\n"
+      (map (p: p.name or "") m.config.environment.systemPackages)
+  ' 2>/dev/null
+}
+
+# ADR-018. The operator names a host and pipes a secret; where it lands is the
+# machine's business. Without this command the CLI would be calling something
+# that is not there, which is the half of the contract a test has to hold.
+@test "a machine that may reach somewhere knows how to be handed the credential" {
+	run machine_commands acme
+	assert_success
+	assert_line "cageworks-egress-credential"
+}
+
+@test "a machine that may reach nowhere is handed nothing to hold" {
+	run machine_commands acme '[ ]'
+	assert_success
+	refute_line "cageworks-egress-credential"
+}

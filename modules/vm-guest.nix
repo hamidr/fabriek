@@ -33,6 +33,37 @@ let
   ## the store.
   poolSerial = "cageworks-pool";
   poolDevice = "/dev/disk/by-id/virtio-${poolSerial}";
+
+  ## The one way a credential reaches this machine (ADR-025 point 1). The
+  ## operator names a host and pipes the secret in; where it lands is the
+  ## machine's business, so nothing on the operator's side spells the state
+  ## directory nixcage owns (ADR-018).
+  ##
+  ## The secret is read from stdin and never from argv, because /proc is
+  ## readable by everything here and an argument would be a secret every uid on
+  ## the machine had.
+  egressCredential = pkgs.writeShellApplication {
+    name = "cageworks-egress-credential";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      host="''${1:-}"
+      if [ -z "$host" ]; then
+        echo "usage: cageworks-egress-credential <host>" >&2
+        exit 1
+      fi
+      ## A host is one name. Anything carrying a slash or a dot-segment would
+      ## reach a path, and this runs as root.
+      case "$host" in
+      */* | . | ..)
+        echo "cageworks: not a host: $host" >&2
+        exit 1
+        ;;
+      esac
+      install -d -m 0700 ${stateDir}/egress
+      install -m 0400 -o cageworks-egress -g cageworks-egress \
+        /dev/stdin ${stateDir}/egress/"$host"
+    '';
+  };
 in
 {
   options.cageworks.machine = {
@@ -270,6 +301,10 @@ in
     ## Where nixcage puts a role's worktree, so that asking for owned, bounded
     ## storage lands on the pool above rather than on the rootfs.
     nixcage.storage.dataset = "${pool}/state";
+
+    ## The machine's own way of being handed a secret. Present only where
+    ## there is somewhere to reach, which is the same condition the proxy has.
+    environment.systemPackages = lib.mkIf (cfg.egress != [ ]) [ egressCredential ];
 
     ## Who the proxy is (ADR-025 point 2). It exists here rather than beside
     ## the service because the firewall below is written in terms of it: the

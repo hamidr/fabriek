@@ -440,12 +440,16 @@ give_credentials() {
       log_err "the credential for $host is not at $file"
       return 1
     fi
+    ## The machine is asked to file the credential rather than told where to
+    ## put it. Reaching into nixcage's state layout from here is the coupling
+    ## ADR-018 exists to remove, and the machine already knows its own.
+    ##
     ## $host expands here on purpose. The operator's config is refused when a
     ## credential is keyed by something that is not a host, so what reaches the
     ## far side is a name and never an expression.
     # shellcheck disable=SC2029
     if ! ssh "${ssh_args[@]}" root@localhost \
-      "install -d -m 0700 /var/lib/nixcage/egress && install -m 0400 -o cageworks-egress -g cageworks-egress /dev/stdin /var/lib/nixcage/egress/$host" \
+      "cageworks-egress-credential $host" \
       <"$file"; then
       log_err "could not give $factory the credential for $host"
       return 1

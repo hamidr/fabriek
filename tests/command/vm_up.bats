@@ -46,7 +46,7 @@ EOF
 printf '%s\n' "\$*" >>"$SSH_CALLS"
 # What arrives on stdin is the interesting half of giving a machine a
 # credential, and it is not in the arguments by design.
-if printf '%s' "\$*" | grep -q 'nixcage/egress/'; then
+if printf '%s' "\$*" | grep -q 'cageworks-egress-credential'; then
 	cat >>"$TEST_TEMP_DIR/ssh-stdin"
 fi
 [ -f "$TEST_TEMP_DIR/refuse-shutdown" ] && exit 1
@@ -296,4 +296,17 @@ EOF
 	run jq -c '.egressHeaders' "$BUILD_CALLS"
 	assert_output '{}'
 	[ ! -f "$TEST_TEMP_DIR/ssh-stdin" ]
+}
+
+# ADR-018. Where a credential lands is the machine's business. The operator
+# names a host and pipes a secret, and nothing on this side knows the layout of
+# the state directory nixcage owns.
+@test "the machine is asked to file a credential, not told where it keeps one" {
+	run_cageworks up acme
+	assert_success
+
+	run cat "$SSH_CALLS"
+	assert_output --partial "cageworks-egress-credential api.anthropic.com"
+	refute_output --partial "/var/lib/nixcage"
+	refute_output --partial "install -m 0400"
 }
