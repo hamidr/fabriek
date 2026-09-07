@@ -19,6 +19,11 @@
 #   the role guidance was bound read-only and named in the environment
 #                                                -> --bind-ro and --setenv
 #
+# One flag is newer than the split. The journal socket a role writes its
+# ledger to is not in a cage's own /run until it is asked for (ADR-027 point
+# 5), and asking for it is a --bind like any other, which is the whole reason
+# that decision needs nothing new from nixcage.
+#
 # The in-cage paths move from /run/nixcage and /etc/nixcage to /run/cageworks
 # and /etc/cageworks because nixcage refuses a bind over its own /etc.
 
@@ -103,7 +108,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --no-agent --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -111,7 +116,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --auth-sock /tmp/agent.sock --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --auth-sock /tmp/agent.sock --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "the uid comes from nixcage rather than from a store cageworks keeps" {
@@ -147,4 +152,23 @@ recorded() {
 		--auth-sock /tmp/agent.sock --signing-key builder acme builder
 	assert_failure
 	assert_output --partial "mutually exclusive"
+}
+
+@test "a role session can reach the journal it writes its ledger to" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+
+	# The socket is namespaced by factory outside and unnamespaced inside,
+	# because journald's client code opens one path and the machine keeps a
+	# separate journal per factory (ADR-027 points 5 and 6).
+	run recorded
+	assert_output --partial "--bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket"
+}
+
+@test "no session is handed another factory's journal" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+	run recorded
+	refute_output --partial "journal.builder"
+	refute_output --partial "/run/systemd/journal/socket:/run/systemd/journal.acme/socket"
 }

@@ -29,6 +29,7 @@ let
     cp ${../modules/signing.sh} $out/signing.sh
     cp ${../modules/integrate.sh} $out/integrate.sh
     cp ${../modules/role-guidance.sh} $out/role-guidance.sh
+    cp ${../modules/journal.sh} $out/journal.sh
     cp ${../modules/role-guidance.md} $out/role-guidance.md
   '';
 

@@ -1,7 +1,7 @@
 ---
 id: ADR-027
 title: A factory is observed from three sources, and a role owns none of them
-status: proposed
+status: accepted
 date: 2026-09-07
 status_date: 2026-09-07
 summary: three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel

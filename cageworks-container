@@ -46,6 +46,8 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/repo-declaration.sh"
 # shellcheck source=modules/role-guidance.sh
 . "$CAGEWORKS_LIB/role-guidance.sh"
+# shellcheck source=modules/journal.sh
+. "$CAGEWORKS_LIB/journal.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
@@ -233,6 +235,16 @@ cmd_role_enter() {
 		## a socket, because an absence is not a decision.
 		opts+=(--no-agent)
 	fi
+
+	## Every session can reach the journal its factory writes, because the
+	## ledger is what a role did and a role that is not recorded is one
+	## nothing can be checked against (ADR-027 point 5). The socket is a bind
+	## and nothing more, which is why this needs nothing new from nixcage.
+	local journal_line
+	while IFS= read -r journal_line; do
+		[ -n "$journal_line" ] || continue
+		opts+=("$journal_line")
+	done < <(cageworks_journal_args "$factory")
 
 	## A role is told the rules it cannot infer from error messages: what it
 	## may write, and that the packed-refs permission error on every ref

@@ -187,6 +187,23 @@ in
     };
     users.users.root.openssh.authorizedKeys.keys = [ cfg.authorizedKey ];
 
+    ## A journal of this factory's own, and not a share of the machine's
+    ## (ADR-027 point 6). One journal for every role would let a role that
+    ## floods it evict every other role's entries under SystemMaxUse, which
+    ## would make suppressing evidence a matter of writing enough of it.
+    ##
+    ## The units are the ones systemd ships: nixpkgs already carries
+    ## systemd-journald@.socket and systemd-journald@.service in
+    ## additionalUpstreamSystemUnits, so instantiating one is a Wants= rather
+    ## than a unit of ours, and the instance stays upstream's.
+    ##
+    ## The socket is what a role session binds (ADR-027 point 5). It is
+    ## socket-activated, listens with PassCredentials=yes and SocketMode=0666,
+    ## and journald stamps _UID off SO_PEERCRED, which is what makes an entry's
+    ## identity something a role cannot write rather than something it is
+    ## trusted about.
+    systemd.targets.sockets.wants = [ "systemd-journald@${cfg.factory}.socket" ];
+
     systemd.services.cageworks-storage = {
       description = "Import or create the pool this factory's state lives on";
       wantedBy = [ "multi-user.target" ];

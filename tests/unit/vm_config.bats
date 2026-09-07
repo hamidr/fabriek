@@ -283,3 +283,35 @@ egress_proxy_conf() {
 	assert_success
 	assert_output "does not run"
 }
+
+## The units a machine pulls into sockets.target, one per line.
+socket_wants() {
+	local factory="${1:-acme}"
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "'"$factory"'";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+      };
+    in builtins.concatStringsSep "\n" m.config.systemd.targets.sockets.wants
+  ' 2>/dev/null
+}
+
+# ADR-027 point 6. One journal for the machine would let a role that floods it
+# evict every other role's entries under SystemMaxUse, which would make
+# suppressing evidence a matter of writing enough of it.
+@test "a factory's machine keeps a journal of its own, named after the factory" {
+	run socket_wants acme
+	assert_success
+	assert_line "systemd-journald@acme.socket"
+}
+
+@test "no factory's machine listens on another factory's journal" {
+	run socket_wants other
+	assert_success
+	assert_line "systemd-journald@other.socket"
+	refute_line "systemd-journald@acme.socket"
+}
