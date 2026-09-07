@@ -64,11 +64,21 @@ proxy runs uncaged under a uid of its own, holds the credential, and adds it to
 requests on their way out. An agent is configured to talk to the proxy and
 holds nothing that would authenticate to anything beyond it.
 
-**3. The machine's firewall permits a role exactly one destination.** Egress
-from an allocated role uid is denied except to the proxy's listener. Egress
-from the proxy is denied except to the destinations its allowlist names. Two
-rules, both on the machine, neither of them inside a cage and neither of them
-something a role can edit.
+**3. The machine drops egress and names the exceptions.** The filter matches
+the uid a process carries and never a host, because it cannot resolve a name
+and the allowlist is names. Loopback is open, so a role reaches the proxy
+without leaving. Root is accepted, because the daemon has to substitute. The
+proxy's own uid is accepted. Everything else is dropped, which is every role
+and every build user.
+
+A role therefore needs no rule of its own: it is denied by there being no rule
+for it, which is the only kind of denial that stays true when a role is added.
+That works because a role's session runs under its allocated uid on the
+machine's own network stack, which is what makes this expressible without
+asking nixcage for anything.
+
+Which hosts may be reached is enforced by the proxy rather than by the filter,
+since the proxy is the thing that resolves them.
 
 **4. The allowlist is part of the factory's declaration, under the operator's
 ceiling.** Which model endpoints a factory may reach is declared in the
@@ -103,10 +113,23 @@ that fetch never goes near the proxy. The request carries whatever the
 derivation's author put in it, and a fetch that fails on its hash has already
 been made.
 
-So the daemon's own uid is held to the substituter by the same firewall that
-holds the roles. A role can still cause a fetch it did not declare, and what it
-can reach that way is one host that serves a content-addressed store. That is a
-narrow channel rather than a closed one, and calling it closed would be wrong.
+Holding the daemon to the substituter by firewall is not available, and saying
+so was a mistake in an earlier draft of this document. A packet filter matches
+addresses and the allowlist is names; resolving them when the machine is built
+produces a list of addresses that have moved by the time it boots. That is why
+the filter matches uids and the names are the proxy's business, and it is why
+the daemon, which runs as root and has to substitute, is not filtered at all.
+
+What closes the fixed-output channel is narrower and better. A derivation's
+fetch is made by the build user, not by the daemon, and the build user is
+dropped like every other uid that is not the proxy. So the channel is closed
+rather than narrowed, and what it costs is real: a derivation that fetches from
+the network at build time does not build on this machine, and the substituter
+is the only source of anything.
+
+What is left is that root leaves this machine for anywhere, and a role's
+packets can ride that. A role's decisions cannot: what it can ask the daemon
+for is a store path, and a store path is a hash rather than a URL.
 
 **6. The proxy is where spend is counted.** It sees every request, so the
 factory's budget is enforced on the path rather than by asking the agent what
@@ -156,21 +179,30 @@ which principals may reach which destinations holding which credentials. It is
 structural rather than temporal, so Alloy rather than Quint.
 `models/egress-authority.als` is written and run before the implementation.
 
-Eight checks come back UNSAT at scope 10: no role holds a credential that opens
-anything, no role reaches the model API, the substituter, a git remote or any
-other host directly, every path from a role to the model transits the proxy,
-whoever opens a connection to the model holds the key, and ADR-009's property
-survives in the form that outlives it. Four runs come back SAT, so the design
-is not safe by being empty: a role does reach the proxy, the proxy does reach
-the model, several roles hold their own distinct keys, and a role does reach a
-host without the proxy seeing it.
+Ten checks come back UNSAT at scope 10. The design's claims are about what a
+role can decide rather than about what its packets can touch, and the model
+separates the two: a role reaches the daemon's socket and the daemon reaches
+the substituter, so a role's traffic gets to a host it never chose. Asking
+whether a role can reach a git remote answers yes and is the wrong question.
 
-That last run is the point of it. The channel is stated as something the model
-produces rather than something a fact rules out, because a model whose facts
-say a role reaches only the proxy is a model that has assumed the daemon away.
-Removing the restriction on where the daemon may reach turns four of the eight
-checks into counterexamples, including a role reaching a git remote, which is
-the property ADR-009 was written to get.
+So: no role holds a credential that opens anything; no role reaches the model
+API or the substituter directly; a role decides no destination outside the
+allowlist, and in particular decides no git remote and no other host; any model
+call a role decides on transits the proxy; nobody but the proxy can present the
+key; a build cannot fetch from the network at all; and ADR-009's property
+survives in the form that outlives it.
+
+Six runs come back SAT, so the design is not safe by being empty: a role does
+reach the proxy, the proxy does reach the model, several roles hold their own
+distinct keys, a role does reach a host without the proxy seeing it, that host
+is one it did not choose, and root does leave for anywhere.
+
+Those last three runs are the point of it. What the design gives up is stated
+as something the model produces rather than something a fact rules out, because
+a model whose facts say a role reaches only the proxy is one that has assumed
+the daemon away. Both of the facts that carry the safety were checked by
+breaking them: letting a role choose freely turns four checks into
+counterexamples, and letting a build user out turns the fifth.
 
 The first draft of that model proved nothing, and how it failed is worth
 recording, because it is the same failure ADR-024 was written about. It carried

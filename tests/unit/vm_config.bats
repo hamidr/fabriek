@@ -110,3 +110,97 @@ field() {
 	[ "$(field "$once" 2)" = "$(field "$twice" 2)" ]
 	[ -n "$(field "$once" 2)" ]
 }
+
+# ADR-025: a cage holds no credential and no route. The firewall is where the
+# second half of that is true, and it filters on the uid a session's processes
+# carry rather than on a host, because a packet filter cannot resolve a name
+# and the allowlist is names.
+
+## The machine's egress ruleset and the facts about it, from one evaluation.
+egress_ruleset() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" ];
+      };
+    in m.config.networking.nftables.tables.cageworks-egress.content'
+}
+
+@test "a machine drops egress by default, so a uid nobody allowed reaches nothing" {
+	run egress_ruleset
+	assert_success
+	assert_output --partial "hook output"
+	assert_output --partial "policy drop"
+}
+
+@test "the proxy is the one uid that may leave the machine on a factory's behalf" {
+	run egress_ruleset
+	assert_success
+	assert_output --partial "skuid"
+	assert_output --partial "cageworks-egress"
+}
+
+@test "a role reaches the proxy, which is on the machine, so loopback stays open" {
+	run egress_ruleset
+	assert_success
+	assert_output --partial "lo"
+}
+
+@test "no rule names a role, because a role is denied by there being no rule for it" {
+	run egress_ruleset
+	assert_success
+	refute_output --partial "nixbld"
+}
+
+@test "the machine has a user for the proxy to be, separate from root and from every role" {
+	run nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" ];
+      };
+      u = m.config.users.users.cageworks-egress;
+    in "${u.group}:${toString u.isSystemUser}"'
+	assert_success
+	assert_output "cageworks-egress:1"
+}
+
+@test "what a factory may reach is carried onto its machine as declared" {
+	run nix eval --json --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" "api.openai.com" ];
+      };
+    in m.config.cageworks.machine.egress'
+	assert_success
+	assert_output '["api.anthropic.com","api.openai.com"]'
+}
+
+@test "a factory allowed nothing gets a machine that reaches nothing, not one that reaches everything" {
+	run nix eval --json --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in m.config.cageworks.machine.egress'
+	assert_success
+	assert_output '[]'
+}

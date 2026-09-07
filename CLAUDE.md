@@ -77,7 +77,9 @@ A change to what a role session is shows up there as a diff.
   drift is one accepting what the other refuses.
 - `modules/resources.sh` -- what a factory may ask of the machine, and the
   clamp that meets it against the operator's ceiling. One table, because the
-  declaration's schema, the operator's schema and the clamp all read it.
+  declaration's schema, the operator's schema and the clamp all read it. One
+  entry in it is a permission rather than an amount: `egress` meets its ceiling
+  by intersection, and meets an absent ceiling as an empty one (ADR-025).
 - `modules/sizes.sh` -- a declared size as bytes. Comparing the strings would
   put 8G above 16G.
 - `modules/machine.sh` -- where a factory's machine lives on the operator's
@@ -85,7 +87,9 @@ A change to what a role session is shows up there as a diff.
   machine that needs no hypervisor to be true.
 - `modules/vm.nix`, `modules/vm-guest.nix` -- the machine itself (ADR-019):
   one microVM per factory, nixcage's host module inside it, and a ZFS pool
-  named after the factory that a wrong disk refuses to import into.
+  named after the factory that a wrong disk refuses to import into. The guest
+  also drops egress and names the exceptions by uid (ADR-025), because a
+  packet filter cannot resolve a name and the allowlist is names.
 - `modules/role-guidance.md` -- what every role is told about working in a
   cage, bound read-only into a role session.
 - `modules/package.nix` -- the two programs, wrapped with the module directory

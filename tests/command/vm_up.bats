@@ -81,7 +81,11 @@ declare_repository() {
         command = [ "claude" ];
         provides = [ "build" ];
       };
-      resources = { memory = "4G"; cores = 2; };
+      resources = {
+        memory = "4G";
+        cores = 2;
+        egress = [ "api.anthropic.com" "api.openai.com" ];
+      };
     };
   };
 }
@@ -95,6 +99,7 @@ write_operator_config() {
 [caps]
 memory = "16G"
 cores = 8
+egress = ["api.anthropic.com"]
 
 [factories.acme]
 path = "$REPO"
@@ -213,4 +218,21 @@ EOF
 	assert_success
 	assert_output --partial "stopped"
 	refute_output --partial "running"
+}
+
+# ADR-025: where a factory's agents may reach is declared by the repository and
+# allowed by the operator, and the machine is built to the result. The
+# declaration asks for two endpoints and this host allows one.
+@test "the machine is built to reach what the operator allowed, not what the repository asked" {
+	run_cageworks up acme
+	assert_success
+
+	run jq -c '.egress' "$BUILD_CALLS"
+	assert_output '["api.anthropic.com"]'
+}
+
+@test "dropping an endpoint is said where the operator will see it" {
+	run_cageworks up acme
+	assert_success
+	assert_output --partial "api.openai.com"
 }

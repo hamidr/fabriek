@@ -72,6 +72,16 @@ in
       default = 512;
       description = "ARC ceiling in MiB. Uncapped it would take half the machine.";
     };
+    egress = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        The hosts this factory's agents may reach, as the repository declared
+        them and the operator allowed them (ADR-025). Empty is a machine that
+        reaches nothing, which is what an operator who has named no endpoints
+        has asked for.
+      '';
+    };
   };
 
   config = {
@@ -228,6 +238,65 @@ in
     ## Where nixcage puts a role's worktree, so that asking for owned, bounded
     ## storage lands on the pool above rather than on the rootfs.
     nixcage.storage.dataset = "${pool}/state";
+
+    ## Who the proxy is (ADR-025 point 2). It exists here rather than beside
+    ## the service because the firewall below is written in terms of it: the
+    ## rule that lets anything out at all names this uid, so the uid is part of
+    ## the machine rather than part of a service that may not have started.
+    users.users.cageworks-egress = {
+      isSystemUser = true;
+      group = "cageworks-egress";
+      description = "Holds this factory's model credential and is the only way out";
+    };
+    users.groups.cageworks-egress = { };
+
+    ## The machine drops egress and names the exceptions (ADR-025 point 3).
+    ##
+    ## It filters on uid and never on host, because a packet filter cannot
+    ## resolve a name and an allowlist of names resolved at build time would be
+    ## a list of addresses that moved. Which hosts may be reached is the
+    ## proxy's to enforce, since the proxy is the thing that resolves them.
+    ##
+    ## A role's session runs under its allocated uid on this machine's own
+    ## network stack, because nixcage passes no --private-network and maps the
+    ## session onto that uid. So a role needs no rule: it is denied by there
+    ## being no rule for it, which is the only kind of denial that stays true
+    ## when a role is added.
+    networking.nftables = {
+      enable = true;
+      tables.cageworks-egress = {
+        family = "inet";
+        content = ''
+          chain output {
+            type filter hook output priority filter; policy drop;
+
+            ## The proxy is on this machine, so a role reaching it never
+            ## leaves. This is also what keeps the machine able to talk to
+            ## itself at all.
+            oifname "lo" accept
+
+            ## The far side of a connection something above was allowed to
+            ## open.
+            ct state established,related accept
+
+            ## Substitution, and the machine's own business. The daemon runs
+            ## as root and a cage cannot: a cage reaches the daemon's socket
+            ## and asks for a store path, and a store path is content
+            ## addressed, so what it can make root fetch is decided by a hash
+            ## rather than by a URL it chose.
+            meta skuid 0 accept
+
+            ## The one uid that may reach a host on a factory's behalf. What
+            ## it may reach is the proxy's allowlist, not this chain's.
+            meta skuid "cageworks-egress" accept
+
+            ## Everything else is dropped, which is every role, and every
+            ## build user. A derivation that fetches from the network at build
+            ## time does not build here; the substituter is the only source.
+          }
+        '';
+      };
+    };
 
     system.stateVersion = "24.11";
   };

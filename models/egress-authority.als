@@ -23,7 +23,7 @@ module egressAuthority
 abstract sig Node { edge: set Node }
 
 abstract sig Principal extends Node { holds: set Credential }
-sig Role extends Principal {}
+sig Role extends Principal { chooses: set Destination }
 one sig Proxy extends Principal {}
 one sig Supervisor extends Principal {}
 
@@ -34,11 +34,29 @@ one sig Supervisor extends Principal {}
 // cage reaches a host without going near the proxy.
 one sig NixDaemon extends Principal {}
 
+// The uid a build runs under. A fixed-output derivation names the URL it
+// fetches, and that fetch is made here rather than by the daemon, so this is
+// the principal that would have arbitrary egress if anything did.
+one sig BuildUser extends Principal {}
+
 abstract sig Destination extends Node {}
 one sig ModelApi extends Destination {}
 one sig GitRemote extends Destination {}
 one sig Substituter extends Destination {}
 sig OtherHost extends Destination {}
+
+// Which destinations a role can decide are contacted, as opposed to which are
+// reachable from it. The two come apart at the daemon: a role reaches the
+// daemon's socket and the daemon reaches the substituter, but what a role may
+// ask for is a store path, and a store path is a hash rather than a URL. So
+// the daemon carries a role's traffic and not a role's choice.
+//
+// This is the property worth checking. Reachability alone would say a role can
+// get a packet to the substituter, which is true and is not the risk; the risk
+// is a role deciding where a packet goes.
+fact aRoleChoosesOnlyThroughTheProxy {
+  all r: Role | r.chooses = Proxy.edge
+}
 
 // A credential opens the destinations it authenticates to. A signing key opens
 // nothing, which is the whole of why ADR-009 could give one to a cage.
@@ -77,11 +95,15 @@ fact rolesHoldOnlyTheirOwnSigningKey {
 fact roleEgressIsTheTwoChokepoints { all r: Role | r.edge = Proxy + NixDaemon }
 fact proxyEgressIsTheAllowlist { Proxy.edge in ModelApi }
 
-// The daemon fetches on a role's behalf, and a fixed-output derivation names
-// the URL it fetches, so a cage that can reach the daemon can make it fetch.
-// What stops that being unrestricted egress is that the daemon's own uid is
-// held to the substituter by the same firewall that holds the roles.
-fact daemonEgressIsTheSubstituter { NixDaemon.edge in Substituter }
+// The daemon runs as root and the firewall does not filter root: it has to
+// substitute, and a rule naming the hosts it may reach would be a rule made of
+// addresses that move. So its reach is not what bounds it -- see chooses.
+fact daemonReachesTheSubstituter { Substituter in NixDaemon.edge }
+
+// A build user is dropped like every other uid that is not the proxy. This is
+// the rule that closes the fixed-output channel, and it costs a derivation
+// that fetches at build time: the substituter is the only source here.
+fact buildUsersAreDropped { no BuildUser.edge }
 
 // The supervisor reads declarations and metadata. It is uncaged, and it is not
 // a way out of the machine either.
@@ -101,22 +123,39 @@ assert noRoleReachesTheModelApi { all r: Role | ModelApi not in r.edge }
 assert noRoleReachesTheSubstituterDirectly {
   all r: Role | Substituter not in r.edge
 }
-assert noRoleReachesAGitRemote { all r: Role | GitRemote not in r.^edge }
-assert noRoleReachesAnyOtherHost { all r: Role, h: OtherHost | h not in r.^edge }
 
-// The bypass check. Delete the proxy's outgoing edges; if the model API is
-// still reachable from a role, there is a second way out and the proxy is a
-// convention rather than a chokepoint.
-assert everyModelCallTransitsTheProxy {
-  all r: Role | ModelApi not in r.^(edge - (Proxy -> Node))
+// The one that matters once the daemon is in the picture. A role may cause
+// traffic it did not choose; it may not choose a destination outside the
+// allowlist the operator permitted.
+assert aRoleDecidesNoDestinationOutsideTheAllowlist {
+  all r: Role | r.chooses in ModelApi
 }
 
-// Whoever opens the connection to the model holds the key. Nothing asserts
-// this directly; it has to fall out of the firewall permitting only the proxy
-// that edge, which is what makes the injection an enforcement point rather
-// than an intention.
+// And the fixed-output channel is closed rather than narrowed, because the uid
+// that would have used it cannot leave the machine.
+assert aBuildCannotFetchFromTheNetwork { no BuildUser.^edge & Destination }
+// These were reachability once, and reachability is the wrong question now
+// that the daemon is in the model. Root is not filtered -- it substitutes, and
+// a rule naming where it may go would be a list of addresses that moved -- so
+// a role's packets can transit it to anywhere. What the design owes is that a
+// role cannot decide any of that.
+assert aRoleDecidesNoGitRemote { all r: Role | GitRemote not in r.chooses }
+assert aRoleDecidesNoOtherHost { all r: Role, h: OtherHost | h not in r.chooses }
+
+// The bypass check, on choice rather than on reach. A role that can decide the
+// model API is contacted can only have decided it through the proxy, because
+// the proxy's allowlist is the whole of what it may decide.
+assert everyModelCallARoleChoosesTransitsTheProxy {
+  all r: Role | ModelApi in r.chooses implies ModelApi in Proxy.edge
+}
+
+// Nobody but the proxy can present the key, whatever else they can reach. Root
+// can open a connection to the model API and has nothing to authenticate it
+// with, which is the difference between reaching a host and being able to use
+// it, and the reason the credential's location is a separate decision from the
+// firewall's.
 assert onlyTheProxyPresentsTheKey {
-  all n: Node | ModelApi in n.edge implies ModelKey in n.holds
+  all p: Principal | ModelKey in p.holds implies p = Proxy
 }
 
 // ADR-009's property, restated for a world with a credential in it: a role
@@ -128,9 +167,11 @@ assert adr009Survives {
 check noRoleHoldsAnAuthenticatingCredential for 10
 check noRoleReachesTheModelApi for 10
 check noRoleReachesTheSubstituterDirectly for 10
-check noRoleReachesAGitRemote for 10
-check noRoleReachesAnyOtherHost for 10
-check everyModelCallTransitsTheProxy for 10
+check aRoleDecidesNoDestinationOutsideTheAllowlist for 10
+check aBuildCannotFetchFromTheNetwork for 10
+check aRoleDecidesNoGitRemote for 10
+check aRoleDecidesNoOtherHost for 10
+check everyModelCallARoleChoosesTransitsTheProxy for 10
 check onlyTheProxyPresentsTheKey for 10
 check adr009Survives for 10
 
@@ -141,6 +182,19 @@ check adr009Survives for 10
 run aRoleReachesAHostWithoutTheProxy {
   some r: Role | some d: Destination |
     d in r.^edge and d not in r.^(edge - (Proxy -> Node))
+} for 10
+
+// What is given up, stated rather than checked away: root leaves this machine
+// for anywhere, because substitution needs it to and no rule of names can be
+// written. A role's packets can ride that. A role's decisions cannot.
+run rootLeavesForAnywhere {
+  some d: Destination | d not in ModelApi and d in NixDaemon.edge
+} for 10
+
+// And that the distinction above is not a distinction without a difference:
+// the host it reaches that way is one it did not choose.
+run aRoleReachesAHostItDidNotChoose {
+  some r: Role | some d: Destination | d in r.^edge and d not in r.chooses
 } for 10
 
 // And that the design is not merely safe by being empty. A factory in which

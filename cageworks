@@ -333,7 +333,8 @@ machine_spec() {
       { system: $system, hostSystem: $hostSystem, factory: $factory,
         sshPort: $port, authorizedKey: $key }
       + (if .resources.cores then { cpus: .resources.cores } else {} end)
-      + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)'
+      + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
+      + (if .resources.egress then { egress: .resources.egress } else {} end)'
 }
 
 ## The machines on this host. A factory runs in one of its own (ADR-019), and
