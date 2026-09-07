@@ -60,7 +60,8 @@ A change to what a role session is shows up there as a diff.
   container name; a devShell name reaches someone else's flake.
 - `modules/*.sh` -- everything the two programs source by store path.
   `role-worktree.sh` gives a role its worktree and the ACLs it needs;
-  `signing.sh` gives it an identity; `factory-config.sh`,
+  `signing.sh` gives it an identity; `journal.sh` gives it a ledger it can
+  write and cannot edit; `factory-config.sh`,
   `workflow-config.sh`, `factory-clone.sh` read the declaration and the clone;
   `task-store.sh`, `caps.sh`, `record.sh`, `integrate.sh` are the supervisor's
   mechanics. Shell files rather than inline strings so the suite can source
@@ -89,7 +90,11 @@ A change to what a role session is shows up there as a diff.
   one microVM per factory, nixcage's host module inside it, and a ZFS pool
   named after the factory that a wrong disk refuses to import into. The guest
   also drops egress and names the exceptions by uid (ADR-025), because a
-  packet filter cannot resolve a name and the allowlist is names.
+  packet filter cannot resolve a name and the allowlist is names. It carries
+  the factory's journal too (ADR-027): a namespace of its own so no role's
+  flood reaches another factory's entries, a dataset for it on the pool, the
+  proxy's metadata-only access log, and the bpftrace probes that answer about
+  a role without asking the role.
 - `modules/role-guidance.md` -- what every role is told about working in a
   cage, bound read-only into a role session.
 - `modules/package.nix` -- the two programs, wrapped with the module directory

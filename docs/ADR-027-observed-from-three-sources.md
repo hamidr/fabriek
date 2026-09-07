@@ -235,8 +235,8 @@ magnitude in whichever direction is inconvenient.
 
 ```bash
 # Event rate: one real role session, counted at the journal.
-tests/manual/observe.sh rate
-# reports entries per second by source (ledger, proxy, kernel) over the run
+tests/manual/observe.sh rate 120
+# reports entries per second by source (ledger, proxy, kernel) over the window
 
 # Storage: bytes the journal dataset actually holds, compressed.
 tests/manual/observe.sh storage
@@ -244,14 +244,24 @@ tests/manual/observe.sh storage
 
 # Overhead: a fixed workload with the probes loaded and without them.
 tests/manual/observe.sh overhead
-# reports wall clock and peak RSS for both, three runs each
+# reports wall clock for both, three runs each, and the probes' peak RSS
+
+# The two attributions, checked rather than assumed.
+tests/manual/observe.sh attribution
 ```
+
+The three sources are told apart by what the journal already records rather
+than by anything they are asked to declare: the kernel's account is a unit, the
+proxy's is a syslog tag, and a role's own is entries journald stamped with the
+uid nixcage allocated.
 
 Two attributions are checked rather than assumed, because both cross a user
 namespace: that journald stamps a caged writer with the role's allocated uid,
 and that a kernel probe reports the same number `meta skuid` filters on. They
 are the same claim from two directions and neither is worth asserting from a
-header file.
+header file. The first needs a role whose declaration names no command, since
+a declared command wins over anything a caller passes and the check has to run
+one of its own.
 
 The retention window is set from the storage number against
 `cageworks.machine.diskSize`, and is written into the declaration's schema only
