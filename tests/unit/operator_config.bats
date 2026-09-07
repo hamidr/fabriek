@@ -155,3 +155,27 @@ TOML
 	assert_success
 	assert_output "$TEST_TEMP_DIR/other.toml"
 }
+
+# ADR-025: which endpoints a factory may reach is the operator's ceiling like
+# every other, and it is in the same table, so it needs nothing added here to
+# be accepted. This says so, because a field that arrives by inheritance is one
+# nobody would notice losing.
+@test "the operator caps which endpoints a factory may reach" {
+	cat >"$CONFIG" <<'TOML'
+[caps]
+memory = "16G"
+egress = ["api.anthropic.com"]
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run cageworks_operator_caps "$CONFIG"
+	assert_success
+	assert_output --partial 'api.anthropic.com'
+}
+
+@test "an operator who names no endpoints has a ceiling, not an absence" {
+	run cageworks_operator_caps "$CONFIG"
+	assert_success
+	refute_output --partial 'egress'
+}

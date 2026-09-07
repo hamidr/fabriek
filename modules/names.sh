@@ -29,3 +29,17 @@ cageworks_name_ok() {
 cageworks_shell_name_ok() {
 	[[ "${1:-}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_-]*$ ]]
 }
+
+## An endpoint a factory may reach (ADR-025). Narrower than either of the
+## above rather than wider: it becomes a line in a firewall rule and an entry
+## in a proxy's allowlist, and both read a host and nothing else. A scheme, a
+## path, a port or a space would each make a rule that means something other
+## than what was declared, so all four are refused here rather than stripped.
+##
+## Labels are the DNS alphabet, a label neither opens nor closes with a dash,
+## and the whole name stays inside the 253 characters a resolver will carry.
+cageworks_host_ok() {
+	local host="${1:-}"
+	[ "${#host}" -le 253 ] || return 1
+	[[ "$host" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$ ]]
+}

@@ -107,7 +107,13 @@ cageworks_declaration_program() {
          (if ((.memory? // "1G") | type) != "string"
           then ["resources: memory must be a size"] else [] end),
          (if ((.roleQuota? // "1G") | type) != "string"
-          then ["resources: roleQuota must be a size"] else [] end)
+          then ["resources: roleQuota must be a size"] else [] end),
+         (if (.egress? // null) == null then []
+          elif (.egress | type) != "array"
+          then ["resources: egress must be a list of endpoints"]
+          elif (.egress | map(type != "string") | any)
+          then ["resources: egress must be a list of endpoints, one host per element"]
+          else [] end)
        ] | cat)
   ] | cat | .[]
 JQ
@@ -125,6 +131,8 @@ cageworks_declaration_declared_names() {
        + map(.key as $r | ((.value.provides? // []) | map("capability\trole \($r)\t\(.)")) | .[]))
     + ((if (.workflows | type) == "object" then .workflows else {} end) | to_entries
        | map("factory\tworkflow \(.key)\t\(.key)"))
+    + (((.resources? // {}) | .egress? // []) | if type == "array" then . else [] end
+       | map(select(type == "string")) | map("endpoint\tresources\t\(.)"))
     | .[]'
 }
 
@@ -139,6 +147,10 @@ cageworks_declaration_check_names() {
 		shell)
 			cageworks_shell_name_ok "$value" && continue
 			echo "cageworks: $where: shell is not a devShell name: $value" >&2
+			;;
+		endpoint)
+			cageworks_host_ok "$value" && continue
+			echo "cageworks: $where: egress is not a host: $value" >&2
 			;;
 		*)
 			cageworks_name_ok "$value" && continue

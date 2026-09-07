@@ -85,5 +85,15 @@
     concurrency = 3;
     taskAttempts = 3;
     runTimeoutSeconds = 3600;
+
+    ## Where this factory's agents may reach, and the only thing here that is
+    ## a permission rather than an amount (ADR-025). A cage holds no
+    ## credential and no route: it reaches the proxy on its own machine, and
+    ## the proxy reaches these and nothing else.
+    ##
+    ## This one meets its ceiling by intersection, and an operator who has
+    ## named no endpoints allows none. Declaring more here cannot widen what
+    ## this factory reaches on somebody else's machine.
+    egress = [ "api.anthropic.com" ];
   };
 }

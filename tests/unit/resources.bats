@@ -36,6 +36,12 @@ clamp_said() {
 	asking_for "$1" | cageworks_resources_clamp "$CAPS" 2>&1 >/dev/null
 }
 
+## The clamp's own verdict on what a factory asked for. run() cannot drive a
+## pipeline through a sourced function, so the pipeline is here.
+clamp_verdict() {
+	asking_for "$1" | cageworks_resources_clamp "$CAPS" >/dev/null
+}
+
 ## A whole declaration through the clamp, to see what else it touched. The
 ## result is captured rather than piped so that the clamp's own verdict is what
 ## the test sees, and not jq's.
@@ -132,5 +138,66 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run cageworks_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","concurrency","taskAttempts","runTimeoutSeconds"]'
+	assert_output '["memory","cores","roleQuota","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
+}
+
+# Egress is a permission rather than a size, and it is in the same table so
+# that a field cannot exist for the declaration and not for the operator. What
+# differs is how it meets its ceiling: by intersection, and refusing by default
+# rather than allowing (ADR-025).
+
+@test "a factory reaches only the endpoints the operator also allows" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": ["api.anthropic.com", "api.openai.com"] }
+JSON
+	run clamped '{ "egress": ["api.anthropic.com", "evil.example"] }'
+	[ "$output" = '{"egress":["api.anthropic.com"]}' ]
+}
+
+@test "a factory cannot widen its own reach by declaring more" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": ["api.anthropic.com"] }
+JSON
+	run clamped '{ "egress": ["api.anthropic.com", "api.openai.com", "evil.example"] }'
+	[ "$output" = '{"egress":["api.anthropic.com"]}' ]
+}
+
+@test "an operator who allows no egress gives a factory none, which is the opposite of a size" {
+	cat >"$CAPS" <<'JSON'
+{ "memory": "16G" }
+JSON
+	run clamped '{ "egress": ["api.anthropic.com"] }'
+	[ "$output" = '{"egress":[]}' ]
+}
+
+@test "dropping an endpoint is said out loud, since a factory that reaches nothing looks broken" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": ["api.anthropic.com"] }
+JSON
+	run clamp_said '{ "egress": ["api.anthropic.com", "evil.example"] }'
+	[[ "$output" == *"evil.example"* ]]
+}
+
+@test "a factory that asks to reach nothing is left reaching nothing" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": ["api.anthropic.com"] }
+JSON
+	run clamped '{ "cores": 2 }'
+	[ "$output" = '{"cores":2}' ]
+}
+
+@test "an endpoint list that is not a list is refused rather than read as one" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": ["api.anthropic.com"] }
+JSON
+	run clamp_verdict '{ "egress": "api.anthropic.com" }'
+	[ "$status" -ne 0 ]
+}
+
+@test "a ceiling for endpoints that is not a list is the operator's mistake, and is refused" {
+	cat >"$CAPS" <<'JSON'
+{ "egress": "api.anthropic.com" }
+JSON
+	run clamp_verdict '{ "egress": ["api.anthropic.com"] }'
+	[ "$status" -ne 0 ]
 }

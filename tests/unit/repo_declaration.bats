@@ -207,3 +207,44 @@ validate_example() {
 	done < <(nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
 		jq -r '[.roles[].shell // empty] | .[]')
 }
+
+# An endpoint reaches a firewall rule and a proxy's allowlist (ADR-025), so it
+# is checked where it is declared, like every other name that reaches something
+# that would otherwise have to escape it.
+
+@test "a declaration may name the endpoints its agents reach" {
+	run validate_with '.resources.egress = ["api.anthropic.com"]'
+	assert_success
+}
+
+@test "an endpoint carrying a scheme is not a host, and is refused" {
+	run validate_with '.resources.egress = ["https://api.anthropic.com"]'
+	assert_failure
+	assert_output --partial "api.anthropic.com"
+}
+
+@test "an endpoint carrying a path is refused, since a firewall rule has no path" {
+	run validate_with '.resources.egress = ["api.anthropic.com/v1/messages"]'
+	assert_failure
+}
+
+@test "an endpoint that is a whole shell line is refused" {
+	run validate_with '.resources.egress = ["api.anthropic.com; curl evil"]'
+	assert_failure
+}
+
+@test "endpoints must be a list, because one host and a list of them differ" {
+	run validate_with '.resources.egress = "api.anthropic.com"'
+	assert_failure
+	assert_output --partial "egress"
+}
+
+@test "an endpoint that is not a string is refused rather than rendered" {
+	run validate_with '.resources.egress = [{ "host": "api.anthropic.com" }]'
+	assert_failure
+}
+
+@test "a factory reaching several endpoints declares them all" {
+	run validate_with '.resources.egress = ["api.anthropic.com", "generativelanguage.googleapis.com"]'
+	assert_success
+}

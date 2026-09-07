@@ -77,10 +77,36 @@ way memory and cores already are. A factory cannot widen its own reach by
 declaring more, and an operator who wants a factory reaching nothing sets the
 ceiling to nothing.
 
-**5. A cage still needs no network for its toolchain.** nixcage binds
+**4a. An operator who has named no endpoints allows none.** Every other field
+a factory declares is a resource, and a resource with no ceiling is left as the
+factory asked for it, because a ceiling nobody set is not one. That default is
+wrong here and would undo point 4: a factory that names an endpoint on a host
+whose operator has said nothing about endpoints would have widened its own
+reach by declaring it. So the allowlist is the one field in that table which
+meets an absent ceiling as an empty one.
+
+The cost is a factory that reaches nothing on a host whose operator has not
+thought about it yet, which looks like a broken factory. What is dropped is
+therefore named as it is dropped, so the operator is told which endpoint their
+config did not allow rather than finding out from a timeout.
+
+**5. A cage still needs no network for its toolchain, and the daemon that
+gives it one is held to the substituter.** nixcage binds
 `/nix/var/nix/daemon-socket` into every session, so a role's `nix build` is
 performed by the machine's daemon and the substituter is fetched outside the
 cage. Denying a role everything but the proxy does not cost it its devShell.
+
+That socket is also a second way out, and this document did not see it until
+the firewall was being written. A fixed-output derivation names the URL it
+fetches, so a cage that can reach the daemon can make the daemon fetch, and
+that fetch never goes near the proxy. The request carries whatever the
+derivation's author put in it, and a fetch that fails on its hash has already
+been made.
+
+So the daemon's own uid is held to the substituter by the same firewall that
+holds the roles. A role can still cause a fetch it did not declare, and what it
+can reach that way is one host that serves a content-addressed store. That is a
+narrow channel rather than a closed one, and calling it closed would be wrong.
 
 **6. The proxy is where spend is counted.** It sees every request, so the
 factory's budget is enforced on the path rather than by asking the agent what
@@ -130,13 +156,21 @@ which principals may reach which destinations holding which credentials. It is
 structural rather than temporal, so Alloy rather than Quint.
 `models/egress-authority.als` is written and run before the implementation.
 
-Seven checks come back UNSAT at scope 6: no role holds a credential that opens
-anything, no role reaches the model API, a git remote or any other host, every
-path from a role to the model transits the proxy, whoever opens a connection to
-the model holds the key, and ADR-009's property survives in the form that
-outlives it. Three runs come back SAT, so the design is not safe by being
-empty: a role does reach the proxy, the proxy does reach the model, and several
-roles hold their own distinct keys.
+Eight checks come back UNSAT at scope 10: no role holds a credential that opens
+anything, no role reaches the model API, the substituter, a git remote or any
+other host directly, every path from a role to the model transits the proxy,
+whoever opens a connection to the model holds the key, and ADR-009's property
+survives in the form that outlives it. Four runs come back SAT, so the design
+is not safe by being empty: a role does reach the proxy, the proxy does reach
+the model, several roles hold their own distinct keys, and a role does reach a
+host without the proxy seeing it.
+
+That last run is the point of it. The channel is stated as something the model
+produces rather than something a fact rules out, because a model whose facts
+say a role reaches only the proxy is a model that has assumed the daemon away.
+Removing the restriction on where the daemon may reach turns four of the eight
+checks into counterexamples, including a role reaching a git remote, which is
+the property ADR-009 was written to get.
 
 The first draft of that model proved nothing, and how it failed is worth
 recording, because it is the same failure ADR-024 was written about. It carried
@@ -151,6 +185,12 @@ two. Both decisions are load-bearing, which is what the checks now say.
 
 `models/factory-structure.als` does not change. What a role may write in the
 repository is untouched by this document, which is about what it may reach.
+
+The model says nothing about how the allowlist is arrived at, which is where
+point 4a lives. It has one `Proxy.edge in ModelApi` and no notion of a
+declaration meeting a ceiling, so what it checks is the shape of the authority
+rather than the arithmetic that produces it. That arithmetic is a set
+intersection with a fail-closed default, which is cheap to test and was.
 
 ## Verification
 
