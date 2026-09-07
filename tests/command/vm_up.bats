@@ -92,6 +92,7 @@ declare_repository() {
       resources = {
         memory = "4G";
         cores = 2;
+        journalQuota = "2G";
         egress = [ "api.anthropic.com" "api.openai.com" ];
       };
     };
@@ -309,4 +310,15 @@ EOF
 	assert_output --partial "cageworks-egress-credential api.anthropic.com"
 	refute_output --partial "/var/lib/nixcage"
 	refute_output --partial "install -m 0400"
+}
+
+# ADR-027 point 8. The ledger is bounded by what the factory declared and the
+# operator allowed, converted here for the same reason memory is: a person
+# writes a size and the thing on the far side counts MiB.
+@test "the machine is told how much its ledger may cost, in the units it counts" {
+	run_cageworks up acme
+	assert_success
+
+	run jq -r '.journalQuota' "$BUILD_CALLS"
+	assert_output "2048"
 }

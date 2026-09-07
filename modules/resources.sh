@@ -22,6 +22,7 @@ cageworks_resource_fields() {
 		memory size \
 		cores count \
 		roleQuota size \
+		journalQuota size \
 		concurrency count \
 		taskAttempts count \
 		runTimeoutSeconds count \

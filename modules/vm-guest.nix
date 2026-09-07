@@ -86,6 +86,17 @@ in
       default = 65536;
       description = "Size in MiB of each volume this machine is given.";
     };
+    journalQuota = lib.mkOption {
+      type = lib.types.int;
+      default = 4096;
+      description = ''
+        Size in MiB the factory's ledger may reach, as the factory asked and
+        the operator allowed (ADR-027 point 8). A default rather than a
+        required value, because a machine with no bound here would fill the
+        pool and take every worktree with it, and refusing to boot over an
+        unstated number would be a worse answer than a modest one.
+      '';
+    };
     sshPort = lib.mkOption {
       type = lib.types.port;
       description = "The host port cageworks reaches this machine on.";
@@ -234,6 +245,58 @@ in
     ## identity something a role cannot write rather than something it is
     ## trusted about.
     systemd.targets.sockets.wants = [ "systemd-journald@${cfg.factory}.socket" ];
+
+    ## What that namespace keeps and how much of it (ADR-027 points 6 and 8).
+    ##
+    ## Persistent, because microvm.nix gives this guest a tmpfs root and a
+    ## ledger that ends at the next stop is not one anything can be checked
+    ## against. SystemMaxUse is set below the dataset's own bound so that
+    ## journald rotates before the quota refuses a write: a full dataset is a
+    ## ledger that stops, and an evicting one is a ledger that says so.
+    environment.etc."systemd/journald@${cfg.factory}.conf".text = ''
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=${toString (cfg.journalQuota * 9 / 10)}M
+    '';
+
+    ## Where it keeps it. A sibling of worktrees/ under the state directory, so
+    ## no role's name can reach it, and asked for with the storage primitive
+    ## rather than with zfs: the primitive already takes a bound, and whether
+    ## the path becomes a dataset is nixcage's to decide (ADR-017, ADR-018).
+    ##
+    ## Mounted over /var/log/journal rather than pointed at by configuration,
+    ## because journald decides where a namespace's files go and the only thing
+    ## that reliably moves them is the directory underneath.
+    systemd.services.cageworks-journal = {
+      description = "The storage this factory's ledger lives on";
+      wantedBy = [ "multi-user.target" ];
+      requires = [ "cageworks-storage.service" ];
+      after = [ "cageworks-storage.service" ];
+      ## The namespace has to find the directory already there. A journald that
+      ## starts first writes to memory and keeps doing so until it is restarted.
+      before = [ "systemd-journald@${cfg.factory}.socket" ];
+      requiredBy = [ "systemd-journald@${cfg.factory}.socket" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [
+        pkgs.coreutils
+        pkgs.util-linux
+      ];
+      script = ''
+        set -eu
+        nixcage-container storage ensure \
+          ${stateDir}/journal 0 ${toString cfg.journalQuota}M >/dev/null
+        ## journald writes as root and reads as the systemd-journal group,
+        ## which is what journalctl outside the namespace goes through.
+        chgrp systemd-journal ${stateDir}/journal
+        chmod 2755 ${stateDir}/journal
+        install -d -m 2755 -o root -g systemd-journal /var/log/journal
+        mountpoint -q /var/log/journal ||
+          mount --bind ${stateDir}/journal /var/log/journal
+      '';
+    };
 
     systemd.services.cageworks-storage = {
       description = "Import or create the pool this factory's state lives on";

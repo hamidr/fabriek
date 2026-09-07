@@ -348,3 +348,62 @@ machine_commands() {
 	assert_success
 	refute_line "cageworks-egress-credential"
 }
+
+## The script one of the machine's own units runs, and its journald settings.
+journal_facts() {
+	local factory="${1:-acme}" quota="${2:-4096}"
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "'"$factory"'";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        journalQuota = '"$quota"';
+      };
+      c = m.config;
+    in builtins.concatStringsSep "\n" [
+      c.systemd.services.cageworks-journal.script
+      c.environment.etc."systemd/journald@'"$factory"'.conf".text
+      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.before)
+      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.after)
+    ]' 2>/dev/null
+}
+
+# ADR-027 point 8. Unbounded, the ledger fills the pool and takes every
+# worktree with it, which is why the quota is not optional here.
+@test "the ledger is asked for through the primitive, bounded, and never with zfs" {
+	run journal_facts acme 2048
+	assert_success
+	assert_output --partial "nixcage-container storage ensure"
+	assert_output --partial "/var/lib/nixcage/journal 0 2048M"
+	refute_output --partial "zfs create"
+	refute_output --partial "zfs set"
+}
+
+# A sibling of worktrees/ under the state directory, so no role's name reaches
+# it and no role's quota is what bounds it.
+@test "the ledger is not somewhere a role's name can reach" {
+	run journal_facts acme
+	assert_success
+	refute_output --partial "/var/lib/nixcage/worktrees"
+}
+
+# microvm.nix gives this guest a tmpfs root, so a ledger that is not put
+# somewhere on purpose ends at the next stop.
+@test "the ledger survives a stop, and journald rotates before the quota bites" {
+	run journal_facts acme 2048
+	assert_success
+	assert_output --partial "Storage=persistent"
+	# Nine tenths of the dataset's bound: a full dataset is a ledger that
+	# stops, and an evicting one is a ledger that says so.
+	assert_output --partial "SystemMaxUse=1843M"
+}
+
+@test "the namespace finds its directory already there, or it writes to memory" {
+	run journal_facts acme
+	assert_success
+	assert_output --partial "systemd-journald@acme.socket"
+	assert_output --partial "cageworks-storage.service"
+}

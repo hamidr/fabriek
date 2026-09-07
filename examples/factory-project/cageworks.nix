@@ -82,6 +82,9 @@
     memory = "8G";
     cores = 4;
     roleQuota = "20G";
+    ## What this factory's ledger may cost (ADR-027 point 8). Unbounded it
+    ## would fill the pool and take every worktree above with it.
+    journalQuota = "4G";
     concurrency = 3;
     taskAttempts = 3;
     runTimeoutSeconds = 3600;

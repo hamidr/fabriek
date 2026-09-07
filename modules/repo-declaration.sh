@@ -108,6 +108,8 @@ cageworks_declaration_program() {
           then ["resources: memory must be a size"] else [] end),
          (if ((.roleQuota? // "1G") | type) != "string"
           then ["resources: roleQuota must be a size"] else [] end),
+         (if ((.journalQuota? // "1G") | type) != "string"
+          then ["resources: journalQuota must be a size"] else [] end),
          (if (.egress? // null) == null then []
           elif (.egress | type) != "array"
           then ["resources: egress must be a list of endpoints"]

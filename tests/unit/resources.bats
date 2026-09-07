@@ -12,7 +12,7 @@ setup() {
 	source "$CAGEWORKS_ROOT/modules/resources.sh"
 	CAPS="$TEST_TEMP_DIR/caps.json"
 	cat >"$CAPS" <<'JSON'
-{ "memory": "16G", "cores": 8, "roleQuota": "50G", "concurrency": 4 }
+{ "memory": "16G", "cores": 8, "roleQuota": "50G", "journalQuota": "8G", "concurrency": 4 }
 JSON
 }
 
@@ -138,7 +138,7 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run cageworks_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
+	assert_output '["memory","cores","roleQuota","journalQuota","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
 }
 
 # Egress is a permission rather than a size, and it is in the same table so
@@ -200,4 +200,19 @@ JSON
 JSON
 	run clamp_verdict '{ "egress": ["api.anthropic.com"] }'
 	[ "$status" -ne 0 ]
+}
+
+# ADR-027 point 8. A ledger with no bound fills the pool and takes every
+# worktree with it, so what a ledger may cost is declared and capped the way
+# every other bound here is rather than being a number in a module.
+@test "a factory that wants more ledger than the host allows gets the host's" {
+	run clamped '{ "journalQuota": "64G" }'
+	assert_success
+	assert_output --partial '"journalQuota":"8G"'
+}
+
+@test "a factory that asks for less ledger than it may have keeps what it asked" {
+	run clamped '{ "journalQuota": "2G" }'
+	assert_success
+	assert_output --partial '"journalQuota":"2G"'
 }

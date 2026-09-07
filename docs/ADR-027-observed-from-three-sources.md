@@ -106,6 +106,15 @@ under the state directory, so no role's name can reach it. Unbounded it would
 fill the pool and take every worktree with it, which is why the quota is not
 optional here.
 
+The quota is `resources.journalQuota`, declared by the factory and capped by
+the operator the way `roleQuota` already is, because a bound that lived in a
+module would be one no factory could size and no operator could refuse. A
+machine told nothing falls back to its own default rather than to none:
+refusing to boot over an unstated number would be a worse answer than a modest
+one. journald's own `SystemMaxUse` is set below it, so the ledger rotates
+before the quota refuses a write; a full dataset is a ledger that stops, and an
+evicting one is a ledger that says so.
+
 **9. The kernel probes observe and do not enforce.** `sched_process_exec`,
 `sched_process_exit` and socket connect, filtered in kernel, out through a ring
 buffer. Not `openat`, which is orders of magnitude more traffic for a question

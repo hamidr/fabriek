@@ -323,6 +323,16 @@ machine_spec() {
     mem="$(cageworks_size_mib "$declared")" || return 1
   fi
 
+  ## What the factory's ledger may cost, for the same reason and in the same
+  ## units (ADR-027 point 8). Unbounded it would fill the pool and take every
+  ## worktree with it, so a machine that is told nothing here falls back to its
+  ## own bound rather than to none.
+  local journal=""
+  declared="$(printf '%s' "$declaration" | jq -r '.resources.journalQuota // empty')"
+  if [[ -n "$declared" ]]; then
+    journal="$(cageworks_size_mib "$declared")" || return 1
+  fi
+
   ## Which header carries which credential, for the endpoints this factory is
   ## allowed. The credential itself is not here and never is: a spec is built,
   ## logged and written beside the machine, and a secret in one would be a
@@ -337,12 +347,14 @@ machine_spec() {
     --arg key "$(cat "$dir/id_ed25519.pub")" \
     --argjson port "$(cat "$dir/port")" \
     --argjson creds "$creds" \
-    --arg mem "$mem" '
+    --arg mem "$mem" \
+    --arg journal "$journal" '
       . as $d
       | { system: $system, hostSystem: $hostSystem, factory: $factory,
           sshPort: $port, authorizedKey: $key }
       + (if $d.resources.cores then { cpus: $d.resources.cores } else {} end)
       + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
+      + (if $journal == "" then {} else { journalQuota: ($journal | tonumber) } end)
       + (if $d.resources.egress then
            { egress: $d.resources.egress
            , egressHeaders:
