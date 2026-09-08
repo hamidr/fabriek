@@ -20,6 +20,8 @@
 ##   tests/manual/observe.sh storage      # what the ledger holds, compressed
 ##   tests/manual/observe.sh overhead     # the probes' cost, three runs each
 ##   tests/manual/observe.sh attribution  # the two claims that cross a userns
+##   tests/manual/observe.sh subjects     # the block a role principal holds
+##   tests/manual/observe.sh containment  # what cage root can and cannot reach
 ##
 ## The retention window in the declaration's schema is set from what 'storage'
 ## reports against cageworks.machine.diskSize. Until that number exists the
@@ -80,10 +82,89 @@ cmd_storage() {
 	sshm "journalctl --namespace=$F --disk-usage"
 }
 
-## The uid nixcage allocated for this role, asked for rather than assumed. It
-## is the number both attribution checks are about.
+## The base of the block nixcage allocated this role, asked for rather than
+## assumed.
 role_uid() {
 	sshm "nixcage-container uid $R" 2>/dev/null
+}
+
+## The number inside that block the agent runs as. It is the one every host
+## file the session touches belongs to, and the one both other sources see.
+agent_uid() {
+	sshm "nixcage-container uid $R agent" 2>/dev/null
+}
+
+## A principal holds a block, not a number. Cage root sits at the base and the
+## agent at the next one, so that a supervisor and the program it supervises
+## are not one principal.
+cmd_subjects() {
+	local base agent
+	base="$(role_uid)"
+	agent="$(agent_uid)"
+	if [ -z "$base" ] || [ -z "$agent" ]; then
+		echo "subjects: no block for $R; the machine may declare no subjects"
+		return 1
+	fi
+	echo "cage root: $base"
+	echo "agent:     $agent"
+	if [ "$((agent - base))" -eq 1 ]; then
+		echo "the agent is the number after cage root: agrees"
+	else
+		echo "the agent is $((agent - base)) past cage root, not 1: DISAGREES"
+		return 1
+	fi
+}
+
+## nixcage's own ADR-010 point 7, which everything about separating the loop
+## from the agent rests on and which that document says plainly is reasoned
+## rather than measured: cage root keeps CAP_SETUID over its own block and
+## reaches nothing beyond it.
+##
+## Asked of the primitive directly rather than through a role session, because
+## a role session now always names the subject and this is a question about the
+## session that does not.
+cmd_containment() {
+	local base project
+	base="$(role_uid)"
+	[ -n "$base" ] || { echo "containment: no uid for $R"; return 1; }
+
+	## nixcage evaluates the project's flake on the way in, so this needs a
+	## real project on the machine and not a bare directory. The factory's own
+	## clone is one; until PRD-004 phase 3 shares the repository in there is
+	## none, and CAGEWORKS_PROBE_PROJECT names one put there by hand.
+	project="${CAGEWORKS_PROBE_PROJECT:-/var/lib/nixcage/clones/$F}"
+	if ! sshm "[ -f $project/flake.nix ]" 2>/dev/null; then
+		echo "containment: no project with a flake at $project on the machine"
+		echo "  set CAGEWORKS_PROBE_PROJECT, or wait for the clone to exist"
+		return 1
+	fi
+
+	## The subject has to work before anything it buys can be measured. This
+	## is separated from the two checks below so that a nixcage that cannot
+	## enter as a subject reports that, rather than reading as cage root
+	## failing to reach its own block.
+	if ! sshm "nixcage-container enter --uid $base --user $R --subject agent \
+		$F-$R $project true" >/dev/null 2>&1; then
+		echo "containment: this nixcage cannot enter as a subject at all"
+		return 1
+	fi
+
+	## Inside the cage the block maps from container uid 0 upward, so cage
+	## root is 0, the agent is 1, and 2 is the neighbour's.
+	if sshm "nixcage-container enter --uid $base --user $R $F-$R $project \
+		setpriv --reuid=1 --clear-groups true" >/dev/null 2>&1; then
+		echo "cage root reaches its own subject: agrees"
+	else
+		echo "cage root cannot reach its own subject: DISAGREES"
+		return 1
+	fi
+
+	if sshm "nixcage-container enter --uid $base --user $R $F-$R $project \
+		setpriv --reuid=2 --clear-groups true" >/dev/null 2>&1; then
+		echo "cage root reached a uid past its block: DISAGREES"
+		return 1
+	fi
+	echo "cage root reaches nothing past its block: agrees"
 }
 
 ## A fixed workload, run on the machine. Execs, because exec is what two of the
@@ -123,13 +204,17 @@ cmd_overhead() {
 ## allocated, and that a kernel probe reports the number ADR-025's meta skuid
 ## filters on.
 cmd_attribution() {
+	## The agent's number and not the block's base. A session runs as the
+	## agent, so that is what journald reads off SO_PEERCRED and what the
+	## kernel reports for the exec (ADR-028). A run where these come back as
+	## the base is a run where the subject did not take effect.
 	local uid
-	uid="$(role_uid)"
+	uid="$(agent_uid)"
 	if [ -z "$uid" ]; then
-		echo "attribution: no uid for role $R; nothing to check against"
+		echo "attribution: no agent uid for role $R; nothing to check against"
 		return 1
 	fi
-	echo "nixcage allocated uid $uid to $R"
+	echo "nixcage allocated uid $uid to the agent of $R"
 
 	## Written from inside the cage, through the socket the session was given.
 	## A role whose declaration names a command runs that instead, and the
@@ -166,14 +251,18 @@ rate) cmd_rate "${2:-60}" ;;
 storage) cmd_storage ;;
 overhead) cmd_overhead ;;
 attribution) cmd_attribution ;;
+subjects) cmd_subjects ;;
+containment) cmd_containment ;;
 all)
+	cmd_subjects
+	cmd_containment
 	cmd_attribution
 	cmd_rate "${2:-60}"
 	cmd_storage
 	cmd_overhead
 	;;
 *)
-	echo "usage: observe.sh [rate [seconds] | storage | overhead | attribution]" >&2
+	echo "usage: observe.sh [rate [seconds] | storage | overhead | attribution | subjects | containment]" >&2
 	exit 1
 	;;
 esac

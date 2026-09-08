@@ -31,6 +31,12 @@ rather than claimed. The same fact applies to a log: a file the loop can write
 is a file the agent can rewrite. A role's own account of itself is evidence
 about a role that is behaving.
 
+ADR-028 has since separated them: a cage maps a block, the loop is cage root
+and the agent is a subject with a number of its own. Point 4 below is what
+turns that into something readable, since journald stamps whichever of the two
+wrote a line. The three sources are still three, and the argument for having
+them does not depend on the separation holding.
+
 The guest kernel can answer independently. `nixpkgs.linuxPackages` at 6.18.49
 ships `CONFIG_BPF_SYSCALL`, `CONFIG_BPF_EVENTS`, `CONFIG_DEBUG_INFO_BTF` and
 `CONFIG_KPROBES`, so a probe in the machine's init namespace sees every process
@@ -154,7 +160,8 @@ it is not bought here. The kernel source is what does not go quiet.
 
 **A role can still forge its own ledger.** Point 4 makes identity unforgeable
 and content is not: an agent with `bash` can write whatever it likes under its
-own uid. What changes is that the lie is now checkable, since a
+own uid. What it cannot do, once ADR-028 holds, is write a line stamped with
+the loop's, so the loop's own account of a turn is not the agent's to rewrite. What changes is that the lie is now checkable, since a
 `tool_execution_bash` that never happened has no matching
 `sched_process_exec`, and one that happened unreported has the exec and no
 event. The property is a cross-check, not proof, and it is stated that way for

@@ -35,6 +35,7 @@ setup() {
 	STATE="$TEST_TEMP_DIR/state"
 	STUB_DIR="$TEST_TEMP_DIR/bin"
 	CALLS="$TEST_TEMP_DIR/nixcage-container-calls"
+	STORAGE_CALLS="$TEST_TEMP_DIR/nixcage-container-storage"
 	mkdir -p "$STATE" "$STUB_DIR"
 	PATH="$STUB_DIR:$PATH"
 	export PATH STATE
@@ -47,8 +48,16 @@ setup() {
 	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
 case "\$1" in
-uid) echo 60000 ;;
-storage) mkdir -p "\$3" ;;
+uid)
+	# A principal is allocated a block: the base with no subject, and the
+	# subject's own number with one. cageworks must ask for the right one in
+	# each place, so the stub answers with different numbers.
+	if [ -n "\$3" ]; then echo 60001; else echo 60000; fi
+	;;
+storage)
+	printf '%s\n' "\$*" >>"$STORAGE_CALLS"
+	mkdir -p "\$3"
+	;;
 enter)
 	shift
 	printf '%s\n' "\$*" >>"$CALLS"
@@ -108,7 +117,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --no-agent --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --subject agent --home $STATE/homes/acme-builder --shell backend --no-agent --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -116,7 +125,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --shell backend --auth-sock /tmp/agent.sock --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --subject agent --home $STATE/homes/acme-builder --shell backend --auth-sock /tmp/agent.sock --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "the uid comes from nixcage rather than from a store cageworks keeps" {
@@ -171,4 +180,28 @@ recorded() {
 	run recorded
 	refute_output --partial "journal.builder"
 	refute_output --partial "/run/systemd/journal/socket:/run/systemd/journal.acme/socket"
+}
+
+# A principal now holds a block, and the two numbers in it are not
+# interchangeable: --uid names the base the cage maps, and --subject picks the
+# number inside it the session runs as. Asking for the agent's number and
+# passing it as --uid would map a block starting one past this role's.
+@test "the cage maps the block and the session runs as the agent in it" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+
+	run recorded
+	assert_output --partial "--uid 60000 --user builder --subject agent"
+	refute_output --partial "--uid 60001"
+}
+
+# --private-users-ownership=off means a host file has to already carry the uid
+# the session runs as, and libgit2 refuses a repository owned by anyone else.
+# The tree therefore belongs to the agent and not to the block's base.
+@test "the worktree is owned by the subject that opens it" {
+	run_cageworks_container role-worktree acme builder "$REPO"
+	assert_success
+	run cat "$STORAGE_CALLS"
+	assert_output --partial "ensure $STATE/worktrees/acme/builder 60001"
+	refute_output --partial "60000"
 }

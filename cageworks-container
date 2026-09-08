@@ -195,9 +195,16 @@ cmd_role_enter() {
 	## A role is a principal of nixcage's: it asks for the number, we say for
 	## whom. Which number it is, and that it is never handed out again, is not
 	## ours to promise.
-	local uid
+	##
+	## Two numbers, and they are not interchangeable. The base is the block the
+	## cage maps; the agent's is the one inside it the session runs as, and it
+	## is the one every host file the session touches has to belong to, because
+	## ownership is not shifted on the way in (ADR-028).
+	local uid agent_uid
 	uid="$(nixcage-container uid "$role")" ||
 		die "could not get a uid for role $role"
+	agent_uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
+		die "could not get a uid for the agent of role $role"
 
 	## The clone carries the declaration (ADR-020), so it has to exist before
 	## anything can be read out of it and the worktree is prepared first.
@@ -213,9 +220,14 @@ cmd_role_enter() {
 	declared_shell="$(cageworks_factory_role_shell \
 		"$(factory_declaration "$factory")" "$role")" || exit 1
 
+	## The base of the block the cage maps, and the subject inside it the
+	## session runs as. Two different numbers: nixcage adds the subject's
+	## offset to the base itself, so passing the subject's own number here
+	## would map a block starting one past this role's (ADR-028).
 	local -a opts=(
 		--uid "$uid"
 		--user "$role"
+		--subject "$(cageworks_agent_subject)"
 		--home "$STATE_DIR/homes/$factory-$role"
 	)
 
@@ -271,7 +283,7 @@ cmd_role_enter() {
 	## role commits as itself.
 	if [ -n "$signing_role" ]; then
 		local key signers gitconfig line
-		key="$(cageworks_signing_ensure "$STATE_DIR" "$signing_role" "$uid")" ||
+		key="$(cageworks_signing_ensure "$STATE_DIR" "$signing_role" "$agent_uid")" ||
 			die "could not prepare a signing key for $signing_role"
 		signers="$(cageworks_signing_signers "$STATE_DIR")"
 		gitconfig="$(cageworks_signing_gitconfig_path "$STATE_DIR" "$signing_role")" || exit 1
@@ -314,9 +326,11 @@ cmd_role_worktree() {
 	clone="$(cageworks_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" ||
 		die "could not prepare the factory clone for $factory"
 
+	## The agent's number rather than the block's base: this uid is only ever
+	## an owner, and what opens the repository is the agent (ADR-028).
 	local uid
-	uid="$(nixcage-container uid "$role")" ||
-		die "could not get a uid for role $role"
+	uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
+		die "could not get a uid for the agent of role $role"
 
 	## How much a role may hold is the factory's to say; whether that can be
 	## enforced at all is the filesystem's, and nixcage answers for it.
@@ -655,7 +669,8 @@ cmd_task_run() {
 	## Declared here rather than inside the brief below: a { } group is not a
 	## scope, so an assignment made there would outlive this function.
 	local uid run_dir finish own_guidance seen fresh
-	uid="$(nixcage-container uid "$role")" || die "could not get a uid for role $role"
+	uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
+		die "could not get a uid for the agent of role $role"
 	run_dir="$STATE_DIR/runs/$factory/$id"
 	rm -rf "$run_dir"
 	mkdir -p "$run_dir"

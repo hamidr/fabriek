@@ -51,3 +51,17 @@ cageworks_host_ok() {
 cageworks_header_name_ok() {
 	[[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]
 }
+
+## The subject a role session runs as inside its cage (ADR-028).
+##
+## A principal is allocated a block of uids: cage root at the base, and one
+## number per subject the machine declares. This is the name of the subject
+## the agent runs as, and the machine's own declaration has to carry the same
+## word, which is what tests/unit/vm_config.bats checks rather than trusts.
+##
+## A function rather than a variable so that sourcing this file twice is not
+## an error and so a test can ask for it the way everything else here is asked
+## for.
+cageworks_agent_subject() {
+	printf '%s\n' agent
+}

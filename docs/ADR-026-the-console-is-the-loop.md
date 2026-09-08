@@ -112,6 +112,11 @@ which the enter primitive cannot express, so it is an interface change in
 nixcage before it is a change here. Until then the property is stated rather
 than claimed.
 
+That interface change has since landed, and ADR-028 spends it: a cage now maps
+a block, the loop enters as cage root and the agent runs as a subject, so an
+agent cannot signal the loop or open what the loop owns. This paragraph is
+what ADR-028 exists to repair and is left standing as the reason it does.
+
 The loop becomes load-bearing for watching. A dead loop is a blind operator,
 where a PTY would at least have kept showing the last screen.
 
