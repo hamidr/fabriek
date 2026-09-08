@@ -267,22 +267,33 @@ in
     ## Mounted over /var/log/journal rather than pointed at by configuration,
     ## because journald decides where a namespace's files go and the only thing
     ## that reliably moves them is the directory underneath.
+    ## The namespace cannot be ordered before this. It listens at
+    ## sockets.target and the pool is imported at multi-user, so requiring the
+    ## storage first is an ordering cycle: systemd finds it, breaks it by
+    ## dropping sockets.target, and the factory boots with no journal at all.
+    ## That is what happened the first time this ran on a machine.
+    ##
+    ## So the namespace starts on the tmpfs root, writes to memory for the few
+    ## seconds before the pool is up, and is restarted onto the directory once
+    ## it is. Nothing writes to it in that window: no role session exists until
+    ## a person or the supervisor starts one.
     systemd.services.cageworks-journal = {
       description = "The storage this factory's ledger lives on";
       wantedBy = [ "multi-user.target" ];
       requires = [ "cageworks-storage.service" ];
       after = [ "cageworks-storage.service" ];
-      ## The namespace has to find the directory already there. A journald that
-      ## starts first writes to memory and keeps doing so until it is restarted.
-      before = [ "systemd-journald@${cfg.factory}.socket" ];
-      requiredBy = [ "systemd-journald@${cfg.factory}.socket" ];
+      before = [ "cageworks-probes.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
+      ## The machine's own profile, for nixcage-container and systemctl.
+      ## nixcage's host module puts the primitive there and asking for it by
+      ## name is the whole of the interface (ADR-018).
       path = [
         pkgs.coreutils
         pkgs.util-linux
+        "/run/current-system/sw"
       ];
       script = ''
         set -eu
@@ -295,6 +306,10 @@ in
         install -d -m 2755 -o root -g systemd-journal /var/log/journal
         mountpoint -q /var/log/journal ||
           mount --bind ${stateDir}/journal /var/log/journal
+        ## It opened a volatile store under /run before this ran. Restarting it
+        ## is what makes it find the directory, and Storage=persistent is what
+        ## makes it use it.
+        systemctl restart systemd-journald@${cfg.factory}.service
       '';
     };
 
@@ -364,6 +379,32 @@ in
     ## Where nixcage puts a role's worktree, so that asking for owned, bounded
     ## storage lands on the pool above rather than on the rootfs.
     nixcage.storage.dataset = "${pool}/state";
+
+    ## The uids nixcage allocates a principal from (ADR-004 in nixcage's
+    ## tracker). Without it nixcage-container refuses every verb, so a machine
+    ## that does not declare one is a machine where no role has a uid, no
+    ## worktree can be asked for and the ledger has nowhere to live. It went
+    ## unnoticed until the journal unit became the first thing on a factory's
+    ## machine to call the primitive at boot.
+    ##
+    ## Far above the proxy's 500, so that a role can never be allocated the one
+    ## uid the packet filter lets out (ADR-025), and far above every account
+    ## NixOS makes for itself, since the range must not overlap what is here.
+    nixcage.principalUidRange = {
+      base = 700000;
+      size = 64;
+    };
+
+    ## The subjects a role's cage holds besides cage root (ADR-028). One, and
+    ## it is what runs the agent: a supervisor and the program it supervises
+    ## under one uid are one principal, and nothing the supervisor records
+    ## about the supervised program is then worth more than that program's
+    ## cooperation.
+    ##
+    ## Declared here rather than later because a block is fixed when it is
+    ## allocated: a role that gets a uid before this exists can never be given
+    ## a subject in place, only replaced.
+    nixcage.principalSubjects = [ "agent" ];
 
     ## What the kernel says a role did (ADR-027 point 9).
     ##

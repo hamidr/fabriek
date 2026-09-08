@@ -368,6 +368,7 @@ journal_facts() {
       c.environment.etc."systemd/journald@'"$factory"'.conf".text
       (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.before)
       (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.after)
+      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.path)
     ]' 2>/dev/null
 }
 
@@ -401,11 +402,25 @@ journal_facts() {
 	assert_output --partial "SystemMaxUse=1843M"
 }
 
-@test "the namespace finds its directory already there, or it writes to memory" {
+# The namespace listens at sockets.target and the pool is imported at
+# multi-user, so ordering it after the storage is a cycle systemd breaks by
+# dropping sockets.target, and the factory boots with no journal at all. It is
+# restarted onto the directory instead, which is why this asserts a restart and
+# not an ordering.
+@test "the namespace is moved onto the pool by a restart, not by an ordering" {
 	run journal_facts acme
 	assert_success
-	assert_output --partial "systemd-journald@acme.socket"
 	assert_output --partial "cageworks-storage.service"
+	assert_output --partial "systemctl restart systemd-journald@acme.service"
+	refute_line --partial "systemd-journald@acme.socket"
+}
+
+# nixcage's host module puts the primitive on the machine's own profile, and a
+# unit with an explicit path gets only that path.
+@test "the unit can reach the primitive it is written in terms of" {
+	run journal_facts acme
+	assert_success
+	assert_output --partial "/run/current-system/sw"
 }
 
 ## What the proxy is configured to write about a request, and where.
@@ -526,4 +541,63 @@ probe_facts() {
 	assert_output --partial "bpftrace"
 	assert_output --partial "acme"
 	assert_output --partial "uid=%d"
+}
+
+## The uid range nixcage allocates a principal from, and the proxy's own uid.
+uid_range() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+      c = m.config;
+      r = c.nixcage.principalUidRange;
+    in "${toString r.base} ${toString r.size} ${toString c.users.users.cageworks-egress.uid}"
+  ' 2>/dev/null
+}
+
+# nixcage-container refuses every verb without this, so a machine that does not
+# declare it is one where no role has a uid, no worktree can be asked for, and
+# the ledger has nowhere to live. Found by the journal unit being the first
+# thing on a factory's machine to call the primitive.
+@test "the machine declares the range a principal's uid comes from" {
+	run uid_range
+	assert_success
+	local base size proxy
+	read -r base size proxy <<<"$output"
+	[ "$base" -gt 0 ]
+	[ "$size" -ge 1 ]
+	# ADR-025 puts the proxy far below any principal range, so that a role
+	# sharing its uid would be a role that may leave the machine.
+	[ "$base" -gt "$proxy" ]
+}
+
+## The subjects the machine declares its cages have.
+machine_subjects() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in builtins.concatStringsSep " " m.config.nixcage.principalSubjects
+  ' 2>/dev/null
+}
+
+# ADR-028. The machine declares the subject and the guest program names it, in
+# two languages that cannot share a constant. This is the only thing standing
+# between them and a drift where a session asks to run as a subject the cage
+# does not have.
+@test "the machine declares the subject the guest program asks to run as" {
+	source "$CAGEWORKS_ROOT/modules/names.sh"
+	run machine_subjects
+	assert_success
+	assert_output "$(cageworks_agent_subject)"
 }
