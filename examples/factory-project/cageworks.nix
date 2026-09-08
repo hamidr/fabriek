@@ -16,7 +16,10 @@
 
   ## A command is argv, one word per element, never a shell line, so nothing
   ## in it is re-split on the way through. Which coding agent a role runs is
-  ## this repository's business and not cageworks'.
+  ## this repository's business and not cageworks', and nothing validates it.
+  ## pi is the one cageworks supports (ADR-029): the console and the ledger are
+  ## built on records the agent defines, so the factory needs an agent whose
+  ## protocol it can pin and change rather than wait on.
   ##
   ## 'shell' names one devShell of this same flake, so each specialist has its
   ## own tools to hand (ADR-016). A role that names none gets 'default'.
@@ -26,21 +29,21 @@
   ## touching the pipeline (ADR-015).
   roles = {
     architect = {
-      command = [ "claude" ];
+      command = [ "pi" "--mode" "rpc" ];
       provides = [ "design" ];
     };
     backend = {
-      command = [ "claude" ];
+      command = [ "pi" "--mode" "rpc" ];
       provides = [ "build" ];
       shell = "backend-jvm";
     };
     frontend = {
-      command = [ "claude" ];
+      command = [ "pi" "--mode" "rpc" ];
       provides = [ "build" ];
       shell = "frontend";
     };
     reviewer = {
-      command = [ "claude" ];
+      command = [ "pi" "--mode" "rpc" ];
       provides = [ "review" ];
     };
   };

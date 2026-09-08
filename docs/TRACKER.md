@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 006
 
-**Next ADR number:** 029
+**Next ADR number:** 030
 
 ## PRDs
 
@@ -52,3 +52,4 @@ document, then regenerate.
 | [ADR-026](ADR-026-the-console-is-the-loop.md) | The operator's console is the loop, not a terminal | proposed | -- | ADR-021, ADR-024, ADR-025 | the loop owns the agent stdio and relays a role-owned socket the operator watches and steers, so nothing detaches |  |
 | [ADR-027](ADR-027-observed-from-three-sources.md) | A factory is observed from three sources, and a role owns none of them | accepted | -- | ADR-018, ADR-019, ADR-025, ADR-026 | three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel |  |
 | [ADR-028](ADR-028-a-cage-holds-two-subjects.md) | A role's cage holds two subjects, and the loop is not one of them | accepted | -- | ADR-018, ADR-025, ADR-026, ADR-027 | the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite |  |
+| [ADR-029](ADR-029-pi-is-the-agent.md) | pi is the agent a role runs, because it is the one we can change | proposed | -- | ADR-021, ADR-024, ADR-026, ADR-027 | the choice is the licence and not the protocol, since the console and the ledger are built on records the agent defines |  |
