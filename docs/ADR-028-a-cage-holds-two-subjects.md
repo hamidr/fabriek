@@ -1,7 +1,7 @@
 ---
 id: ADR-028
 title: A role's cage holds two subjects, and the loop is not one of them
-status: proposed
+status: accepted
 date: 2026-09-08
 status_date: 2026-09-08
 summary: the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite
@@ -93,12 +93,13 @@ a role holds are named explicitly already -- the worktree, the home and the
 task directory -- so the surface this touches is the one nixcage's ADR-010
 names: a home that is not `/root`, and whatever resolves a profile from it.
 
-**This is built on a proposed decision whose central property is unmeasured.**
-nixcage's ADR-010 point 7 says cage root reaches a uid inside its block and
-nothing outside it, and says plainly that this is reasoned from how user
-namespaces work rather than measured. Everything above rests on it. It is
-measured below rather than assumed, and if it does not hold then point 4 buys
-nothing and this document is wrong rather than merely early.
+**The property everything above rests on is now measured, and it holds.**
+nixcage's ADR-010 point 7 said cage root reaches a uid inside its block and
+nothing outside it, and said plainly that this was reasoned from how user
+namespaces work rather than measured. It is measured below. Reaching the
+subject inside the block succeeds; reaching the number one past it fails with
+`setpriv: setresuid failed: Invalid argument`. That is also the test nixcage's
+own document says moves it off proposed.
 
 **A factory costs twice the uids.** `principalUidRange` holds proportionally
 fewer principals and nixcage's exhaustion error arrives sooner. The range is
@@ -124,6 +125,29 @@ The attribution pass already run for ADR-027 is what says the two other sources
 agree, and after this it agrees on the agent's number rather than the block's
 base. A run where journald stamps the base is a run where point 3 did not take
 effect.
+
+Both ran on a factory's machine on 2026-09-08, against `journalQuota = "2G"`
+and a block allocated at 700000:
+
+```
+cage root: 700000
+agent:     700001
+the agent is the number after cage root: agrees
+
+cage root reaches its own subject: agrees
+cage root reaches nothing past its block: agrees
+```
+
+Getting there cost two faults in nixcage, both of which meant no host had ever
+entered a cage as a subject. `cmd_enter` never read the file declaring which
+subjects exist, so every one of them was refused as absent. Past that, nspawn
+resolves any user but root by exec'ing `getent` inside the container, and this
+systemd searches Nix profile paths for it rather than `/bin/getent`, none of
+which a session rootfs carries. Both are fixed upstream and pinned here.
+
+`containment` drops with `setpriv` named by store path. The cage's profile
+carries no `util-linux`, and the store is bound into every session, so the
+absolute path is what a session can actually run.
 
 ## Verification
 

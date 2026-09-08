@@ -149,10 +149,21 @@ cmd_containment() {
 		return 1
 	fi
 
+	## By store path, because the cage's profile carries no util-linux and the
+	## store is bound into every session. Resolved on the machine rather than
+	## written here: which build of it is there is not this script's business.
+	local setpriv
+	# shellcheck disable=SC2016  # runs in the guest, expands there
+	setpriv="$(sshm 'readlink -f $(command -v setpriv)' 2>/dev/null)"
+	if [ -z "$setpriv" ]; then
+		echo "containment: no setpriv on the machine to drop with"
+		return 1
+	fi
+
 	## Inside the cage the block maps from container uid 0 upward, so cage
 	## root is 0, the agent is 1, and 2 is the neighbour's.
 	if sshm "nixcage-container enter --uid $base --user $R $F-$R $project \
-		setpriv --reuid=1 --clear-groups true" >/dev/null 2>&1; then
+		$setpriv --reuid=1 --clear-groups true" >/dev/null 2>&1; then
 		echo "cage root reaches its own subject: agrees"
 	else
 		echo "cage root cannot reach its own subject: DISAGREES"
@@ -160,7 +171,7 @@ cmd_containment() {
 	fi
 
 	if sshm "nixcage-container enter --uid $base --user $R $F-$R $project \
-		setpriv --reuid=2 --clear-groups true" >/dev/null 2>&1; then
+		$setpriv --reuid=2 --clear-groups true" >/dev/null 2>&1; then
 		echo "cage root reached a uid past its block: DISAGREES"
 		return 1
 	fi
