@@ -36,49 +36,57 @@
 
       perSystem =
         { pkgs, ... }:
+        let
+          ## What every role in this repository gets, whichever shell it names.
+          ##
+          ## Composed rather than inherited, because devShells do not compose:
+          ## a role declaring shell = "backend-jvm" enters that shell and only
+          ## that shell, so anything left in 'default' alone would be invisible
+          ## to it. This list is concatenated into each one below, which is the
+          ## whole mechanism -- there is no cageworks field for it, and a field
+          ## would resolve package names against a nixpkgs this flake does not
+          ## pin.
+          ##
+          ## The agent is here until it is not. ADR-030 makes a cage carry it
+          ## whatever this file says, so that a repository forgetting it cannot
+          ## produce a role that fails to start -- but that is a decision and
+          ## not yet a behaviour, so until the machine carries one this is
+          ## where pi comes from. Naming a build of it here stays allowed
+          ## afterwards, and shadows the machine's.
+          common = with pkgs; [
+            jq
+            ripgrep
+            pi-coding-agent
+          ];
+
+          ## A role's own tools, on top of what every role gets.
+          specialist = packages: pkgs.mkShell { packages = common ++ packages; };
+        in
         {
           devShells = {
-            ## What every role needs regardless of speciality. A role that
-            ## declares no shell lands here.
-            default = pkgs.mkShell {
-              packages = with pkgs; [
-                git
-                jq
-                ## The agent every role runs (ADR-029). It comes from this
-                ## repository's own flake rather than from cageworks, for the
-                ## same reason a specialist's toolchain does (ADR-016): what a
-                ## role has to hand is the project's business.
-                pi-coding-agent
-              ];
-            };
+            ## A role that declares no shell lands here, so this is the common
+            ## set and nothing else.
+            default = specialist [ ];
 
-            backend-jvm = pkgs.mkShell {
-              packages = with pkgs; [
-                jdk21
-                maven
-              ];
-            };
+            backend-jvm = specialist (with pkgs; [
+              jdk21
+              maven
+            ]);
 
-            frontend = pkgs.mkShell {
-              packages = with pkgs; [
-                nodejs_22
-                pnpm
-              ];
-            };
+            frontend = specialist (with pkgs; [
+              nodejs_22
+              pnpm
+            ]);
 
-            data-analyst = pkgs.mkShell {
-              packages = with pkgs; [
-                duckdb
-                python3
-              ];
-            };
+            data-analyst = specialist (with pkgs; [
+              duckdb
+              python3
+            ]);
 
-            devops = pkgs.mkShell {
-              packages = with pkgs; [
-                kubectl
-                terraform
-              ];
-            };
+            devops = specialist (with pkgs; [
+              kubectl
+              terraform
+            ]);
           };
         };
     };

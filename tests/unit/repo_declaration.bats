@@ -198,12 +198,23 @@ validate_example() {
 # The example is what somebody copies, so a role in it naming a devShell the
 # flake beside it does not define would teach the mistake rather than the
 # pattern (ADR-016).
+#
+# Asked of the flake's outputs rather than of its source. This grepped for
+# "<name> = pkgs.mkShell" and went red the day the example started composing a
+# common set through a helper, which is a spelling changing rather than the
+# property breaking. What a role needs is that the name resolves to a shell.
 @test "every devShell the example's roles name is one the example defines" {
-	local shell
+	local defined shell
+	defined="$(nix eval --impure --raw --expr '
+		builtins.concatStringsSep "\n" (builtins.attrNames
+			(builtins.getFlake (toString '"$CAGEWORKS_ROOT"'/examples/factory-project))
+				.devShells.aarch64-linux)' 2>/dev/null)"
+	[ -n "$defined" ]
+
 	while IFS= read -r shell; do
 		[ -n "$shell" ] || continue
-		run grep -qE "^ *$shell = pkgs.mkShell" "$CAGEWORKS_ROOT/examples/factory-project/flake.nix"
-		assert_success
+		run printf '%s\n' "$defined"
+		assert_line "$shell"
 	done < <(nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
 		jq -r '[.roles[].shell // empty] | .[]')
 }
