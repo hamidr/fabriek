@@ -2,11 +2,22 @@
 ## ADR-025's verification, which needs a real machine and so cannot be a bats
 ## test. A rule that is not loaded is not a rule.
 ##
-## Boots a factory's machine and asks it four questions. Every uid but two is
-## denied the network; the two are root, which has to substitute, and the
-## proxy, which is the only way a factory reaches a host. The credential is on
-## the machine and readable by one uid. And the proxy answers on loopback with
-## the header the operator said, without the caller holding anything.
+## Boots a factory's machine and asks it two kinds of question, separately.
+##
+## Who may resolve a name, and who may open a connection. They were one
+## question here until a machine turned up that could do neither, for reasons
+## that had nothing to do with each other: /etc/resolv.conf pointed at a stub
+## resolver that resolves under its own uid, and the filter dropped it. Every
+## uid failed both, and a script that reported "denied" without saying which
+## had failed called that a pass.
+##
+## So resolution is asked about on its own, and the connection checks are given
+## an address rather than a name, so that a lookup cannot stand in for a rule.
+## Every uid but two is denied both; the two are root, which has to substitute,
+## and the proxy, which is the only way a factory reaches a host. The
+## credential is on the machine and readable by one uid. And the proxy answers
+## on loopback with the header the operator said, without the caller holding
+## anything.
 ##
 ## Wants the same scratch directory stop-and-start.sh does: an operator config
 ## and a repository declaring a factory called acme. The config needs a caps
@@ -69,9 +80,9 @@ check "the egress table is loaded" loaded \
 ## works at. Opening the socket is the whole question, so bash does it and the
 ## machine gains no tool it would only have for this.
 ##
-## A denied uid loses its name lookup as well as its connection, and both are
-## the filter denying it. That is why this says reached or denied rather than
-## naming which of the two stopped it.
+## Given an address and never a name. A name here would make a lookup part of
+## the answer, and a machine that cannot resolve would then report every uid
+## as denied and look like a machine whose rules work.
 reaches() {
 	local uid="$1" gid="$2" where="$3"
 	sshm "setpriv --reuid $uid --regid $gid --clear-groups \
@@ -79,17 +90,53 @@ reaches() {
        && echo reached || echo denied"
 }
 
+## Whether a uid can turn the endpoint's name into an address. Asked with
+## getent, so it is glibc's own resolution and the same path anything else on
+## the machine takes.
+resolves() {
+	local uid="$1" gid="$2"
+	sshm "setpriv --reuid $uid --regid $gid --clear-groups \
+       timeout 10 getent hosts $host >/dev/null 2>&1 \
+       && echo resolved || echo denied"
+}
+
+## The endpoint as an address, looked up once as root so the connection checks
+## below are about the filter and nothing else. A machine that cannot get this
+## far has a resolution fault, and the checks that follow would otherwise
+## report it as a filter that works.
+addr="$(sshm "getent ahostsv4 $host 2>/dev/null | awk 'NR==1 {print \$1}'")"
+if [ -z "$addr" ]; then
+	echo "FAIL root cannot resolve $host, so nothing below would mean what it says"
+	bash cageworks down acme
+	exit 1
+fi
+echo "ok   root resolves $host to $addr"
+
+## 1a. The proxy resolves, because it is the thing that has to. nginx reaches
+## an upstream by name, so a proxy that cannot look one up is a proxy that
+## cannot proxy, whatever the packet rules say.
+check "the proxy can resolve the endpoint it proxies" resolved \
+	"$(sshm "setpriv --reuid \$(id -u cageworks-egress) --regid \$(id -g cageworks-egress) \
+       --clear-groups timeout 10 getent hosts $host >/dev/null 2>&1 \
+       && echo resolved || echo denied")"
+
+## 1b. And an ordinary uid does not, which is the half that makes a denied uid
+## denied rather than merely unrouted. A resolver that answers for everybody is
+## a channel out of a machine that has none.
+check "an ordinary uid cannot resolve a name" denied \
+	"$(resolves 65534 65534)"
+
 ## 2. A uid that is neither root nor the proxy reaches nothing. Any uid will
 ## do: what is being checked is the default, and the default is what a role
 ## gets by nobody having written a rule for it.
 check "an ordinary uid cannot leave the machine" denied \
-	"$(reaches 65534 65534 "$host/443")"
+	"$(reaches 65534 65534 "$addr/443")"
 
 ## 3. The proxy can, which is what makes it the way out rather than a second
 ## wall.
 check "the proxy can leave the machine" reached \
 	"$(sshm "setpriv --reuid \$(id -u cageworks-egress) --regid \$(id -g cageworks-egress) \
-       --clear-groups timeout 10 bash -c 'exec 3<>/dev/tcp/$host/443' >/dev/null 2>&1 \
+       --clear-groups timeout 10 bash -c 'exec 3<>/dev/tcp/$addr/443' >/dev/null 2>&1 \
        && echo reached || echo denied")"
 
 ## 4. The credential is on the machine and belongs to the proxy alone. Its
