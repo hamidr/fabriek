@@ -437,7 +437,7 @@ proxy_log() {
         egress = [ "api.anthropic.com" ];
       };
       c = m.config;
-    in c.services.nginx.appendHttpConfig
+    in c.services.nginx.commonHttpConfig
        + c.services.nginx.virtualHosts."cageworks-egress".extraConfig
   ' 2>/dev/null
 }
@@ -471,7 +471,12 @@ proxy_log() {
 	run proxy_log
 	assert_success
 	assert_output --partial "syslog:server=unix:/run/systemd/journal.acme/dev-log"
-	assert_output --partial "tag=cageworks-egress"
+	# Underscore, not hyphen: nginx allows only alphanumerics and underscore
+	# in a syslog tag and rejects the entire configuration over it. This
+	# asserted the hyphenated spelling and passed while the proxy would not
+	# start; only tests/manual/egress.sh, on a machine, caught it.
+	assert_output --partial "tag=cageworks_egress"
+	refute_output --partial "tag=cageworks-egress"
 	refute_output --partial "/var/log/nginx"
 }
 

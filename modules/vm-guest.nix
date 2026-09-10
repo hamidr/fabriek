@@ -585,7 +585,12 @@ in
       ##
       ## A header the upstream did not send renders as "-", so the format is
       ## the same width whichever endpoint answered.
-      appendHttpConfig = ''
+      ##
+      ## commonHttpConfig and not appendHttpConfig: nginx resolves a log format
+      ## in parse order, and appendHttpConfig lands after the server blocks, so
+      ## the vhost below referenced a name defined later and nginx refused the
+      ## whole configuration. commonHttpConfig is emitted before them.
+      commonHttpConfig = ''
         log_format cageworks_egress
           '$request $status $upstream_status '
           'req=$request_length resp=$body_bytes_sent '
@@ -608,8 +613,12 @@ in
           ## namespaced dev-log socket is the same one the roles write to, so
           ## the proxy's account and a role's land in one place and can be read
           ## against each other (ADR-027 points 6 and 10).
-          access_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks-egress,nohostname cageworks_egress;
-          error_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks-egress,nohostname;
+          ## The tag is cageworks_egress and not cageworks-egress: nginx allows
+          ## only alphanumerics and underscore there, and refuses the whole
+          ## configuration over it, so the proxy does not start at all. A test
+          ## asserting the string was in the file passed while that was true.
+          access_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks_egress,nohostname cageworks_egress;
+          error_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks_egress,nohostname;
         ''
         + lib.concatMapStrings (host: ''
           location /${host}/ {
