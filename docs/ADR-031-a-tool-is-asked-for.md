@@ -77,16 +77,27 @@ is not fast.** Consult, integrate, next session. That is the price of a
 declared toolchain, and it is the same price a person pays on a project that
 pins its dependencies.
 
-**Whether this loop terminates depends on something not yet checked.** ADR-025
-drops egress and the nix daemon is not the uid let out, so a newly declared
-tool may be one the machine cannot fetch or build. If that is so, point 1's
-route ends in a failure at session start that nobody inside can repair, and
-this decision is incomplete rather than wrong. It is the first thing to settle:
+**The loop terminates, and checking it found something else.** The worry was
+that ADR-025 drops egress and a newly declared tool would be one the machine
+could not fetch, leaving point 1's route ending in a failure at session start
+that nobody inside could repair. Two things were wrong with it. The daemon runs
+as root and root is one of the uids the filter lets out, so the premise was
+false. And the machine could not resolve a name at all, for an unrelated
+reason: `/etc/resolv.conf` pointed at systemd-resolved's stub, and that daemon
+resolves under its own uid, which the filter drops. So the answer was no, but
+not for the reason asked about, and the same fault had disabled the proxy
+ADR-025 exists to build.
 
-```bash
-# On a factory's machine, with egress as ADR-025 leaves it.
-nix build --no-link nixpkgs#ripgrep
+Fixed there rather than here. With it fixed the route works:
+
 ```
+$ nix build --no-link --print-out-paths nixpkgs#ripgrep
+copying path '/nix/store/...-ripgrep-15.2.0' from 'https://cache.nixos.org'...
+/nix/store/l02znzqak7gnap7jh95d794gxcwbc2il-ripgrep-15.2.0
+```
+
+A role's own uid still resolves nothing, which is what makes point 6 more than
+a norm: an agent cannot fetch what it was not given, whatever it runs.
 
 **The capability that answers these has no name yet.** Point 3 says a consult
 goes to whoever provides "the capability that changing a project's flake
