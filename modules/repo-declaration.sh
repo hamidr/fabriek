@@ -218,10 +218,18 @@ cageworks_declaration_read() {
 		return 1
 	fi
 	rev="$(cageworks_declaration_rev "$absolute")" || return 1
+	## nix's own complaint is kept and shown. Discarding it made every
+	## failure read as "no cageworks output", including the ones that were
+	## nix refusing to run at all, and a message that names the wrong cause
+	## costs more than the noise it saves.
+	local why
 	if ! output="$(nix eval --json --no-allow-import-from-derivation --expr \
-		"(builtins.getFlake $(cageworks_nix_string "git+file://$absolute?rev=$rev")).cageworks" 2>/dev/null)"; then
-		echo "cageworks: $absolute declares no factory: its flake has no cageworks output at $rev" >&2
+		"(builtins.getFlake $(cageworks_nix_string "git+file://$absolute?rev=$rev")).cageworks" 2>/tmp/cageworks-eval.$$)"; then
+		why="$(tail -3 "/tmp/cageworks-eval.$$" 2>/dev/null)"
+		rm -f "/tmp/cageworks-eval.$$"
+		echo "cageworks: $absolute declares no factory at $rev${why:+: $why}" >&2
 		return 1
 	fi
+	rm -f "/tmp/cageworks-eval.$$"
 	printf '%s' "$output" | cageworks_declaration_validate
 }

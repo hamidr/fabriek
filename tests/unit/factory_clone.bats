@@ -114,3 +114,31 @@ teardown() {
 	assert_success
 	assert_output "$STATE/factories/acme/docs/factory-guidance.md"
 }
+
+# A clone whose HEAD came back unborn -- an origin whose HEAD names a branch it
+# does not have, an interrupted fetch -- used to leave a directory behind. The
+# ensure skips a path that exists, so every later run reused it and failed with
+# "no commit to read a declaration from", which says nothing about the clone and
+# cannot be recovered from without somebody deleting the directory by hand.
+@test "a clone that came back without a commit is not left behind to be reused" {
+	local origin="$TEST_TEMP_DIR/origin.git"
+	git init -q --bare "$origin"
+	# Only refs/heads/main exists, and the bare repo's HEAD names another
+	# branch, so git clone checks out nothing.
+	local seed="$TEST_TEMP_DIR/seed"
+	git init -q "$seed"
+	git -C "$seed" config user.email t@invalid
+	git -C "$seed" config user.name t
+	touch "$seed/README.md"
+	git -C "$seed" add -A
+	git -C "$seed" -c commit.gpgsign=false commit -qm first
+	git -C "$seed" push -q "$origin" HEAD:refs/heads/main
+	git -C "$origin" symbolic-ref HEAD refs/heads/nowhere
+
+	run cageworks_factory_clone_ensure "$STATE" acme "$origin"
+	assert_failure
+	assert_output --partial "no commit"
+
+	# And nothing is left for the next run to trip over.
+	[ ! -d "$STATE/factories/acme" ]
+}

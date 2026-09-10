@@ -30,10 +30,11 @@ cageworks_factory_shared_branch() {
 	echo "main"
 }
 
-## --no-hardlinks is load-bearing here for the same reason it is anywhere else:
-## git hardlinks objects when cloning from a local path on the same filesystem,
-## and chowning anything derived from such a clone rewrites the origin's
-## ownership. On Linux the origin is the operator's own repository.
+## The source is a remote the machine can reach rather than a path on the
+## operator's host (ADR-032), so git has nothing local to hardlink from and
+## --no-hardlinks costs nothing. It stays because it is free and because the
+## day somebody points a factory at a path on the machine itself, hardlinked
+## objects and a chown would rewrite that repository's ownership.
 cageworks_factory_clone_args() {
 	local repo="$1" path="$2"
 	echo "--no-hardlinks"
@@ -69,6 +70,19 @@ cageworks_factory_clone_ensure() {
 			args+=("$arg")
 		done < <(cageworks_factory_clone_args "$repo" "$path")
 		git clone --quiet "${args[@]}" || return 1
+
+		## A clone can succeed and check out nothing: an origin whose HEAD
+		## names a branch it does not have leaves HEAD unborn, and so does an
+		## origin with no commits at all. Branching from that gives an unborn
+		## branch, and every later run skips the clone because the directory is
+		## there and fails on a missing HEAD instead. The directory goes with
+		## the failure so the next run is a first run.
+		if ! git -C "$path" rev-parse --verify --quiet HEAD >/dev/null; then
+			rm -rf "$path"
+			echo "cageworks: $repo cloned with no commit on HEAD; nothing to work from" >&2
+			return 1
+		fi
+
 		git -C "$path" switch --quiet -c "$branch" || return 1
 
 		## The branch the factory integrates is checked out by nothing in the
