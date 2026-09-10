@@ -100,6 +100,22 @@ asking nixcage for anything.
 Which hosts may be reached is enforced by the proxy rather than by the filter,
 since the proxy is the thing that resolves them.
 
+**And resolution obeys the same rule as everything else, which took a machine
+to notice.** This paragraph said the filter cannot resolve a name and left it
+there. A name still has to be resolved by something, and NixOS resolves one
+through systemd-resolved's stub, which does the asking under its own uid: a uid
+this filter drops. The machine could then resolve nothing at all, the proxy
+included, and a proxy that cannot look up its upstream is a proxy that cannot
+proxy.
+
+Letting that daemon out would have been the small fix and the wrong one. It
+resolves for whoever asks, so a role denied every packet would have kept a
+channel to the internet through it, which is most of what a uid filter is for.
+`/etc/resolv.conf` points at the uplink file instead, so a process resolves in
+its own context, a query is the asking uid's packet, and the rules above decide
+it with nothing added. Root and the proxy resolve. A role does not, and that is
+the same sentence as the one about packets rather than an exception to it.
+
 **4. The allowlist is part of the factory's declaration, under the operator's
 ceiling.** Which model endpoints a factory may reach is declared in the
 repository it works (ADR-020) and clamped by the operator's config in the same
@@ -170,6 +186,15 @@ authenticate anywhere: it can reach one listener on its own machine, which
 holds a credential it cannot read, for a set of destinations it cannot widen.
 
 ## Consequences
+
+**A denial has two halves and only one was ever checked.** `tests/manual/egress.sh`
+asked whether a uid could reach a host and reported reached or denied without
+saying which of the lookup or the connection had stopped it, on the reasoning
+that both were this filter. On a machine that could resolve nothing, every uid
+reported denied and that read as a pass. The proof now asks about resolution
+separately and gives the connection checks an address, so a lookup can no
+longer stand in for a rule.
+
 
 What a session is told is not built yet, and cannot be until the roles are on
 the machine the proxy is on. A role session today reaches a cage in the
