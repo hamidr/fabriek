@@ -277,14 +277,23 @@ cmd_role() {
     forward+=(-t)
   fi
 
-  ## Where this factory's repository is, from the register the operator keeps.
+  ## Where this factory's repository is, as a remote the machine can reach
+  ## (ADR-032). The register names a checkout on this host, which the machine
+  ## cannot open and which is not what it works from: the origin of that
+  ## checkout is. Read here rather than declared a second time, because two
+  ## places naming one remote are two places that can disagree.
+  ##
   ## The guest needs it the first time only, since after that its clone records
-  ## where it was cloned from, but resolving it here is what keeps "which
-  ## repository is this factory" a question with one answer on this machine.
+  ## where it was cloned from.
   local repository=()
-  local path
+  local path origin
   if path="$(cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory" 2>/dev/null)"; then
-    repository=(--repository "$path")
+    if origin="$(git -C "$path" remote get-url origin 2>/dev/null)" && [[ -n "$origin" ]]; then
+      repository=(--repository "$origin")
+    else
+      log_err "$factory's repository at $path has no origin, and a machine cannot clone a path on this host"
+      exit 1
+    fi
   fi
 
   local args

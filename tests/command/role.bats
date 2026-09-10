@@ -103,3 +103,26 @@ teardown() {
 	assert_failure
 	assert_output --partial "role [--pane] <factory> <role>"
 }
+
+# ADR-032. The machine clones the repository's own remote, so what reaches the
+# guest is a URL both sides can fetch and never a path that means something
+# only on this host. A factory's machine cannot open /Users/somebody/src/acme.
+@test "the repository named to the guest is an origin, not a path on this host" {
+	local repo="$TEST_TEMP_DIR/checkout"
+	git init -q "$repo"
+	git -C "$repo" remote add origin https://example.invalid/acme.git
+	cat >"$CAGEWORKS_CONFIG" <<EOF
+[caps]
+memory = "16G"
+cores = 8
+
+[factories.acme]
+path = "$repo"
+EOF
+	run_cageworks role acme builder -- true
+	assert_success
+
+	run nixcage_argv
+	assert_line "https://example.invalid/acme.git"
+	refute_line "$repo"
+}
