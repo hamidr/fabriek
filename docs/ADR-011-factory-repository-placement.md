@@ -66,6 +66,14 @@ copy. Everything that reaches it arrives by fetch and everything that leaves it
 leaves by push, so a human editing it directly is outside the design rather
 than served by it.
 
+ADR-032 withdraws points 3 and 4. Both were written when a factory lived in
+nixcage's shared VM and the operator's workspace was already mounted there, so
+reaching it cost nothing. ADR-019 gave each factory a machine of its own with
+nothing of the operator's in it, and at that point syncing with a checkout
+became a mechanism to build rather than a fact to use. The clone comes from the
+repository's own origin instead, and the operator's checkout is not part of the
+design. Points 1, 2 and 5 stand.
+
 ## Consequences
 
 The factory works the same on Linux and macOS, because nothing it needs is

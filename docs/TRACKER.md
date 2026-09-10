@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 006
 
-**Next ADR number:** 032
+**Next ADR number:** 033
 
 ## PRDs
 
@@ -55,3 +55,4 @@ document, then regenerate.
 | [ADR-029](ADR-029-pi-is-the-agent.md) | pi is the agent a role runs, because it is the one we can change | proposed | -- | ADR-021, ADR-024, ADR-026, ADR-027 | the choice is the licence and not the protocol, since the console and the ledger are built on records the agent defines |  |
 | [ADR-030](ADR-030-a-cage-carries-a-floor.md) | A cage carries a floor, whatever the repository it works declares | accepted | -- | ADR-016, ADR-018, ADR-020, ADR-029 | the agent and the tools it needs are the machine to guarantee, not the repository the factory happens to work |  |
 | [ADR-031](ADR-031-a-tool-is-asked-for.md) | An agent asks for a tool and does not install one | proposed | -- | ADR-013, ADR-015, ADR-016, ADR-025, ADR-030 | a tool reaches a cage through the flake a role enters, so wanting one is work for a role rather than a command |  |
+| [ADR-032](ADR-032-the-factory-clones-its-own-origin.md) | A factory clones the repository's origin, and the operator's checkout leaves the design | proposed | -- | ADR-009, ADR-011, ADR-019, ADR-025 | two clients of one remote need nothing joining them, so the machine clones origin and the supervisor pushes there |  |
