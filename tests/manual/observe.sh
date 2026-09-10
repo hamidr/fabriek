@@ -22,6 +22,7 @@
 ##   tests/manual/observe.sh attribution  # the two claims that cross a userns
 ##   tests/manual/observe.sh subjects     # the block a role principal holds
 ##   tests/manual/observe.sh containment  # what cage root can and cannot reach
+##   tests/manual/observe.sh floor        # what a cage carries whatever is declared
 ##
 ## The retention window in the declaration's schema is set from what 'storage'
 ## reports against cageworks.machine.diskSize. Until that number exists the
@@ -257,6 +258,33 @@ cmd_attribution() {
 	fi
 }
 
+## What a cage carries whatever the repository declares (ADR-030). Asked of a
+## session rather than of the module, because a module says what it declared
+## and a session says what is on PATH. A test that the option holds four names
+## would pass on a machine where none of them runs.
+cmd_floor() {
+	local project missing=0 tool
+	project="${CAGEWORKS_PROBE_PROJECT:-/var/lib/nixcage/clones/$F}"
+	if ! sshm "[ -f $project/flake.nix ]" 2>/dev/null; then
+		echo "floor: no project with a flake at $project on the machine"
+		return 1
+	fi
+
+	## Deliberately a project with no devShell of its own where possible: the
+	## floor is what a repository declaring nothing still gets, and a devShell
+	## would supply these from stdenv and hide the question.
+	for tool in pi sed grep awk xargs; do
+		if sshm "nixcage-container enter --uid $(role_uid) --user $R \
+			$F-$R $project command -v $tool" >/dev/null 2>&1; then
+			echo "$tool: on PATH"
+		else
+			echo "$tool: MISSING"
+			missing=1
+		fi
+	done
+	return "$missing"
+}
+
 case "${1:-all}" in
 rate) cmd_rate "${2:-60}" ;;
 storage) cmd_storage ;;
@@ -264,16 +292,18 @@ overhead) cmd_overhead ;;
 attribution) cmd_attribution ;;
 subjects) cmd_subjects ;;
 containment) cmd_containment ;;
+floor) cmd_floor ;;
 all)
 	cmd_subjects
 	cmd_containment
+	cmd_floor
 	cmd_attribution
 	cmd_rate "${2:-60}"
 	cmd_storage
 	cmd_overhead
 	;;
 *)
-	echo "usage: observe.sh [rate [seconds] | storage | overhead | attribution | subjects | containment]" >&2
+	echo "usage: observe.sh [rate [seconds] | storage | overhead | attribution | subjects | containment | floor]" >&2
 	exit 1
 	;;
 esac

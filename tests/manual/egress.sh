@@ -104,7 +104,12 @@ resolves() {
 ## below are about the filter and nothing else. A machine that cannot get this
 ## far has a resolution fault, and the checks that follow would otherwise
 ## report it as a filter that works.
-addr="$(sshm "getent ahostsv4 $host 2>/dev/null | awk 'NR==1 {print \$1}'")"
+## getent ahosts, which is what a process about to connect gets: getaddrinfo
+## drops a family the machine cannot route, where plain 'getent hosts' is a raw
+## lookup that happily returns one. Neither is 'ahostsv4', which would pin the
+## family and hide a machine answering with one it cannot reach -- the fault
+## this line existed to expose in the first place.
+addr="$(sshm "getent ahosts $host 2>/dev/null | awk '\$2 == \"STREAM\" {print \$1; exit}'")"
 if [ -z "$addr" ]; then
 	echo "FAIL root cannot resolve $host, so nothing below would mean what it says"
 	bash cageworks down acme
