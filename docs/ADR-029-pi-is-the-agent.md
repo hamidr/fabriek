@@ -76,13 +76,30 @@ role naming something else is undefined rather than refused. Narrowing the
 schema would be a separate decision with a separate cost, and nothing yet needs
 it.
 
-**4. The example declares pi.** It currently declares `claude`, so the
-repository contradicts this before the ink is dry.
+**4. The example declares pi, and provides it.** It declared `claude` and
+provided nothing, so the repository contradicted this before the ink was dry
+and the command named a binary no shell had. `pi-coding-agent` is in nixpkgs,
+and it goes in the project's own devShell for the reason ADR-016 gives for a
+specialist's toolchain: what a role has to hand is the project's business, not
+cageworks'.
 
 **5. ADR-026 point 9 stops being a hedge.** "A role whose agent speaks no such
 protocol has no console" was written as a property to accept. It is now the
 statement of what is outside the supported case, which is the same sentence
 doing a different job.
+
+**6. The agent reaches the egress proxy through a file, not a variable.**
+ADR-026 parked this as "which variable points the agent at the egress proxy",
+and there is no such variable. pi overrides a built-in provider's `baseUrl` in
+a `models.json` under its configuration directory, which `PI_CODING_AGENT_DIR`
+names, and the override is per provider, which is the shape ADR-025's per-host
+locations already have. So it is composed and bound like the signing key and
+the guidance, and ADR-026's sentence is corrected there rather than here.
+
+**7. A caged agent is told not to reach the network on its own.** `PI_OFFLINE`
+disables pi's startup network operations. ADR-025 drops egress on the machine
+and lets out one uid, so those calls do not fail interestingly, they fail as a
+slow start nobody has attributed.
 
 ## Consequences
 
@@ -114,10 +131,19 @@ this should do it there and on the licence argument, which is where the
 decision actually rests. Reopening it on capability means showing the table is
 wrong, which is a different and more useful conversation.
 
+**Points 6 and 7 are obligations, not observations.** Nothing composes a
+`models.json` yet and nothing sets `PI_OFFLINE`. Until something does, a
+factory declaring pi reaches the network the way pi does by default, which on a
+machine that has dropped egress means it reaches nothing and says so late. This
+document names the mechanism; wiring it is ADR-025's business and is not done
+here.
+
 **What the table records was read rather than remembered.** pi's flag, verbs
-and events come from its own RPC documentation, and they are the same names
-ADR-026 point 3 and ADR-027 point 3 already consume, which is worth knowing
-because those two documents were written from a spike rather than from a page.
+and events come from its own RPC documentation and from `--help` on the build
+nixpkgs carries, and they are the same names ADR-026 point 3 and ADR-027 point
+3 already consume, which is worth knowing because those two documents were
+written from a spike rather than from a page. `--mode` takes `text`, `json` or
+`rpc`, so the declaration's `--mode rpc` is the documented spelling.
 Claude Code's flags come from `--help` on this host. Codex's and opencode's
 come from their documentation and were not run. "None found" in the mid-turn
 row means exactly that, and is the row most likely to be out of date first.

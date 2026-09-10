@@ -44,6 +44,11 @@
               packages = with pkgs; [
                 git
                 jq
+                ## The agent every role runs (ADR-029). It comes from this
+                ## repository's own flake rather than from cageworks, for the
+                ## same reason a specialist's toolchain does (ADR-016): what a
+                ## role has to hand is the project's business.
+                pi-coding-agent
               ];
             };
 

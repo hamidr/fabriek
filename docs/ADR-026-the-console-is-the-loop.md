@@ -131,6 +131,12 @@ with the decision rather than after it.
 Which variable points the agent at the egress proxy stays where ADR-025 put it,
 in the declaration's own command, and is not decided here.
 
+There turns out to be no such variable. ADR-029 picked the agent and found that
+pi is routed through a proxy by a `models.json` in its configuration directory,
+overriding a built-in provider's `baseUrl`. That is a file to compose and bind,
+the way the signing key and the guidance already are, and not a word in a
+command. The sentence above is left standing as the assumption it was.
+
 ## Design gates
 
 The Formal Modeling Gate fires on point 3. Queueing a steered message against a
