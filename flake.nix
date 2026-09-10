@@ -94,7 +94,7 @@
       ## a machine is and what port it answers on are not facts this repository
       ## can know (ADR-019).
       flake.lib.machine = import ./modules/vm.nix {
-        inherit (inputs) nixpkgs microvm nixcage;
+        inherit (inputs) nixpkgs microvm nixcage self;
       };
     };
 }

@@ -703,3 +703,74 @@ machine_container_packages() {
 	assert_success
 	assert_output --partial "pi-coding-agent"
 }
+
+# The supervisor's git comes from the wrapper package.nix builds, so a machine
+# could run a factory while an operator sshing into it had no git at all. It is
+# in the closure either way; this puts it where somebody can use it.
+@test "the machine carries git on its own path" {
+	run machine_container_packages
+	assert_success
+	run nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in builtins.concatStringsSep " "
+      (map (p: p.pname or p.name or "?") m.config.environment.systemPackages)
+  '
+	assert_success
+	assert_output --partial "git"
+}
+
+# PRD-004 phase 3 is called "the factory moves in", and this is what moving in
+# means: the guest program that holds every role-, task- and factory- verb has
+# to be on the machine those verbs run on. Without it the CLI reaches a machine
+# that answers "cageworks-container: command not found" to everything.
+@test "the machine carries the guest program the CLI talks to" {
+	run nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in builtins.concatStringsSep " "
+      (map (p: p.pname or p.name or "?") m.config.environment.systemPackages)
+  '
+	assert_success
+	assert_output --partial "cageworks-container"
+}
+
+## The nix settings the machine is built with.
+machine_nix_features() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in builtins.concatStringsSep " "
+      (m.config.nix.settings.experimental-features or [ ])
+  ' 2>/dev/null
+}
+
+# The supervisor reads every declaration by evaluating the repository's flake
+# (ADR-020), so a machine whose nix refuses nix-command and flakes can read no
+# declaration at all: no role resolves, no worktree is prepared, no session
+# starts. It failed as "declares no factory", which is what nix's own refusal
+# looks like once the stderr saying otherwise has been discarded.
+@test "the machine's nix can evaluate the flake a declaration lives in" {
+	run machine_nix_features
+	assert_success
+	assert_output --partial "nix-command"
+	assert_output --partial "flakes"
+}

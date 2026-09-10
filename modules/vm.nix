@@ -13,6 +13,11 @@
   nixpkgs,
   microvm,
   nixcage,
+  ## This repository itself, so the machine can carry the guest program built
+  ## from it. Every role-, task- and factory- verb lives in that program and
+  ## runs on the machine, so a machine without it answers "command not found"
+  ## to the whole CLI (PRD-004 phase 3).
+  self,
 }:
 spec:
 nixpkgs.lib.nixosSystem {
@@ -21,6 +26,21 @@ nixpkgs.lib.nixosSystem {
     microvm.nixosModules.microvm
     nixcage.nixosModules.host
     ./vm-guest.nix
+    ## Built from the same package.nix the flake's own overlay imports, so
+    ## there is one description of the program even though there are two places
+    ## that ask for it. Referring to the flake's overlay attribute from inside
+    ## the function that builds the machine would close a loop.
+    {
+      nixpkgs.overlays = [
+        (final: _prev: {
+          cageworks-container =
+            (import ./package.nix {
+              pkgs = final;
+              inherit self;
+            }).container;
+        })
+      ];
+    }
     ## The guest is always Linux and the operator may not be. What starts a
     ## machine is a script that runs on the operator's host, so on macOS it has
     ## to be built from that host's packages: a runner made of Linux coreutils

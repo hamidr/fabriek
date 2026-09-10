@@ -484,7 +484,30 @@ in
 
     ## The machine's own way of being handed a secret. Present only where
     ## there is somewhere to reach, which is the same condition the proxy has.
-    environment.systemPackages = lib.mkIf (cfg.egress != [ ]) [ egressCredential ];
+    ## The supervisor reads a factory's declaration by evaluating the flake it
+    ## is committed in (ADR-020), and it does that here rather than on the
+    ## operator's host. A machine whose nix refuses these reads no declaration
+    ## at all: no role resolves, no worktree is prepared and no session starts,
+    ## and what it says while failing is that the repository declares no
+    ## factory.
+    nix.settings.experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+
+    ## git is on the machine's own PATH, not only inside the wrapper the
+    ## supervisor runs with. It is already in this closure for that reason, so
+    ## naming it here costs nothing and means an operator looking at a factory,
+    ## or a proof making an origin on it, has the tool the machine's whole job
+    ## is about.
+    environment.systemPackages =
+      [
+        pkgs.git
+        ## The guest program itself. Every role-, task- and factory- verb the
+        ## CLI sends runs here, so this is what "the factory moves in" means.
+        pkgs.cageworks-container
+      ]
+      ++ lib.optionals (cfg.egress != [ ]) [ egressCredential ];
 
     ## Who the proxy is (ADR-025 point 2). It exists here rather than beside
     ## the service because the firewall below is written in terms of it: the
