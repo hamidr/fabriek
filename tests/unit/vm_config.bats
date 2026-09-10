@@ -601,3 +601,35 @@ machine_subjects() {
 	assert_success
 	assert_output "$(cageworks_agent_subject)"
 }
+
+## What /etc/resolv.conf points a process at.
+resolver_source() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" ];
+      };
+    in toString m.config.environment.etc."resolv.conf".source
+  ' 2>/dev/null
+}
+
+# ADR-025 filters egress on uid. A stub resolver resolves on everybody's behalf
+# under its own uid, so every name lookup on the machine becomes one daemon's
+# packet: either that daemon is let out and a role has a DNS channel to the
+# internet, or it is not and nothing on the machine can resolve anything. The
+# second is what was happening, and it took the proxy's own upstream with it.
+#
+# Pointing glibc at the uplink file instead means a process resolves for
+# itself, so a query is the asking uid's packet and the existing rules decide
+# it. Measured on a machine: root and the proxy resolve, a role's uid does not.
+@test "a name is resolved by whoever wants it, so egress rules reach DNS" {
+	run resolver_source
+	assert_success
+	assert_output "/run/systemd/resolve/resolv.conf"
+	refute_output --partial "stub-resolv.conf"
+}

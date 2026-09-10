@@ -487,6 +487,23 @@ in
     };
     users.groups.cageworks-egress = { };
 
+    ## A name is resolved by whoever wants it, so the rules below reach DNS.
+    ##
+    ## NixOS points /etc/resolv.conf at systemd-resolved's stub, which resolves
+    ## on everybody's behalf under its own uid. Under an egress policy written
+    ## in uids that is a choice between two bad ends: let that daemon out and
+    ## every uid on the machine has a channel to the internet through it, or
+    ## do not and nothing here can resolve anything. The second is what was
+    ## happening, and it took the proxy's own upstream with it -- nginx cannot
+    ## reach a host whose name it cannot look up.
+    ##
+    ## The uplink file carries the same server DHCP handed us, and glibc reading
+    ## it resolves in the asking process, so a query is that uid's packet and
+    ## the rules below decide it exactly as they decide any other. Measured on a
+    ## machine: root and the proxy resolve, a role's uid does not.
+    environment.etc."resolv.conf".source =
+      lib.mkForce "/run/systemd/resolve/resolv.conf";
+
     ## The machine drops egress and names the exceptions (ADR-025 point 3).
     ##
     ## It filters on uid and never on host, because a packet filter cannot
