@@ -458,6 +458,15 @@ proxy_log() {
 	refute_output --partial '$sent_http_'
 }
 
+# Without SNI the upstream answers a TLS handshake_failure and the caller gets
+# a 502 with nothing in it to explain the refusal. recommendedProxySettings
+# does not set this, and it was missing for as long as the proxy existed.
+@test "the proxy offers the upstream a name to answer for" {
+	run proxy_log
+	assert_success
+	assert_output --partial "proxy_ssl_server_name on"
+}
+
 @test "the proxy says what the upstream said about its own rate limits" {
 	run proxy_log
 	assert_success
@@ -637,4 +646,34 @@ resolver_source() {
 	assert_success
 	assert_output "/run/systemd/resolve/resolv.conf"
 	refute_output --partial "stub-resolv.conf"
+}
+
+## Whether the machine is built with IPv6 at all.
+machine_ipv6() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        egress = [ "api.anthropic.com" ];
+      };
+    in if m.config.networking.enableIPv6 then "enabled" else "disabled"
+  ' 2>/dev/null
+}
+
+# The machine has a link-local address and no global one, no default route and
+# no way out over IPv6. A resolver that answers with both families hands the
+# proxy an address it cannot reach, and every request through it fails with
+# "Network is unreachable" behind a 502 the caller cannot explain.
+#
+# Turned off rather than routed, because ADR-025's way out is one proxy and one
+# uid, and giving the machine a second address family widens what the filter
+# has to be right about for no endpoint anybody declared.
+@test "the machine resolves only the family it can actually reach" {
+	run machine_ipv6
+	assert_success
+	assert_output "disabled"
 }

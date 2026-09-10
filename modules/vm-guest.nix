@@ -205,6 +205,17 @@ in
     networking = {
       hostName = "cageworks-${cfg.factory}";
       hostId = builtins.substring 0 8 (builtins.hashString "sha256" cfg.factory);
+
+      ## This machine has a link-local IPv6 address, no global one and no route,
+      ## so an AAAA record is an address it cannot reach. The resolver answers
+      ## with both families, the proxy takes the first, and every request
+      ## through it fails with "Network is unreachable" behind a 502 the caller
+      ## has no way to explain.
+      ##
+      ## Turned off rather than routed. ADR-025's way out is one proxy and one
+      ## uid, and a second address family widens what the filter has to be right
+      ## about to reach no endpoint anybody declared.
+      enableIPv6 = false;
     };
 
     ## The way in. Password authentication is off and one key is trusted, which
@@ -624,6 +635,12 @@ in
           location /${host}/ {
             proxy_pass https://${host}/;
             proxy_set_header Host ${host};
+            ## Without this nginx offers no SNI to the upstream, which answers
+            ## a TLS handshake_failure and the caller sees a 502 with nothing
+            ## in it to explain the refusal. recommendedProxySettings does not
+            ## set it, and neither the packet filter nor the credential can be
+            ## reached far enough to matter while it is off.
+            proxy_ssl_server_name on;
             ## The credential, written at run time and never in the store. It
             ## is always written, empty when nobody holds one, because nginx
             ## refuses to start on an include it cannot read.
