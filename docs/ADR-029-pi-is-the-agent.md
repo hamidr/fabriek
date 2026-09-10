@@ -83,6 +83,13 @@ and it goes in the project's own devShell for the reason ADR-016 gives for a
 specialist's toolchain: what a role has to hand is the project's business, not
 cageworks'.
 
+The second half of that is withdrawn by ADR-030. Reasoning from ADR-016 was
+right about a specialist's toolchain and wrong about the agent: a repository
+that forgets it declares a factory whose roles fail to start, and the operator
+cannot repair that from where they are standing. The agent is the machine's to
+guarantee. The example goes on declaring pi, because that is what makes this
+decision visible to somebody reading it.
+
 **5. ADR-026 point 9 stops being a hedge.** "A role whose agent speaks no such
 protocol has no console" was written as a property to accept. It is now the
 statement of what is outside the supported case, which is the same sentence

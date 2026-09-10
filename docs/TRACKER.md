@@ -4,11 +4,11 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-09
+**Generated:** 2026-09-10
 
 **Next PRD number:** 006
 
-**Next ADR number:** 030
+**Next ADR number:** 032
 
 ## PRDs
 
@@ -53,3 +53,5 @@ document, then regenerate.
 | [ADR-027](ADR-027-observed-from-three-sources.md) | A factory is observed from three sources, and a role owns none of them | accepted | -- | ADR-018, ADR-019, ADR-025, ADR-026 | three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel |  |
 | [ADR-028](ADR-028-a-cage-holds-two-subjects.md) | A role's cage holds two subjects, and the loop is not one of them | accepted | -- | ADR-018, ADR-025, ADR-026, ADR-027 | the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite |  |
 | [ADR-029](ADR-029-pi-is-the-agent.md) | pi is the agent a role runs, because it is the one we can change | proposed | -- | ADR-021, ADR-024, ADR-026, ADR-027 | the choice is the licence and not the protocol, since the console and the ledger are built on records the agent defines |  |
+| [ADR-030](ADR-030-a-cage-carries-a-floor.md) | A cage carries a floor, whatever the repository it works declares | proposed | -- | ADR-016, ADR-018, ADR-020, ADR-029 | the agent and the tools it needs are the machine to guarantee, not the repository the factory happens to work |  |
+| [ADR-031](ADR-031-a-tool-is-asked-for.md) | An agent asks for a tool and does not install one | proposed | -- | ADR-013, ADR-015, ADR-016, ADR-025, ADR-030 | a tool reaches a cage through the flake a role enters, so wanting one is work for a role rather than a command |  |
