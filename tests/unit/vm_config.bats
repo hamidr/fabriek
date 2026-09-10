@@ -677,3 +677,29 @@ machine_ipv6() {
 	assert_success
 	assert_output "disabled"
 }
+
+## What the machine adds to every cage's userland.
+machine_container_packages() {
+	nix eval --raw --impure --expr '
+    let
+      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      m = flake.lib.machine {
+        system = "aarch64-linux";
+        factory = "acme";
+        sshPort = 22100;
+        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+      };
+    in builtins.concatStringsSep " "
+      (map (p: p.name or "?") m.config.nixcage.containerPackages)
+  ' 2>/dev/null
+}
+
+# ADR-030 point 1. A repository that forgets the agent declares a factory whose
+# roles start and immediately fail, and the operator cannot repair that without
+# editing somebody else's repository. So the machine carries it, and a project
+# naming its own build in a devShell shadows this rather than competing with it.
+@test "every cage carries the agent, whatever the repository declares" {
+	run machine_container_packages
+	assert_success
+	assert_output --partial "pi-coding-agent"
+}

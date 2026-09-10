@@ -406,6 +406,16 @@ in
       size = 64;
     };
 
+    ## What every cage carries whatever the repository it works declares
+    ## (ADR-030 point 1). A repository forgetting the agent declares a factory
+    ## whose roles start and immediately fail, and the operator holding that
+    ## error cannot repair it without editing somebody else's repository.
+    ##
+    ## The tools an agent reaches for are nixcage's own userland now and are
+    ## not repeated here. A project naming its own build of pi in a devShell
+    ## shadows this one rather than competing with it: nix develop prepends.
+    nixcage.containerPackages = [ pkgs.pi-coding-agent ];
+
     ## The subjects a role's cage holds besides cage root (ADR-028). One, and
     ## it is what runs the agent: a supervisor and the program it supervises
     ## under one uid are one principal, and nothing the supervisor records
