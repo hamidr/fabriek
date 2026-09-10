@@ -3,13 +3,13 @@ id: PRD-004
 title: A factory brings its own machine and declares itself
 status: implementing
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-10
 summary: a factory is declared in the repository it works and runs in a VM cageworks builds for it on either platform
 depends_on: [PRD-003]
 supersedes: []
 superseded_by: []
 phases_total: 5
-phases_done: 2
+phases_done: 3
 ---
 
 ## Problem
@@ -262,6 +262,42 @@ deleted before the thing replacing it exists.
    `cageworks role` and `cageworks task run` work against the machine on both
    platforms, and the recorded role-session invocation is unchanged. The
    transport of the previous arrangement stops being used here.
+
+   Done. `tests/manual/moves-in.sh` is the exit condition and it holds: a clone
+   from a remote onto the pool, a worktree owned by the agent's uid rather than
+   root, a cage entered on it, and the repository visible inside. The uid is
+   checked from both ends, because either alone is satisfied by a cage that maps
+   nothing -- 1 inside, since nspawn maps container uid 0 upward onto the block,
+   and the block's second number on the machine.
+
+   Where the code comes from changed on the way. ADR-011 had the supervisor sync
+   with the operator's checkout, which was free when a factory lived in
+   nixcage's shared VM and that workspace was already mounted there. ADR-019
+   ended that, and every way of making two directories on two machines agree
+   cost more than it returned, so ADR-032 has the machine clone the repository's
+   own origin instead.
+
+   Four faults were found by running it and none by reading it, and all four
+   were invisible to a suite of 431 passing tests, because the suite drives the
+   guest program with the transport stubbed and the machine had been built and
+   booted without either meeting the other. The guest program was not installed
+   on the machine at all, so a factory answered "cageworks-container: command
+   not found" to every verb the CLI sends. The machine's nix refused
+   `nix-command` and `flakes`, so no declaration could be read and no role
+   resolved. `git` was on no path but the wrapper's. And a clone that checks out
+   nothing -- an origin whose HEAD names a branch it does not have -- left a
+   directory that poisoned every later run and could not be recovered from
+   without deleting it by hand.
+
+   A fifth was not a fault in what ran but in what it said. Reading a
+   declaration discarded nix's own complaint, so all four of the above reported
+   as "its flake has no cageworks output". That message sent me to inspect a
+   flake that was correct, three times, before I ran the evaluation by hand.
+
+   Not done here, and not required by this phase: pushing role branches back to
+   origin needs a forge credential on the machine, delivered the way the model
+   credential is (ADR-025), plus a `GIT_SSH_COMMAND` and a `known_hosts`.
+   ADR-032 point 2 wants it and integration cannot work without it.
 4. **The machine is sized.** What the factory asks for meets what the operator
    allows, the machine is built to the result, and changing it takes effect
    without losing the disk. Sequenced after phase 3 because what to size for is
