@@ -273,9 +273,12 @@ cmd_floor() {
 	## Deliberately a project with no devShell of its own where possible: the
 	## floor is what a repository declaring nothing still gets, and a devShell
 	## would supply these from stdenv and hide the question.
+	## Through a shell, because command is a builtin and enter execs its argv
+	## directly: asking for "command -v sed" looks for a program called
+	## command and reports every tool missing on a cage that has them all.
 	for tool in pi sed grep awk xargs; do
 		if sshm "nixcage-container enter --uid $(role_uid) --user $R \
-			$F-$R $project command -v $tool" >/dev/null 2>&1; then
+			$F-$R $project sh -c 'command -v $tool'" >/dev/null 2>&1; then
 			echo "$tool: on PATH"
 		else
 			echo "$tool: MISSING"

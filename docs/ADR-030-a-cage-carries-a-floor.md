@@ -1,7 +1,7 @@
 ---
 id: ADR-030
 title: A cage carries a floor, whatever the repository it works declares
-status: proposed
+status: accepted
 date: 2026-09-10
 status_date: 2026-09-10
 summary: the agent and the tools it needs are the machine to guarantee, not the repository the factory happens to work
@@ -122,9 +122,27 @@ measurement behind the list and there could not usefully be one; the argument
 for stopping there is that stdenv stops there too, and stdenv is the floor
 every Nix build has agreed on for twenty years.
 
-**It is an interface change, so it is two commits in two repositories and a
-lock bump** (ADR-018). Until nixcage carries the option, point 3 is a decision
-and not a behaviour.
+**It was an interface change, so it was two commits in two repositories and a
+lock bump** (ADR-018). nixcage carries `containerPackages`, empty by default so
+a host asking for nothing gets what it had, and the text tools went into its
+own userland where the gap was. The machine declares the agent into the option.
+
+Measured in a cage of a project declaring no devShell at all, which is the case
+the floor exists for:
+
+```
+$ tests/manual/observe.sh floor
+pi: on PATH
+sed: on PATH
+grep: on PATH
+awk: on PATH
+xargs: on PATH
+```
+
+That command asks a session what it can run rather than asking the module what
+it declared, and the difference was not academic: its first version asked
+`enter ... command -v sed`, which looks for a program called `command`, and
+reported every tool missing on a cage that had all five.
 
 ## Verification
 
