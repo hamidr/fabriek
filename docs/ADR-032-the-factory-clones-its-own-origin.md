@@ -37,18 +37,30 @@ the arrangement on paper rather than one anybody had used.
 ## Decision
 
 **1. The machine clones origin.** `git clone <remote>` on the factory's own
-pool, from the repository's own remote, using the URL the operator's register
-already carries. Not from the operator's checkout, and not through a share.
+pool, from the repository's own remote. Not from the operator's checkout, and
+not through a share.
+
+The URL is read off the checkout the register already names, with
+`git remote get-url origin`, rather than declared a second time. Two places
+naming the same remote is two places that can disagree, and the checkout is
+open in front of `cageworks up` anyway for point 3's reason.
 
 **2. Role branches go back to origin.** The supervisor pushes them there. The
 operator sees them by fetching, the way they would see a colleague's branch,
 because that is what they are.
 
-**3. The operator's checkout leaves the design entirely.** ADR-011 points 3 and
-4 are withdrawn: nothing fetches from it, nothing pushes to it, and cageworks
-neither reads nor writes it. Points 1, 2 and 5 stand -- one clone per factory
-on storage that carries ownership, ADR-010 one layer in, and the clone still
-not a thing a person edits.
+**3. The operator's checkout stops being the factory's source of code, and
+stays where a declaration is read.** ADR-011 points 3 and 4 are withdrawn:
+nothing fetches code from it and nothing pushes branches to it. It keeps the
+one job ADR-020 gave it, which has nothing to do with either -- `cageworks up`
+reads the committed `cageworks.nix` out of it to learn what machine to build,
+locally and before any machine exists. A first draft of this document said the
+checkout left the design entirely; that was written without looking at what
+`machine_spec` does, and it is wrong.
+
+ADR-011 points 1, 2 and 5 stand: one clone per factory on storage that carries
+ownership, ADR-010 one layer in, and the clone still not a thing a person
+edits.
 
 **4. The credential is the machine's, and arrives the way the model credential
 does.** ADR-025 already puts a secret on the machine, readable by one uid,
@@ -85,6 +97,13 @@ ADR-011 the supervisor fetched a checkout, so whatever was committed there
 reached the factory. Now the factory sees what origin has. Work in progress
 reaches it by being pushed, which is the same rule everybody else on the
 repository already lives under.
+
+**And a declaration can be ahead of the code the factory works.** The
+declaration is read from the checkout at `cageworks up`; the code is fetched
+from origin. Committing a change to `cageworks.nix` without pushing it builds a
+machine for a factory whose repository does not yet have that commit. The two
+were one thing while both came from the checkout, and this decision separates
+them.
 
 **Two credentials are on the machine where there was one.** The model
 credential and the forge credential, each readable by one uid. The second is

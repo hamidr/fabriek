@@ -36,9 +36,9 @@ teardown() {
 	run_cageworks role acme builder -- sh -c "echo one two"
 	assert_success
 	run nixcage_argv
-	assert_line --index 6 "sh"
-	assert_line --index 7 "-c"
-	assert_line --index 8 "echo one two"
+	assert_line --index 4 "sh"
+	assert_line --index 5 "-c"
+	assert_line --index 6 "echo one two"
 }
 
 @test "a person entering a role forwards their agent" {
@@ -50,7 +50,12 @@ teardown() {
 	run_cageworks role acme builder -- true
 	assert_success
 	run nixcage_calls
-	assert_output --partial "exec --agent -- cageworks-container role-enter --agent acme builder"
+	assert_output --partial "cageworks-container role-enter --agent acme builder"
+	## And the transport forwards the operator's own agent, which is a
+	## different thing from the flag the guest program reads: one says which
+	## socket to sign through, the other carries it across the connection.
+	run ssh_flags
+	assert_output --partial " -A"
 }
 
 @test "the socket is never named on this side, because it is not ours to name" {
@@ -77,18 +82,20 @@ teardown() {
 	export SSH_AUTH_SOCK="$TEST_TEMP_DIR/agent.sock"
 	run_cageworks role acme builder -- true
 	run nixcage_argv
-	assert_line --index 5 "--agent"
-	assert_line --index 6 "acme"
+	assert_line --index 2 "--agent"
+	assert_line --index 3 "acme"
 }
 
 @test "an interactive session asks for a terminal and a commanded one does not" {
+	# A terminal is the transport's to ask for now: ssh -t rather than a flag
+	# the guest program reads, so it is asserted where it is actually passed.
 	run_cageworks role acme builder
-	run nixcage_calls
-	assert_output --partial "--tty"
-	rm -f "$NIXCAGE_CALLS"
+	run ssh_flags
+	assert_output --partial " -t"
+	rm -f "$SSH_FLAGS"
 	run_cageworks role acme builder -- true
-	run nixcage_calls
-	refute_output --partial "--tty"
+	run ssh_flags
+	refute_output --partial " -t"
 }
 
 @test "role without a factory and a role explains itself" {

@@ -18,7 +18,7 @@ teardown() {
 	run_cageworks task file acme ship --acceptance "tests pass"
 	assert_success
 	run nixcage_calls
-	assert_output --partial "exec -- cageworks-container task-file acme ship"
+	assert_output --partial "cageworks-container task-file acme ship"
 	# Who does the work is the workflow's first stage, never the caller's pick.
 	refute_output --partial "builder"
 }
@@ -29,7 +29,7 @@ teardown() {
 	run_cageworks task file acme ship --acceptance "tests pass and the tracker is clean"
 	assert_success
 	run nixcage_argv
-	assert_line --index 6 "tests pass and the tracker is clean"
+	assert_line --index 4 "tests pass and the tracker is clean"
 }
 
 @test "filing without a factory and a workflow explains itself" {
@@ -72,8 +72,8 @@ teardown() {
 @test "answering a gate carries the answer and its reason" {
 	run_cageworks task answer acme task-0001 reject "the tests do not run"
 	run nixcage_argv
-	assert_line --index 6 "reject"
-	assert_line --index 7 "the tests do not run"
+	assert_line --index 4 "reject"
+	assert_line --index 5 "the tests do not run"
 }
 
 @test "running a task reaches the guest with the factory and the id" {

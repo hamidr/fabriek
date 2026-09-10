@@ -53,22 +53,37 @@ log_ok()   { echo -e "${GREEN}[cageworks]${NC} $*"; }
 log_warn() { echo -e "${YELLOW}[cageworks]${NC} $*"; }
 log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
 
-## The program that carries a command to the machine the cages are on. Named
-## once so the suite can stub it and so there is one place this depends on
-## nixcage at all.
-NIXCAGE="${CAGEWORKS_NIXCAGE:-nixcage}"
-
 ## What builds a machine. Named once for the same reason as the above: it is
 ## the one thing here that runs a build, so it is the one thing a test has to
 ## stand in for. Evaluation is not routed through it, because reading a
 ## declaration is not building anything.
 NIX_BUILD="${CAGEWORKS_NIX_BUILD:-nix}"
 
-## Run a guest command and return its output. Every word is passed through as
-## argv by nixcage exec, so nothing here is quoted for a remote shell and
-## nothing a role produced is ever re-split.
+## Run a guest command on the factory's own machine and return its output.
+##
+## The words are sent NUL-separated and split by xargs -0 on the far side, so
+## the remote command is three fixed words and nothing a caller passed is ever
+## quoted for a remote shell or re-split. ssh would otherwise join argv into one
+## string, and a task's acceptance or a role's outcome would be part of it.
+##
+## Which machine is read off the verb's own first argument: every guest verb
+## takes the factory there, which is the guest program's dispatch convention
+## rather than a coincidence of these call sites.
 guest() {
-  "$NIXCAGE" exec -- cageworks-container "$@"
+  local factory="${2:-}"
+  [[ -n "$factory" ]] || { log_err "no factory named for guest command ${1:-}"; return 1; }
+
+  ## Captured before the loop, because a failure inside a process substitution
+  ## does not reach the while that reads it: the args would come back empty and
+  ## ssh would go to localhost on port 22 with no key.
+  local args
+  args="$(cageworks_machine_ssh_args "$factory")" || return 1
+  local -a ssh_args=()
+  local arg
+  while IFS= read -r arg; do ssh_args+=("$arg"); done <<<"$args"
+
+  printf '%s\0' "$@" |
+    ssh "${ssh_args[@]}" root@localhost xargs -0 cageworks-container
 }
 
 ## Tasks: file a goal into a factory, and read back what is there. A task is
@@ -253,13 +268,13 @@ cmd_role() {
   # the variable across sudo, cageworks-container reads it once it is there.
   local -a forward=() use_agent=()
   if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
-    forward=(--agent)
+    forward=(-A)
     use_agent=(--agent)
   fi
 
   if [[ $# -eq 0 ]]; then
     log_info "Entering role $role of factory $factory..."
-    forward+=(--tty)
+    forward+=(-t)
   fi
 
   ## Where this factory's repository is, from the register the operator keeps.
@@ -272,8 +287,18 @@ cmd_role() {
     repository=(--repository "$path")
   fi
 
-  "$NIXCAGE" exec ${forward[@]+"${forward[@]}"} -- cageworks-container role-enter \
-    ${use_agent[@]+"${use_agent[@]}"} ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@"
+  local args
+  args="$(cageworks_machine_ssh_args "$factory")" || exit 1
+  local -a ssh_args=()
+  local arg
+  while IFS= read -r arg; do ssh_args+=("$arg"); done <<<"$args"
+
+  ## Same NUL framing as guest(), for the same reason: a session command is
+  ## words the declaration wrote and nothing re-splits them on the way.
+  printf '%s\0' role-enter ${use_agent[@]+"${use_agent[@]}"} \
+    ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@" |
+    ssh "${ssh_args[@]}" ${forward[@]+"${forward[@]}"} root@localhost \
+      xargs -0 cageworks-container
 }
 
 ## The guest is always Linux, whatever the operator is on. A machine that
@@ -430,9 +455,11 @@ give_credentials() {
   config="$(cageworks_operator_config_path)"
   creds="$(cageworks_operator_credentials "$config")" || return 1
 
+  local args
+  args="$(cageworks_machine_ssh_args "$factory")" || return 1
   local -a ssh_args=()
   local arg
-  while IFS= read -r arg; do ssh_args+=("$arg"); done < <(cageworks_machine_ssh_args "$factory")
+  while IFS= read -r arg; do ssh_args+=("$arg"); done <<<"$args"
 
   ## The machine was started a moment ago and is not answering yet.
   local waited=0
@@ -491,9 +518,11 @@ cmd_down() {
     return
   fi
 
+  local args
+  args="$(cageworks_machine_ssh_args "$factory")" || return 1
   local -a ssh_args=()
   local arg
-  while IFS= read -r arg; do ssh_args+=("$arg"); done < <(cageworks_machine_ssh_args "$factory")
+  while IFS= read -r arg; do ssh_args+=("$arg"); done <<<"$args"
 
   log_info "Shutting $factory down..."
   ## Asked in two steps because one would conflate two different answers. A

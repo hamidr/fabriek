@@ -77,14 +77,28 @@ teardown() {
 	assert_output --partial "Unknown command"
 }
 
-@test "every guest command goes through nixcage exec and nothing else" {
+@test "every guest command goes to the factory's own machine and nowhere else" {
 	# The transport is the only thing cageworks knows about where the cages
-	# are. A second way to reach them would be a second thing to keep true.
-	run grep -cE '"\$NIXCAGE" exec' "$CAGEWORKS_BIN"
-	assert_output "2"
+	# are, and a second way to reach them would be a second thing to keep
+	# true. It used to be nixcage exec, which reaches the shared VM of the
+	# arrangement ADR-019 replaced; a factory has a machine of its own now
+	# and is reached over the port and key cageworks allocated it.
+	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE '\"\\\$NIXCAGE\" exec'"
+	assert_output "0"
 	# Comments stripped: what matters is what runs.
 	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE '(^|[^a-z])sudo[[:space:]]'"
 	assert_output "0"
+}
+
+# A guest verb carries a task's acceptance and a role's outcome, and ssh joins
+# argv into one string for a remote shell. Sending the words NUL-separated and
+# splitting them with xargs -0 on the far side keeps what nixcage exec gave for
+# free: nothing is quoted for a remote shell and nothing is ever re-split.
+@test "a guest command's words survive the transport as words" {
+	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE \"printf '%s\\\\0'\""
+	refute_output "0"
+	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -c 'xargs -0 cageworks-container'"
+	refute_output "0"
 }
 
 # ADR-018 had cageworks open no SSH connection at all. ADR-019 reverses that
