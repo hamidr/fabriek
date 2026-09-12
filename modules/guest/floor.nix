@@ -33,6 +33,15 @@ in
       export { default } from "${extension}";
     '';
 
+    ## The decider's loop (ADR-034 point 1), in a directory of its own so a
+    ## role's session never loads it. Same models.json: the decider reaches
+    ## the model through the same proxy and is counted on its own address.
+    environment.etc."cageworks/pi-decider/extensions/cageworks/index.ts".text = ''
+      export { default } from "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/decider/index.js";
+    '';
+    environment.etc."cageworks/pi-decider/models.json".source =
+      config.environment.etc."cageworks/pi/models.json".source;
+
     ## The credential is the proxy's to add; the placeholder only makes pi
     ## consider the provider configured. The path is the proxy's per-host
     ## location, so a request to the provider lands at the proxy and leaves
