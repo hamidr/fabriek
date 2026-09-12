@@ -54,7 +54,12 @@ and 38, section 4).
 - 0.6 `tests/manual/parity.sh` written as a script that fails: the journey
   of decision 38 as steps with a check each, and `tests/manual/isolation.sh`
   with the two bridge rules and spend attribution. Exit: both run and fail
-  for the right reason on today's machine.
+  for the right reason on today's machine. Written 2026-09-12, with
+  `tests/manual/lib.sh` holding what every proof shares. The run is
+  blocked: `cageworks up` fails on this host in microvm.nix's
+  `microvm-store-disk.erofs` (mkfs.erofs under bubblewrap cannot open
+  `nixos-tmpfiles.d/lib`, and the copy fallback is refused), which is
+  upstream of everything here. Unverified on a machine until that builds.
 
 ## Phase 1: nixcage interface, upstream
 
