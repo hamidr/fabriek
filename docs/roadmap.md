@@ -66,10 +66,16 @@ and 38, section 4).
 Two commits in two repositories and a lock bump each (ADR-018).
 
 - 1.1 A private network per cage: `enter` gains a flag naming a bridge and
-  the cage's address on it, gets a veth, and has no other interface.
-- 1.2 A flag that suppresses the nix daemon socket bind.
-- 1.3 Lock bump here; `seam.bats` updated for both flags and for `--subject`
-  leaving. Exit: seam green on `main` with the new line.
+  the cage's address on it, gets a veth, and has no other interface. Done
+  2026-09-12: nixcage ADR-011, `--network <bridge>:<addr>/<prefix>`.
+- 1.2 A flag that suppresses the nix daemon socket bind. Done 2026-09-12:
+  `--no-nix-daemon`, refused beside `--shell`.
+- 1.3 Lock bump here. Exit: the suite green on `main` with the new lock,
+  which it is because both options default off. Done 2026-09-12: nixcage
+  `3c1a018`, 435 tests green. The session line itself changes on the branch
+  in 2.2, together with the bridge it names, and `seam.bats` asserts the new
+  line there; changing it on `main` would point a role at a bridge no
+  machine has yet.
 
 ## Phase 2: the machine, on the branch
 
