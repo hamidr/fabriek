@@ -27,15 +27,17 @@ no `nixos-rebuild` in the operator's path.
 
 ## The interface with nixcage
 
-cageworks uses four exported primitives and nothing else. It writes no nspawn
-arguments, runs no `zfs`, allocates no uid and opens no SSH connection.
+cageworks uses three exported primitives and nothing else. It writes no nspawn
+arguments, runs no `zfs` and allocates no uid. The only SSH connection it opens
+is to a machine it built itself, over the key and port it allocated for that
+factory (ADR-019); `nixcage exec` reached nixcage's shared VM and is not used
+since PRD-004 phase 3.
 
 | Primitive | Used for |
 | --- | --- |
-| `nixcage-container enter [--uid n] [--user name] [--home path] [--shell name] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session |
-| `nixcage-container uid <principal>` | A role's uid, allocated once and never reissued |
+| `nixcage-container enter [--uid n] [--user name] [--subject name] [--home path] [--shell name] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session |
+| `nixcage-container uid <principal> [subject]` | A role's uid and its agent's, allocated once and never reissued |
 | `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree, owned and bounded |
-| `nixcage exec [--tty] [--agent] -- <cmd>` | Reaching the other three from the operator's machine |
 
 When something is needed that these cannot express, **the interface changes in
 nixcage first**: two commits in two repositories and a lock bump. Reaching
@@ -48,8 +50,9 @@ A change to what a role session is shows up there as a diff.
 
 ## Repository layout
 
-- `cageworks` -- the operator's CLI: `role`, `task`, `factory`. Reaches the
-  guest program through `nixcage exec` and knows nothing else about where the
+- `cageworks` -- the operator's CLI: `role`, `task`, `factory`, `up`, `down`,
+  `vm status`. Reaches the guest program over ssh to the factory's own machine,
+  argv NUL-framed through `xargs -0`, and knows nothing else about where the
   cages are.
 - `cageworks-container` -- the guest program, on the machine the cages are on.
   Holds the `role-*`, `task-*` and `factory-*` verbs and calls
@@ -209,7 +212,7 @@ person types it. A loop that picks ready work is what remains of PRD-002.
   where they are declared (`cageworks_name_ok`, `cageworks_shell_name_ok`),
   not where they are used.
 - A role session's cage is composed of nixcage flags and nothing else. Reaching
-  for anything outside the four primitives means the interface is wrong, and
+  for anything outside the three primitives means the interface is wrong, and
   the fix is upstream.
 - ADR-001 through ADR-008 describe code that now lives in nixcage. They are
   historical here: a change to cage behaviour is proposed in nixcage's

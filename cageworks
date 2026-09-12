@@ -3,9 +3,9 @@
 #
 # What an operator types. It files goals, reads back what is there, enters a
 # role by hand, and hands the factory's work to the operator's own repository.
-# None of it knows where the cages are or how one is reached: every guest
-# command goes through 'nixcage exec', which is nixcage's transport and the
-# only thing here that touches it (ADR-018).
+# None of it knows where the cages are: every guest command goes over ssh to
+# the machine cageworks built for that factory, and guest() is the only thing
+# here that touches the transport (ADR-018, ADR-019).
 
 set -euo pipefail
 

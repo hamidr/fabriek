@@ -40,8 +40,7 @@ needs that these cannot express is an interface change in nixcage first.
 `nixcage exec` is no longer used. Since PRD-004 phase 3 the operator's CLI
 reaches the guest over ssh with the machine's own key and forwarded port, as
 `root@localhost`, with the argv NUL-framed through `xargs -0` so nothing a
-declaration wrote is re-split. `CLAUDE.md` and the header of `cageworks`
-still name `nixcage exec` as the transport; they are stale.
+declaration wrote is re-split.
 
 ## Two programs
 
@@ -254,4 +253,3 @@ program with its dependency stubbed on `PATH`. `models/` holds
 - ADR-026, ADR-029, ADR-031 (proposed): none built. ADR-032 (proposed) is
   what the clone does; its status lags the code.
 - herdr is still in `cageworks` although ADR-026 point 8 removes it.
-- `CLAUDE.md` lists `nixcage exec` as a primitive in use; the code uses ssh.
