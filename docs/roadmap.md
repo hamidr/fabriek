@@ -82,8 +82,15 @@ Two commits in two repositories and a lock bump each (ADR-018).
 - 2.1 A generated machine flake per factory under the state directory, the
   worked repository as its input, `flake.lock` pinned per factory.
   `cageworks up` builds from the lock; a bad declaration fails the build.
-  Each role's devShell resolved at build time with `nix print-dev-env` and
-  handed to the session as environment.
+  Each role's devShell resolved at build time and handed to the session as
+  environment. Done 2026-09-12 on the branch: `modules/machine-spec.sh`
+  composes the spec inside a derivation from the same validators, and
+  `lib.factory` realises each role's devShell inputs into a profile at
+  `/etc/cageworks/roles/<role>/profile` (its `buildInputs`, not
+  `print-dev-env`: there is no shell to run a hook in). The clamped
+  declaration lands at `/etc/cageworks/declaration.json`; the guest program
+  starts reading it there in 4.1, when the executor does (3.3). 450 tests
+  green.
 - 2.2 Guest services: Forgejo on a `recordQuota` dataset; Valkey with no
   persistence and ACL users set at boot from per-role secrets; the bridge
   with the two rules; the proxy on the bridge address counting tokens per

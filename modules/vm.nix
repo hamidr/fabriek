@@ -53,11 +53,18 @@ nixpkgs.lib.nixosSystem {
         "system"
         "hostSystem"
         "workspaceRoots"
+        "declaration"
+        "notes"
+        "modules"
       ];
       ## Nothing of the operator's is shared in yet: no role works in this
       ## machine until PRD-004 phase 3, and a share nothing reads is a hole
       ## nobody asked for.
       nixcage.workspaceRoots = spec.workspaceRoots or [ ];
     }
-  ];
+  ]
+  ## What a factory adds to its own machine beyond the spec: the declaration
+  ## as a file and a profile per role (factory.nix). A list so that vm.nix
+  ## keeps taking a spec and knows nothing about what a factory is.
+  ++ (spec.modules or [ ]);
 }

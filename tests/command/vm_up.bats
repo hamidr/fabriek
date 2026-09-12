@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 # Building and booting one factory's machine (ADR-019).
 #
-# The builder and ssh are stubbed; evaluation is not. A repository really
-# declares a factory and the operator's config is really TOML, because those
-# are read rather than built and stubbing them would test the stub.
+# nix and ssh are stubbed; the operator's config is not. What cageworks hands
+# nix is a generated flake and a file of local facts (ADR-040), and those are
+# what is asserted on; what the build makes of them is machine_spec.bats'.
 
 load ../test_helper/common
 
@@ -17,7 +17,7 @@ setup() {
 	PATH="$STUB_DIR:$PATH"
 	export PATH
 
-	BUILD_CALLS="$TEST_TEMP_DIR/build-calls"
+	NIX_CALLS="$TEST_TEMP_DIR/nix-calls"
 	SSH_CALLS="$TEST_TEMP_DIR/ssh-calls"
 	RUNNER="$TEST_TEMP_DIR/runner"
 	mkdir -p "$RUNNER/bin"
@@ -31,15 +31,28 @@ while true; do sleep 0.2; done
 EOF
 	chmod +x "$RUNNER/bin/microvm-run"
 
-	# The builder. Records the spec it was given, because what cageworks asks
-	# for is the thing worth asserting on.
-	cat >"$STUB_DIR/cw-nix-build" <<EOF
+	# nix. Records every call, answers a build with the runner, a lock or an
+	# update by writing the lock file, and an eval with the spec a build would
+	# have produced for this factory: enough for the CLI to file a credential
+	# and to say what the clamp changed.
+	cat >"$STUB_DIR/cw-nix" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "\$CAGEWORKS_MACHINE_SPEC" >>"$BUILD_CALLS"
-echo "$RUNNER"
+printf '%s\n' "\$*" >>"$NIX_CALLS"
+case "\$1 \$2" in
+"build "*) echo "$RUNNER" ;;
+"flake lock") dir="\${3#path:}"; echo '{"stub":true}' >"\$dir/flake.lock" ;;
+"flake update") dir="\${5#path:}"; echo "{\"stub\":\"\$3\"}" >"\$dir/flake.lock" ;;
+"eval "*)
+	if grep -q credentials "$CAGEWORKS_MACHINES/acme/machine/local.json" && jq -e '.credentials["api.anthropic.com"]' "$CAGEWORKS_MACHINES/acme/machine/local.json" >/dev/null; then
+		echo '{"factory":"acme","egress":["api.anthropic.com"],"egressHeaders":{"api.anthropic.com":"x-api-key"},"notes":["cageworks: acme: egress: dropped api.openai.com, which the operator has not allowed"]}'
+	else
+		echo '{"factory":"acme","egress":["api.anthropic.com"],"egressHeaders":{},"notes":[]}'
+	fi
+	;;
+esac
 EOF
-	chmod +x "$STUB_DIR/cw-nix-build"
-	export CAGEWORKS_NIX_BUILD="$STUB_DIR/cw-nix-build"
+	chmod +x "$STUB_DIR/cw-nix"
+	export CAGEWORKS_NIX="$STUB_DIR/cw-nix"
 
 		cat >"$STUB_DIR/ssh" <<EOF
 #!/usr/bin/env bash
@@ -140,32 +153,78 @@ EOF
 	kill -0 "$(cat "$CAGEWORKS_MACHINES/acme/pid")"
 }
 
-# What cageworks asks for is the machine the declaration describes, met by the
-# ceilings this host allows, with the way in that belongs to this factory.
-@test "the machine asked for is the one the repository declared" {
+# What cageworks hands the build is a flake naming the repository and a file
+# of the facts only this host knows (ADR-040). The build composes the rest,
+# and machine_spec.bats asserts on that.
+@test "given a registered factory, up writes a machine flake whose project input is that repository" {
 	run_cageworks up acme
 	assert_success
+	local flake="$CAGEWORKS_MACHINES/acme/machine/flake.nix"
+	[ -f "$flake" ]
+	run grep -c "project.url = \"git+file://$REPO\"" "$flake"
+	assert_output 1
+	run grep -c "cageworks.url = \"path:$CAGEWORKS_ROOT\"" "$flake"
+	assert_output 1
+}
 
-	run jq -r '.factory, .cpus, .mem, .system, .hostSystem' "$BUILD_CALLS"
-	assert_line --index 0 "acme"
-	assert_line --index 1 "2"
-	assert_line --index 2 "4096"
+@test "the build is given the local facts: the way in, both systems, the ceilings and the credential headers" {
+	run_cageworks up acme
+	assert_success
+	local local_file="$CAGEWORKS_MACHINES/acme/machine/local.json"
+	run jq -r '.factory, .sshPort, .authorizedKey, .system, .hostSystem' "$local_file"
+	assert_line --index 0 acme
+	assert_line --index 1 "$(cat "$CAGEWORKS_MACHINES/acme/port")"
+	assert_line --index 2 "$(cat "$CAGEWORKS_MACHINES/acme/id_ed25519.pub")"
 	# The guest is Linux whatever the operator is on, and the runner that
 	# starts it is built for the operator's own host.
 	assert_line --index 3 --regexp '^(aarch64|x86_64)-linux$'
 	assert_line --index 4 --regexp '^(aarch64|x86_64)-(linux|darwin)$'
+	run jq -c '.caps, .credentials' "$local_file"
+	assert_line --index 0 '{"cores":8,"egress":["api.anthropic.com"],"memory":"16G"}'
+	assert_line --index 1 '{"api.anthropic.com":"x-api-key"}'
+	run grep -c "sk-secret-value" "$local_file"
+	assert_output 0
 }
 
-@test "the machine is told the one key that reaches it, and its own port" {
+@test "up builds the runner from the machine flake and keeps the spec the build produced" {
 	run_cageworks up acme
 	assert_success
+	run grep -c "^build --no-link --print-out-paths path:$CAGEWORKS_MACHINES/acme/machine#runner$" "$NIX_CALLS"
+	assert_output 1
+	run jq -r '.factory' "$CAGEWORKS_MACHINES/acme/spec.json"
+	assert_output acme
+}
 
-	local port key
-	port="$(cat "$CAGEWORKS_MACHINES/acme/port")"
-	key="$(cat "$CAGEWORKS_MACHINES/acme/id_ed25519.pub")"
-	run jq -r '.sshPort, .authorizedKey' "$BUILD_CALLS"
-	assert_line --index 0 "$port"
-	assert_line --index 1 "$key"
+@test "what the build clamped is said where the operator will see it" {
+	run_cageworks up acme
+	assert_success
+	assert_output --partial "api.openai.com"
+}
+
+@test "the first up locks the flake; a second keeps the lock; --update refreshes the project" {
+	run_cageworks up acme
+	assert_success
+	run grep -c "^flake lock path:$CAGEWORKS_MACHINES/acme/machine$" "$NIX_CALLS"
+	assert_output 1
+	run_cageworks down acme
+	run_cageworks up acme
+	assert_success
+	run grep -c "^flake lock " "$NIX_CALLS"
+	assert_output 1
+	run grep -c "^flake update project " "$NIX_CALLS"
+	assert_output 0
+	run_cageworks down acme
+	run_cageworks up acme --update
+	assert_success
+	run grep -c "^flake update project --flake path:$CAGEWORKS_MACHINES/acme/machine$" "$NIX_CALLS"
+	assert_output 1
+}
+
+@test "every up points the cageworks input at the cageworks that is running" {
+	run_cageworks up acme
+	assert_success
+	run grep -c "^flake update cageworks --flake path:$CAGEWORKS_MACHINES/acme/machine$" "$NIX_CALLS"
+	assert_output 1
 }
 
 @test "starting a machine that is already running builds nothing" {
@@ -175,8 +234,8 @@ EOF
 	assert_success
 	assert_output --partial "already running"
 
-	run wc -l <"$BUILD_CALLS"
-	assert_output --regexp '^ *1$'
+	run grep -c "^build " "$NIX_CALLS"
+	assert_output 1
 }
 
 @test "stopping a machine that is not running is not an error" {
@@ -237,31 +296,6 @@ EOF
 # ADR-025: where a factory's agents may reach is declared by the repository and
 # allowed by the operator, and the machine is built to the result. The
 # declaration asks for two endpoints and this host allows one.
-@test "the machine is built to reach what the operator allowed, not what the repository asked" {
-	run_cageworks up acme
-	assert_success
-
-	run jq -c '.egress' "$BUILD_CALLS"
-	assert_output '["api.anthropic.com"]'
-}
-
-@test "dropping an endpoint is said where the operator will see it" {
-	run_cageworks up acme
-	assert_success
-	assert_output --partial "api.openai.com"
-}
-
-@test "the machine is told which header carries a credential, and never the credential" {
-	run_cageworks up acme
-	assert_success
-
-	run jq -c '.egressHeaders' "$BUILD_CALLS"
-	assert_output '{"api.anthropic.com":"x-api-key"}'
-
-	run cat "$BUILD_CALLS"
-	refute_output --partial "sk-secret-value"
-}
-
 @test "the credential goes to the machine on stdin, never as an argument" {
 	run_cageworks up acme
 	assert_success
@@ -294,7 +328,7 @@ path = "$REPO"
 EOF
 	run_cageworks up acme
 	assert_success
-	run jq -c '.egressHeaders' "$BUILD_CALLS"
+	run jq -c '.egressHeaders' "$CAGEWORKS_MACHINES/acme/spec.json"
 	assert_output '{}'
 	[ ! -f "$TEST_TEMP_DIR/ssh-stdin" ]
 }
@@ -315,10 +349,3 @@ EOF
 # ADR-027 point 8. The ledger is bounded by what the factory declared and the
 # operator allowed, converted here for the same reason memory is: a person
 # writes a size and the thing on the far side counts MiB.
-@test "the machine is told how much its ledger may cost, in the units it counts" {
-	run_cageworks up acme
-	assert_success
-
-	run jq -r '.journalQuota' "$BUILD_CALLS"
-	assert_output "2048"
-}

@@ -24,10 +24,16 @@ cageworks_machine_spec() {
 
 	declaration="$(cageworks_declaration_validate <"$declaration_file")" || return 1
 
+	## What the clamp changed is kept in the spec rather than printed: this
+	## runs inside a build, whose log the operator never sees when it
+	## succeeds, and a dropped endpoint is something they must see.
+	local caps notes
 	caps="$(mktemp)"
+	notes="$(mktemp)"
 	jq '.caps // {}' "$local_file" >"$caps"
-	declaration="$(printf '%s' "$declaration" | cageworks_resources_clamp "$caps")" || {
-		rm -f "$caps"
+	declaration="$(printf '%s' "$declaration" | cageworks_resources_clamp "$caps" 2>"$notes")" || {
+		cat "$notes" >&2
+		rm -f "$caps" "$notes"
 		return 1
 	}
 	rm -f "$caps"
@@ -44,13 +50,15 @@ cageworks_machine_spec() {
 
 	printf '%s' "$declaration" | jq -c \
 		--slurpfile local "$local_file" \
+		--rawfile notes "$notes" \
 		--arg mem "$mem" \
 		--arg journal "$journal" '
 		. as $d
 		| $local[0] as $l
 		| { factory: $l.factory, system: $l.system, hostSystem: $l.hostSystem,
 		    sshPort: $l.sshPort, authorizedKey: $l.authorizedKey,
-		    declaration: $d }
+		    declaration: $d,
+		    notes: ($notes | split("\n") | map(select(. != ""))) }
 		+ (if $d.resources.cores then { cpus: $d.resources.cores } else {} end)
 		+ (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
 		+ (if $journal == "" then {} else { journalQuota: ($journal | tonumber) } end)
@@ -61,4 +69,5 @@ cageworks_machine_spec() {
 		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
 		     }
 		   else {} end)'
+	rm -f "$notes"
 }

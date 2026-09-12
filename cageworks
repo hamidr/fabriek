@@ -53,11 +53,10 @@ log_ok()   { echo -e "${GREEN}[cageworks]${NC} $*"; }
 log_warn() { echo -e "${YELLOW}[cageworks]${NC} $*"; }
 log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
 
-## What builds a machine. Named once for the same reason as the above: it is
-## the one thing here that runs a build, so it is the one thing a test has to
-## stand in for. Evaluation is not routed through it, because reading a
-## declaration is not building anything.
-NIX_BUILD="${CAGEWORKS_NIX_BUILD:-nix}"
+## What builds a machine, locks its flake and reads the spec back out of it.
+## Named once for the same reason as the above: everything nix does for a
+## machine goes through it, so it is the one thing a test has to stand in for.
+NIX="${CAGEWORKS_NIX:-nix}"
 
 ## Run a guest command on the factory's own machine and return its output.
 ##
@@ -333,70 +332,59 @@ guest_system() {
 ## What one factory's machine is, as the spec modules/vm.nix takes. Built from
 ## the declaration the repository committed, clamped by this host's ceilings,
 ## plus the way in that belongs to this factory alone.
-machine_spec() {
-  local factory="$1" dir declaration caps system host
+## The flake one factory's machine is built from (ADR-040). Written every
+## time, because it is ours and nothing in it is the operator's to keep; the
+## lock beside it is theirs and is only made on the first build or moved on
+## request. Two inputs: this cageworks, and the repository the factory works,
+## pinned by rev in the lock so that which declaration a machine runs is the
+## machine's identity. Beside the flake, the facts only this host knows, as a
+## file the build reads: the way in, both systems, the ceilings, and which
+## header carries which endpoint's credential. Never the credential.
+machine_flake() {
+  local factory="$1" machine="$2" dir config path
   dir="$(cageworks_machine_dir "$factory")" || return 1
-  system="$(guest_system)" || return 1
-  host="$(host_system)" || return 1
-
-  local path config
   config="$(cageworks_operator_config_path)"
   path="$(cageworks_operator_factory_path "$config" "$factory")" || return 1
-  declaration="$(cageworks_declaration_read "$path")" || return 1
+  path="$(cd "$path" 2>/dev/null && pwd)" || {
+    log_err "$factory's repository is not at the path the config names: $path"
+    return 1
+  }
+  mkdir -p "$machine"
 
-  caps="$dir/caps.json"
-  cageworks_operator_caps "$config" >"$caps" || return 1
-  declaration="$(printf '%s' "$declaration" | cageworks_resources_clamp "$caps")" || return 1
-
-  ## Memory is declared the way a person writes it and a hypervisor counts it
-  ## in MiB, so it is converted here rather than anywhere a comparison happens.
-  local mem=""
-  local declared
-  declared="$(printf '%s' "$declaration" | jq -r '.resources.memory // empty')"
-  if [[ -n "$declared" ]]; then
-    mem="$(cageworks_size_mib "$declared")" || return 1
-  fi
-
-  ## What the factory's ledger may cost, for the same reason and in the same
-  ## units (ADR-027 point 8). Unbounded it would fill the pool and take every
-  ## worktree with it, so a machine that is told nothing here falls back to its
-  ## own bound rather than to none.
-  local journal=""
-  declared="$(printf '%s' "$declaration" | jq -r '.resources.journalQuota // empty')"
-  if [[ -n "$declared" ]]; then
-    journal="$(cageworks_size_mib "$declared")" || return 1
-  fi
-
-  ## Which header carries which credential, for the endpoints this factory is
-  ## allowed. The credential itself is not here and never is: a spec is built,
-  ## logged and written beside the machine, and a secret in one would be a
-  ## secret in all three (ADR-025).
-  local creds
+  local caps creds
+  caps="$(cageworks_operator_caps "$config")" || return 1
   creds="$(cageworks_operator_credentials "$config")" || return 1
-
-  printf '%s' "$declaration" | jq -c \
+  jq -n \
     --arg factory "$factory" \
-    --arg system "$system" \
-    --arg hostSystem "$host" \
-    --arg key "$(cat "$dir/id_ed25519.pub")" \
+    --arg system "$(guest_system)" \
+    --arg hostSystem "$(host_system)" \
     --argjson port "$(cat "$dir/port")" \
-    --argjson creds "$creds" \
-    --arg mem "$mem" \
-    --arg journal "$journal" '
-      . as $d
-      | { system: $system, hostSystem: $hostSystem, factory: $factory,
-          sshPort: $port, authorizedKey: $key }
-      + (if $d.resources.cores then { cpus: $d.resources.cores } else {} end)
-      + (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
-      + (if $journal == "" then {} else { journalQuota: ($journal | tonumber) } end)
-      + (if $d.resources.egress then
-           { egress: $d.resources.egress
-           , egressHeaders:
-               ( $creds
-               | with_entries(select(.key as $k | ($d.resources.egress | index($k))))
-               | map_values(.header) )
-           }
-         else {} end)'
+    --arg key "$(cat "$dir/id_ed25519.pub")" \
+    --argjson caps "$caps" \
+    --argjson creds "$creds" '
+      { factory: $factory, system: $system, hostSystem: $hostSystem,
+        sshPort: $port, authorizedKey: $key, caps: $caps,
+        credentials: ($creds | map_values(.header)) }' >"$machine/local.json.new" || return 1
+  mv "$machine/local.json.new" "$machine/local.json"
+
+  cat >"$machine/flake.nix.new" <<EOF
+## Generated by cageworks for the factory $factory. Nothing here is edited by
+## hand; the lock beside it is what pins which declaration this machine runs.
+{
+  description = "The machine the factory $factory runs in";
+  inputs = {
+    cageworks.url = $(cageworks_nix_string "path:$CAGEWORKS_SELF");
+    project.url = $(cageworks_nix_string "git+file://$path");
+  };
+  outputs = { cageworks, project, ... }:
+    let factory = cageworks.lib.factory { inherit project; local = ./local.json; };
+    in {
+      packages.\${factory.hostSystem}.runner = factory.runner;
+      spec = factory.spec;
+    };
+}
+EOF
+  mv "$machine/flake.nix.new" "$machine/flake.nix"
 }
 
 ## The machines on this host. A factory runs in one of its own (ADR-019), and
@@ -407,30 +395,54 @@ machine_spec() {
 ## Build and boot one factory's machine. Idempotent: a machine already running
 ## is the state this asks for, so saying so and stopping is the whole of it.
 cmd_up() {
-  local factory="${1:-}"
+  local factory="${1:-}" update=""
   if [[ -z "$factory" ]]; then
-    log_err "usage: cageworks up <factory>"
+    log_err "usage: cageworks up <factory> [--update]"
     exit 1
   fi
-
+  [[ "${2:-}" == --update ]] && update=1
   if cageworks_machine_running "$factory"; then
     log_ok "$factory is already running"
     return
   fi
-
-  local dir spec runner
+  local dir machine runner
   dir="$(cageworks_machine_ensure "$factory")" || exit 1
-  spec="$(machine_spec "$factory")" || exit 1
+  machine="$dir/machine"
+  machine_flake "$factory" "$machine" || exit 1
 
-  ## The spec reaches nix through the environment rather than through the
-  ## expression, so nothing in a declaration can be read as Nix on the way.
+  ## The project is pinned once and moved only when asked, because which
+  ## declaration a machine runs is its identity (ADR-040). cageworks itself
+  ## follows the one running, because a machine built from an older cageworks
+  ## than the CLI driving it is the drift the lock exists to prevent.
+  if [[ ! -f "$machine/flake.lock" ]]; then
+    "$NIX" flake lock "path:$machine" || {
+      log_err "could not pin the repository $factory works"
+      exit 1
+    }
+  elif [[ -n "$update" ]]; then
+    "$NIX" flake update project --flake "path:$machine" || {
+      log_err "could not move $factory to the repository's current commit"
+      exit 1
+    }
+  fi
+  "$NIX" flake update cageworks --flake "path:$machine" || exit 1
+
   log_info "Building the machine $factory runs in..."
-  runner="$(CAGEWORKS_MACHINE_SPEC="$spec" "$NIX_BUILD" build --no-link --print-out-paths \
-    --impure --expr \
-    "((builtins.getFlake \"$CAGEWORKS_SELF\").lib.machine (builtins.fromJSON (builtins.getEnv \"CAGEWORKS_MACHINE_SPEC\"))).config.microvm.declaredRunner")" || {
+  runner="$("$NIX" build --no-link --print-out-paths "path:$machine#runner")" || {
     log_err "could not build the machine $factory runs in"
     exit 1
   }
+  ## The spec the build composed, read back for what this side still does
+  ## with it: filing credentials, and saying what the clamp changed.
+  "$NIX" eval --json "path:$machine#spec" >"$dir/spec.json.new" || {
+    log_err "could not read back the spec $factory was built from"
+    exit 1
+  }
+  mv "$dir/spec.json.new" "$dir/spec.json"
+  local note
+  while IFS= read -r note; do
+    [[ -n "$note" ]] && log_info "$note"
+  done < <(jq -r '.notes[]?' "$dir/spec.json")
 
   ## Volumes are made in the working directory, which is why the runner is
   ## started in the machine's own: its disk belongs beside its key and its
@@ -444,8 +456,7 @@ cmd_up() {
   disown "$runner_pid" 2>/dev/null || true
   echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
-  printf '%s\n' "$spec" >"$dir/spec.json"
-  give_credentials "$factory" "$spec" || exit 1
+  give_credentials "$factory" "$(cat "$dir/spec.json")" || exit 1
   log_ok "$factory is running"
 }
 
@@ -644,7 +655,9 @@ ${BOLD}Commands:${NC}
   factory integrate <factory> <commit>
                      What a factory is doing, handing its work to you, and
                      starting it again after it stopped itself
-  up <factory>       Build and boot the machine a factory runs in
+  up <factory> [--update]
+                     Build and boot the machine a factory runs in, pinned to
+                     the repository's commit; --update moves the pin to HEAD
   down <factory>     Shut it down, reporting a stop that cannot complete
   vm status          The machines on this host, and how each is reached
   version            Print version

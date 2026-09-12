@@ -85,3 +85,9 @@ spec() { cageworks_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 	run jq -c '[has("mem"), has("journalQuota")]' <<<"$(spec)"
 	assert_output '[false,false]'
 }
+
+@test "what the clamp changed rides in the spec, because a build's log is not where an operator looks" {
+	run jq -r '.notes | join("; ")' <<<"$(spec)"
+	assert_output --partial "cores asked for 12"
+	assert_output --partial "api.openai.com"
+}
