@@ -5,44 +5,44 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## What is cageworks
 
 cageworks runs a factory: one git repository assigned to a set of declared
-roles that work it at the same time, each in a cage of its own. A role is a
-worker, not a project -- it has its own uid, its own permanent worktree, its
-own home and its own signing key (ADR-010, ADR-009).
+roles that work it at the same time, each in a cage of its own, on a machine
+of its own. A role is a worker, not a project: its own uid, its own dataset
+and home, its own signing key, its own forge account and bus user (ADR-010,
+ADR-009, ADR-033, ADR-036).
 
 It does not run cages. [nixcage](https://github.com/hamidr/nixcage) does, and
-is a flake input pinned in `flake.lock`. The line between them is a person
-entering one project by hand: everything such a session needs is nixcage's
-(isolation, uid mapping, binds, environment selection, git worktree
-resolution, secrets, storage, the macOS VM), and everything that exists only
-because several named workers share one repository is ours (roles,
-capabilities, tasks, workflows, stage policies, the git-bug record,
-integration, the supervisor). ADR-018 is that decision;
-`docs/PRD-003-software-factory.md` is what was built; `docs/TRACKER.md`
-indexes the rest.
+is a flake input pinned in `flake.lock`. Everything a single session needs is
+nixcage's (isolation, uid mapping, binds, a private network per cage,
+storage); everything that exists only because several named workers share one
+repository is ours (the declaration built into a machine, the board and the
+record on a forge, the bus, the executor, the decider, the loop, the relay,
+the TUI). ADR-018 is that decision; ADR-033 through ADR-040 and PRD-006 are
+the design; `docs/architecture.md` is what is built; `docs/roadmap.md` is
+what is left; `docs/TRACKER.md` indexes the rest.
 
-A factory is declared in the repository it works rather than in the
-configuration of the machine running it (ADR-020), and the operator keeps one
-plain file saying what a factory may cost here. There is no NixOS module and
-no `nixos-rebuild` in the operator's path.
+A factory is declared in the repository it works (ADR-020) and built into its
+machine's image from a per-factory lock (ADR-040). The operator keeps one
+plain file saying what a factory may cost here. Nothing a cage does is
+trusted: the executor validates every verb, the proxy counts the spend, and a
+cage has no route off the machine (ADR-037).
 
 ## The interface with nixcage
 
 cageworks uses three exported primitives and nothing else. It writes no nspawn
 arguments, runs no `zfs` and allocates no uid. The only SSH connection it opens
 is to a machine it built itself, over the key and port it allocated for that
-factory (ADR-019); `nixcage exec` reached nixcage's shared VM and is not used
-since PRD-004 phase 3.
+factory (ADR-019).
 
 | Primitive | Used for |
 | --- | --- |
-| `nixcage-container enter [--uid n] [--user name] [--subject name] [--home path] [--shell name] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session |
-| `nixcage-container uid <principal> [subject]` | A role's uid and its agent's, allocated once and never reissued |
-| `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree, owned and bounded |
+| `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX] [--no-nix-daemon] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session |
+| `nixcage-container uid <principal>` | A role's uid, allocated once and never reissued |
+| `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree and the record's dataset, owned and bounded |
 
 When something is needed that these cannot express, **the interface changes in
 nixcage first**: two commits in two repositories and a lock bump. Reaching
-around them -- reading nixcage's state directory, its SSH key, its port, its
-internal function names -- is the coupling ADR-018 exists to remove.
+around them, reading nixcage's state directory, its SSH key, its port, its
+internal function names, is the coupling ADR-018 exists to remove.
 
 `tests/command/seam.bats` is the gate on this. It stubs `nixcage-container` on
 `PATH`, records the argv a role session produces, and asserts the whole line.
@@ -50,155 +50,126 @@ A change to what a role session is shows up there as a diff.
 
 ## Repository layout
 
-- `cageworks` -- the operator's CLI: `role`, `task`, `factory`, `up`, `down`,
-  `vm status`. Reaches the guest program over ssh to the factory's own machine,
-  argv NUL-framed through `xargs -0`, and knows nothing else about where the
-  cages are.
-- `cageworks-container` -- the guest program, on the machine the cages are on.
-  Holds the `role-*`, `task-*` and `factory-*` verbs and calls
-  `nixcage-container` as a subprocess. A real script rather than a Nix string
-  so shellcheck reads it and bats drives it.
-- `modules/names.sh` -- the names cageworks accepts, checked where they are
-  declared. A factory, role or capability name reaches a path, a ref and a
-  container name; a devShell name reaches someone else's flake.
-- `modules/*.sh` -- everything the two programs source by store path.
-  `role-worktree.sh` gives a role its worktree and the ACLs it needs;
-  `signing.sh` gives it an identity; `journal.sh` gives it a ledger it can
-  write and cannot edit; `factory-config.sh`,
-  `workflow-config.sh`, `factory-clone.sh` read the declaration and the clone;
-  `task-store.sh`, `caps.sh`, `record.sh`, `integrate.sh` are the supervisor's
-  mechanics. Shell files rather than inline strings so the suite can source
-  them.
-- `modules/repo-declaration.sh` -- the factory a repository declares about
-  itself (ADR-020), read from the commit. Validation is pure and needs neither
-  nix nor git; reading is a thin wrapper around one `nix eval`.
-- `modules/operator-config.sh` -- the one file the operator owns:
-  `~/.config/cageworks/config.toml`, the ceilings a factory may reach here and
-  the register of which factories live here. nix parses the TOML, because nix
-  is already what reads a declaration.
-- `modules/schema.sh` -- what "a closed schema" means, shared by both of the
-  above. Two implementations of closed would drift, and the way they would
-  drift is one accepting what the other refuses.
-- `modules/resources.sh` -- what a factory may ask of the machine, and the
-  clamp that meets it against the operator's ceiling. One table, because the
-  declaration's schema, the operator's schema and the clamp all read it. One
-  entry in it is a permission rather than an amount: `egress` meets its ceiling
-  by intersection, and meets an absent ceiling as an empty one (ADR-025).
-- `modules/sizes.sh` -- a declared size as bytes. Comparing the strings would
-  put 8G above 16G.
-- `modules/machine.sh` -- where a factory's machine lives on the operator's
-  host, its key, its port, and the session it is spawned into. The half of a
-  machine that needs no hypervisor to be true.
-- `modules/vm.nix`, `modules/vm-guest.nix` -- the machine itself (ADR-019):
-  one microVM per factory, nixcage's host module inside it, and a ZFS pool
-  named after the factory that a wrong disk refuses to import into. The guest
-  also drops egress and names the exceptions by uid (ADR-025), because a
-  packet filter cannot resolve a name and the allowlist is names. It carries
-  the factory's journal too (ADR-027): a namespace of its own so no role's
-  flood reaches another factory's entries, a dataset for it on the pool, the
-  proxy's metadata-only access log, and the bpftrace probes that answer about
-  a role without asking the role.
-- `modules/role-guidance.md` -- what every role is told about working in a
+- `cageworks`: the operator's launcher: `up`, `down`, `vm status`, `role`,
+  `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console`.
+  Reaches the guest program over ssh to the factory's own machine, argv
+  NUL-framed through `xargs -0`, and knows nothing else about where the cages
+  are.
+- `cageworks-container`: the guest program. Composes a role session
+  (`role-enter`, `role-worktree`), prepares the factory on the machine
+  (`factory-prepare`), and writes the operator's interventions to the bus
+  (`task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
+  `factory-watch`). A real script rather than a Nix string so shellcheck reads
+  it and bats drives it.
+- `factory/`: the TypeScript package, one for all of the executor
+  (`src/executor`), the loop as a pi extension (`src/extension`), the decider
+  (`src/decider`), the relay (`src/relay`) and the TUI (`src/tui`), so the
+  vocabulary (`src/vocabulary.ts`) and the bus messages (`src/messages.ts`)
+  are defined once. No runtime dependency and no npm: built with `tsc`, tested
+  with node's own runner, pi's types linked in from the pi in the closure
+  (`factory/default.nix`).
+- `modules/names.sh`: the names cageworks accepts, checked where they are
+  declared. A role name is also its cage's, and nspawn names the veth after
+  the cage, so it is at most twelve characters; `decider` is reserved.
+- `modules/*.sh`: what the two programs source by store path.
+  `machine-spec.sh` composes a machine's spec inside the build;
+  `machine-plan.sh` reads the plan and the profiles the build put on the
+  machine and composes the actor's part of a session; `forge.sh` and
+  `bus.sh` prepare the forge and the bus once and confirm them after;
+  `operator.sh` writes the operator stream; `role-worktree.sh`, `signing.sh`,
+  `factory-clone.sh`, `factory-config.sh` are a role's worktree, key, clone
+  and command; `repo-declaration.sh`, `schema.sh`, `resources.sh`, `sizes.sh`,
+  `operator-config.sh` are the declaration's and the operator's schemas and
+  the clamp between them; `machine.sh` is where a machine lives on the host.
+- `modules/factory.nix`: `lib.factory`, one factory's machine from the
+  repository it works and the facts only the host knows (ADR-040). Validation
+  and the clamp run inside a derivation by the same shell modules.
+- `modules/vm.nix`, `modules/vm-guest.nix`, `modules/guest/*.nix`: the machine
+  (ADR-019): nixcage's host module inside it, a ZFS pool named after the
+  factory, and one module per service: `bridge.nix` (the private network and
+  its two rules), `board.nix` (Forgejo), `bus.nix` (Valkey and its ACL),
+  `proxy.nix` (the counting proxy), `probes.nix`, `floor.nix` (pi and the
+  loops), `executor.nix`.
+- `modules/role-guidance.md`: what every role is told about working in a
   cage, bound read-only into a role session.
-- `modules/package.nix` -- the two programs, wrapped with the module directory
+- `modules/package.nix`: the two programs, wrapped with the module directory
   they source and the tools they run.
-- `tests/manual/` -- what cannot be a bats test because it needs a real
-  machine. `stop-and-start.sh` is PRD-004 phase 2's exit condition: ten stop
-  and start cycles with the pool checked against a manifest each time.
-  `egress.sh` is ADR-025's: which uid may leave the machine, who may read the
-  credential, and whether a uid that reaches no host still reaches the proxy.
-- `models/` -- the Alloy and Quint models the design gate requires. They
-  describe the factory, and change in the same commit as the invariants they
-  constrain.
-- `examples/factory-project/` -- a repository worked by a factory: its
-  `cageworks.nix` declares the factory (ADR-020) and its flake defines one
-  devShell per specialist, which is what a role's `shell` names (ADR-016).
-- `docs/` -- ADRs, PRDs and generated TRACKER.md.
+- `tests/manual/`: what cannot be a bats test because it needs a machine.
+  `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
+  success criterion; `stop-and-start.sh` is PRD-004 phase 2's; `lib.sh` is
+  what they share.
+- `models/vm-lifecycle.qnt`: the machine's lifecycle, the one model kept.
+- `examples/factory-project/`: a repository worked by a factory.
+- `docs/`: ADRs, PRDs, the generated TRACKER.md, `architecture.md`,
+  `roadmap.md`.
 
 ## Development
 
 ```bash
-nix develop                          # bash, jq, shellcheck, bats, git, git-bug
+nix develop                          # bash, jq, shellcheck, bats, git, node
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
-nix develop --command bats --recursive tests/       # ~340 tests, a few minutes
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/stop-and-start.sh   # needs a real machine
-nix develop --command bats tests/unit/task_store.bats
-nix develop --command bats -f "sticks to the role" tests/unit/task_store.bats
+nix develop --command bats --recursive tests/       # ~310 scenarios, minutes
+nix develop --command bats -f "one invocation" tests/command/seam.bats
+nix build .#factory                  # compiles and runs its 97 scenarios
+nix develop --command bash -c 'cd factory && npm test'
+CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
 ```
 
-There is no build step -- both scripts run directly (`bash cageworks help`).
+There is no build step for the shell programs; both run directly. The
+TypeScript package is built with `tsc` and nothing else.
 
 `tests/unit/` sources a shell module and calls its functions. `tests/command/`
 drives a program with its dependency stubbed on `PATH`: the CLI tests stub
-`nixcage`, and `seam.bats` stubs `nixcage-container`. Both stubs are the seam,
-which is what makes it something the suite asserts on rather than something it
-crosses.
+`nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
+the forge, `operator.bats` stubs `valkey-cli`; `factory_flake.bats` and
+`guest_services.bats` evaluate `lib.factory` for real. The package's tests
+drive each core against fakes of its interfaces and each adapter against a
+local fake server. Every test name reads as a scenario.
 
-Documents and models have their own checks:
+Documents have their own checks:
 
 ```bash
 docmeta-check docs                   # frontmatter is valid
 docmeta-tracker docs                 # regenerate docs/TRACKER.md, never by hand
-alloy6 exec models/factory-structure.als
-quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
 ```
 
 ## Architecture
 
-Both programs follow a command-dispatch pattern: `main()` at the bottom
-dispatches to `cmd_*` functions.
+`docs/architecture.md` describes the branch as built, component by component.
+The short form:
 
-### Key subsystems
+**A role session** (`cmd_role_enter`) composes one `nixcage-container enter`
+line in a fixed order that `seam.bats` asserts whole: the cage on the bridge
+at its planned address with no daemon, its profile on `PATH`, and for a
+supervised run the loop, its two credentials and the environment the loop
+reads.
 
-**A role session** (`cmd_role_enter`) -- resolves the role's declaration, asks
-nixcage for its uid, prepares its worktree, and composes one
-`nixcage-container enter` invocation out of flags. Each flag was a special
-case inside the cage before ADR-018; the order they are built in is fixed,
-because `seam.bats` asserts the whole line.
+**The loop** (`factory/src/extension`) announces ready, takes an assignment
+pointer, works the issue in a fresh process, comments its outcome under its
+own token, and ends so the next process is a fresh session. Blocked holds.
 
-An operator entering by hand forwards their own agent (`--agent`, which
-carries `SSH_AUTH_SOCK` across `sudo` and is read on the far side because on
-macOS the socket is the VM's). A supervised run gets `--no-agent` and a key of
-its own instead, so it can sign but cannot push, pull a private repository, or
-authenticate anywhere (ADR-009).
+**The executor** (`factory/src/executor`) is uncaged and content-blind: it
+validates the six verbs against the declaration and the board, writes
+`assigning` before it sends and `assigned` on the ack, reconciles on start
+without ever creating an assignment from an actor's answer, and moves a
+stage only on a signed commit.
 
-**A role's worktree** (`role-worktree.sh`) -- taken from the factory's own
-clone rather than the operator's repository, because role ownership needs a
-filesystem carrying ownership and ACLs and a macOS operator's share has
-neither; the supervisor syncs the two (ADR-011). The directory is asked for
-through `storage ensure` rather than made: whether it becomes a dataset with a
-quota on it is nixcage's decision and cageworks is not told which it got
-(ADR-017).
+**The decider** (`factory/src/decider`) is a cage that reads everything and
+asks in six verbs. **The relay and the TUI** (`factory/src/relay`,
+`factory/src/tui`) are the operator's one face over one channel.
 
-**Work** -- a task, one file per field, written by rename (ADR-014). A
-pipeline's stage names a capability rather than a role, roles declare what they
-provide, and taking a task resolves the first idle capable role in declaration
-order; after that the task sticks to it, because the branch is in that role's
-namespace. Each stage states its own `ready` (enforced, presence only) and
-`done` (prose, handed to the role, never checked) -- ADR-015. A role's
-toolchain is a devShell of the project's own flake that its declaration names
-(ADR-016).
+### The invariants
 
-**The record** -- git-bug inside the repository, so there is no shared database
-anywhere (ADR-013). The supervisor is the only writer and acts as each role in
-turn.
-
-**State** -- `/var/lib/nixcage`, unchanged by the split. ADR-017 puts that
-directory on nixcage's pool, and the storage primitive can only name a dataset
-for a path the pool already mounts, so a state root of our own would have
-bought a tidier name and cost every existing factory its datasets.
-
-### Two invariants hold the design up
-
-The supervisor is uncaged and content-blind: it reads declarations and
-metadata, never a task body, a comment or a document, and mentions are labels
-rather than parsed prose. And nothing a role writes ever reaches a command
-line -- briefs, bodies and outcomes are files.
+1. The executor is uncaged and content-blind; the decider is caged and reads
+   everything. Nothing a role or the decider writes reaches a command line.
+2. A cage holds no credential that reaches off the machine, and no route.
+3. A role session's cage is composed of nixcage flags and nothing else.
 
 ### What is not built
 
-Nothing dispatches: `cageworks task run <factory> <id>` starts one run and a
-person types it. A loop that picks ready work is what remains of PRD-002.
+`docs/roadmap.md` keeps the list beside each item. The record's re-import,
+the TUI's forge-side views, and the three real-machine proofs are open.
 
 ## Conventions
 
@@ -208,12 +179,16 @@ person types it. A loop that picks ready work is what remains of PRD-002.
   sources, never inline in a command string.
 - A declared command is argv, one word per element, never a shell line: the
   declaration is data and nothing in it is re-split on the way.
-- Names that reach a path, a ref, a uid or a flake reference are validated
-  where they are declared (`cageworks_name_ok`, `cageworks_shell_name_ok`),
-  not where they are used.
+- Names that reach a path, a ref, a uid, an interface or a flake reference are
+  validated where they are declared (`cageworks_name_ok`,
+  `cageworks_role_name_ok`, `cageworks_shell_name_ok`), not where they are
+  used.
 - A role session's cage is composed of nixcage flags and nothing else. Reaching
   for anything outside the three primitives means the interface is wrong, and
   the fix is upstream.
+- Every component is built behaviour first: scenarios written and seen failing
+  before code, in the runner the component already has (`docs/roadmap.md`,
+  Method).
 - ADR-001 through ADR-008 describe code that now lives in nixcage. They are
   historical here: a change to cage behaviour is proposed in nixcage's
   repository, not in this tracker. Numbering continues at ADR-018.

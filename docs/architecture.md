@@ -1,10 +1,10 @@
 # Architecture, as built
 
-What cageworks is at commit `4aed0f4` (2026-09-12), read from the code rather
-than from the decisions. Where an ADR's status and the code disagree, this
-file says what the code does and names the ADR. `REDESIGN-LOG.md` at the
-repository root describes a design that is agreed and not built; nothing here
-comes from it.
+What cageworks is on the `redesign` branch as of 2026-09-12, read from the
+code rather than from the decisions. Where an ADR's status and the code
+disagree, this file says what the code does and names the ADR. The decisions
+are ADR-033 through ADR-040 and PRD-006; `docs/roadmap.md` says what of them
+is built and what is not.
 
 This file carries no docmeta frontmatter on purpose: it is not a decision and
 `docmeta-tracker` should not index it. Regenerate it by hand when the
@@ -13,15 +13,17 @@ architecture changes, and say which commit it describes.
 ## What it is
 
 A factory is one git repository worked by a set of declared roles at the same
-time, each in a cage of its own. A role is a worker, not a project: it has a
-permanent uid, a permanent worktree, a home and a signing key (ADR-010,
-ADR-009). The repository declares its own factory (ADR-020), the operator
-keeps one file saying what a factory may cost on this host, and cageworks
-builds one virtual machine per factory to run it in (ADR-019).
+time, each in a cage of its own, on a machine of its own. A role is a worker:
+a permanent uid, a permanent home and dataset, a signing key, a forge
+account with an issue-scoped token, a bus user (ADR-010, ADR-009, ADR-036,
+ADR-033). The repository declares its own factory (ADR-020, ADR-040), the
+operator keeps one file saying what a factory may cost on this host, and
+cageworks builds one virtual machine per factory to run it in (ADR-019).
 
-Cages are nixcage's. cageworks holds only what exists because several named
-workers share one repository: roles, capabilities, tasks, workflows, stage
-policies, the record, integration and the supervisor (ADR-018).
+Nothing a cage does is trusted. A machine-provided decider judges, an uncaged
+executor acts, the forge on the machine is the board and the record, the bus
+carries pointers and events, the proxy holds the model credential and counts
+spend, and a cage has one address on a bridge with no route off the machine.
 
 ## The boundary with nixcage
 
@@ -30,226 +32,188 @@ Three primitives, and nothing else, cross it:
 | Primitive | Used for |
 | --- | --- |
 | `nixcage-container enter [flags] <name> <project> [cmd]` | every role session |
-| `nixcage-container uid <principal> [subject]` | a role's uid and its agent's, allocated once |
-| `nixcage-container storage ensure <path> <uid> [quota]` | a role's worktree, owned and bounded |
+| `nixcage-container uid <principal>` | a role's uid, allocated once |
+| `nixcage-container storage ensure <path> <uid> [quota]` | a role's worktree and the record's dataset |
+
+Two options on `enter` were added upstream for this design (nixcage
+ADR-011): `--network <bridge>:<addr>/<prefix>` gives a cage one veth on the
+factory's bridge and no other interface, and `--no-nix-daemon` leaves the
+daemon socket unbound and runs the command in the base userland with
+`NIXCAGE_PATH_PREFIX` on the front of `PATH`.
 
 `tests/command/seam.bats` stubs `nixcage-container` on `PATH`, records the
-argv a role session produces and asserts the whole line. Anything cageworks
-needs that these cannot express is an interface change in nixcage first.
+argv a role session produces and asserts the whole line. The operator's CLI
+reaches the machine over ssh with the machine's own key and forwarded port,
+argv NUL-framed through `xargs -0`.
 
-`nixcage exec` is no longer used. Since PRD-004 phase 3 the operator's CLI
-reaches the guest over ssh with the machine's own key and forwarded port, as
-`root@localhost`, with the argv NUL-framed through `xargs -0` so nothing a
-declaration wrote is re-split.
+## Two programs and one package
 
-## Two programs
+**`cageworks`** (bash) is the launcher on the operator's host: `up`, `down`,
+`vm status`, `role <factory> <role>` to enter by hand, `role stop`, `role
+steer`, `task file`, `factory mirror`, `factory watch`, `factory send`,
+`factory console`. Every verb but the machine's own goes to the guest over
+ssh.
 
-Both are bash, dispatching from `main()` at the bottom to `cmd_*` handlers.
-There is no build step. Shared logic lives in `modules/*.sh`, sourced by
-store path, so `shellcheck` reads it and `bats` sources it.
+**`cageworks-container`** (bash) is the guest program: `role-enter`,
+`role-worktree`, `factory-prepare`, and the operator's interventions
+`task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
+`factory-watch`, `factory-roles`. It composes sessions and writes the
+operator stream; it decides nothing and runs no loop.
 
-**`cageworks`** runs on the operator's host. Verbs: `up`, `down`, `vm status`,
-`role`, `task file|list|show|thread|run|answer`, `factory
-status|sync|resume|reports|integrate`. Every role, task and factory verb is
-forwarded to the guest over ssh; the CLI knows a machine's key, port and disk
-directory and nothing about where the cages are. For `role` and the first
-`task file` it also reads the origin URL off the operator's checkout named in
-`config.toml` and passes it as `--repository`, because a machine cannot clone
-a path on the operator's host.
-
-**`cageworks-container`** runs on the machine the cages are on. Verbs:
-`role-enter`, `role-worktree`, `task-file|list|show|thread|run|answer`,
-`factory-sync|integrate|resume|reports|status`. It calls `nixcage-container`
-as a subprocess. It is not offered as a package on darwin, because it needs
-`setfacl`.
+**`factory/`** (TypeScript, one package, no runtime dependency) holds the
+executor, the extension that is the loop, the decider, the relay and the
+TUI. It is built by the flake with `tsc` and tested with node's own runner;
+pi's types are linked in from the pi in the closure. `nix build .#factory`
+runs its 97 scenarios.
 
 ## The machine
 
-`cageworks up <factory>` builds a NixOS microVM from `modules/vm.nix`
-(nixpkgs, microvm.nix, nixcage's host module, `modules/vm-guest.nix` and the
-guest program built from this repository) and starts it detached in a session
-of its own. The machine's directory on the operator's host holds its disk,
-its keypair, its forwarded port, its spec and its console log
-(`modules/machine.sh`). One machine per factory; no factory can read
-another's way in because the directories are separate.
+`cageworks up <factory>` writes a flake under the machine's directory whose
+inputs are this cageworks and the worked repository, pinned by rev in a lock
+that `--update` moves, plus `local.json` with the port, the key, both
+systems, the operator's ceilings and which header carries which endpoint's
+credential (`machine_flake` in `cageworks`). `lib.factory`
+(`modules/factory.nix`) validates and clamps the declaration inside a
+derivation by the same shell modules the CLI uses (`modules/machine-spec.sh`),
+realises each role's devShell inputs into a profile, bakes the decider's
+policy file, and hands the spec to `modules/vm.nix`. A bad declaration fails
+the build with its own message; what the clamp changed rides in the spec and
+is printed by `up`.
 
-Inside the guest (`modules/vm-guest.nix`):
+The guest (`modules/vm-guest.nix` and `modules/guest/`):
 
-- a ZFS pool named `cageworks-<factory>`, found by disk serial, so a disk
-  attached to the wrong machine refuses to import (ADR-017, ADR-019);
-- nixcage's state directory `/var/lib/nixcage` on that pool, unchanged by
-  the split (ADR-017);
-- egress dropped by nftables for every uid but the proxy's, and the proxy
-  (nginx) holding the model credential and injecting it per host on the
-  factory's `egress` allowlist (ADR-025). The credential is piped in over
-  ssh after boot and read from stdin, never argv;
-- a journald namespace per factory with its own dataset and quota
-  (`journalQuota`), the proxy's metadata-only access log, and bpftrace
-  probes on `sched_process_exec`, `sched_process_exit` and socket connect
-  (ADR-027);
-- sshd on the forwarded port, reached with the machine's own key.
+- `bridge.nix`: `cageworks-<factory>` at 10.77.0.1/24, configured without
+  carrier; the decider at .2, roles at .10 onward in declaration order;
+  `/etc/cageworks/bridge.json` is the plan. A bridge-family nftables table
+  drops a packet whose source is not its port's address, drops IPv6 and ARP
+  claims, and drops cage to cage (ADR-037).
+- `board.nix`: Forgejo on the bridge, on a dataset bounded by `recordQuota`,
+  its tmpfiles rules re-run after the mount; a `forgejo` wrapper for the
+  guest program (ADR-036).
+- `bus.nix`: Valkey on the bridge, no persistence; `cageworks-bus-acl`
+  applies default-deny users from password files under the state
+  directory, read and write patterns kept apart per role (ADR-033).
+- `proxy.nix`: nginx with njs on the bridge, injecting the credential per
+  allowed host, counting tokens per source address in memory, answering
+  `/status`, refusing with 429 at `tokenCeiling` (ADR-037).
+- `probes.nix`: bpftrace exec, exit and connect events to a capped `probes`
+  stream, written as a user that can write nothing else (ADR-038).
+- `floor.nix`: pi on every cage, the extension and the decider's loop under
+  `/etc/cageworks/pi` and `/etc/cageworks/pi-decider` with a `models.json`
+  pointing pi at the proxy (ADR-030, ADR-035).
+- `executor.nix`: the `cageworks-executor` unit, as root, restarted always.
 
-`tests/manual/stop-and-start.sh` and `tests/manual/egress.sh` are the checks
-that need a real machine.
+Egress for the machine's own processes is still by uid (ADR-025's chain):
+root and the proxy may leave. The clamped declaration is at
+`/etc/cageworks/declaration.json`; the guest program reads it there and
+evaluates nothing.
 
-## Declaration and operator configuration
+## Prepare
 
-A repository declares its factory as the `cageworks` output of its own flake,
-read from the commit and not the working tree (`modules/repo-declaration.sh`,
-one `nix eval`). The schema is closed: an unknown key is refused by name
-(`modules/schema.sh`). `examples/factory-project/cageworks.nix` is the
-reference shape: `name`, `roles.<r>.{command,provides,shell}`,
-`workflows.<w>.{stages,budget,consults}`, `resources`.
+After boot and the credential, `up` runs `factory-prepare` on the machine
+(`modules/forge.sh`, `modules/bus.sh`). Once and then confirmed: a password
+per bus user and the ACL applied; the operator's account and token; the
+repository `operator/<factory>`; per role an account with read on it, a
+`write:issue` token and a pinned `memory` issue opened as the role; for the
+decider an account and a `read:issue` token; a label per stage's capability
+plus `blocked` and `memory`. Tokens and passwords are files under the state
+directory, owned by the role's uid, and reach the API as a header read from
+a file.
 
-A role's `command` is argv, one word per element, never re-split. Its
-`shell` names a devShell of the same flake, which is that role's toolchain
-(ADR-016). Names that reach a path, a ref, a uid or a flake reference are
-validated where declared (`modules/names.sh`).
+## A role session
 
-The operator's file is `~/.config/cageworks/config.toml`: `[caps]` ceilings,
-`[factories.<name>] path`, and credentials keyed by host
-(`modules/operator-config.sh`). `modules/resources.sh` clamps every declared
-resource to the ceiling and reports which field it clamped. `egress` is a
-permission: it meets its ceiling by intersection and an absent ceiling as an
-empty one (ADR-025).
+`cmd_role_enter` composes one `nixcage-container enter` line in a fixed
+order, asserted whole by `seam.bats`: `--uid`, `--user`, `--home`,
+`--network` from the plan, `--no-nix-daemon`, the profile on
+`NIXCAGE_PATH_PREFIX` when the build realised one, then `--auth-sock` (by
+hand) or `--no-agent` (supervised), the guidance bind, the task bind if
+given, the signing binds, and for a supervised run the actor's part: pi's
+directory bound at `PI_CODING_AGENT_DIR`, the bus password and forge token
+bound read-only, and the `CAGEWORKS_*` environment naming the role, its
+capabilities, the bus, the forge, the repository and the proxy. The cage is
+named after the role, because nspawn names its veth after the cage, and a
+role name is at most twelve characters. The decider's session is the same
+line with the machine's own loop, the declaration and the policy bound in,
+and `pi --mode rpc` as its command.
 
-## A role
+## The loop
 
-A role is a nixcage principal with two uids: the base of the block its cage
-maps, and the agent's subject inside it (ADR-028). Both are asked for once
-and never reissued. Its worktree at `worktrees/<factory>/<role>` is a git
-worktree of the factory's clone at `factories/<factory>`, asked for through
-`storage ensure` with `roleQuota`, and its uid is granted exactly the git
-directories it needs by ACL (`modules/role-worktree.sh`, ADR-010). The clone
-is of the repository's own origin, not the operator's checkout (ADR-032;
-`modules/factory-clone.sh`); the origin URL is read from that checkout and
-handed over.
+`factory/src/extension/actor.ts` is the actor (ADR-033, ADR-035) against
+three interfaces: the bus, the board, the agent. At start it reads its
+memory issue and, unless the board says it is blocked, announces `ready`
+with its capabilities on `control:<role>`. An `assignment` on
+`mailbox:<role>` is acked and turned into a prompt from the issue, its
+thread and the memory. The agent works, and calls `report_outcome` (done,
+blocked or failed with a summary) and `update_memory`; on `agent_settled`
+the outcome is commented under the role's token, with a note when no commit
+is on the branch, and the process ends for done or failed so the next one is
+a fresh session (ADR-035 point 4 as amended). Blocked keeps the process
+alive and silent. `steer` and `abort` reach the running turn; `reconcile` is
+answered with what is held; turn and tool events go to `events:<role>`,
+findings to `findings:<role>`.
 
-A session is one `nixcage-container enter` line composed in `cmd_role_enter`
-in a fixed order: `--uid`, `--user`, `--subject`, `--home` under the state
-directory, `--shell` if declared, then either `--auth-sock` (an operator
-entering by hand, forwarding their own agent) or `--no-agent` (a supervised
-run), the journal binds, the guidance bind (`modules/role-guidance.md`,
-read-only), the task directory bind and `CAGEWORKS_TASK`, and the signing
-binds. A
-supervised run gets a key of its own so it can sign but cannot push, pull a
-private repository or authenticate anywhere (ADR-009; `modules/signing.sh`).
-`--auth-sock` and `--signing-key` together are refused.
+## The executor
 
-The agent a role runs is the repository's business; `pi --mode rpc` is the
-one the example declares and ADR-029 (proposed) names.
+`factory/src/executor/core.ts` (ADR-034): reconciles on start by asking each
+actor with an `assigning` row what it holds and resolving those rows from
+the answers, never creating one; applies the six verbs after validating each
+against the declaration and the board; writes `assigning` and the attempt
+comment before sending, `assigned` on the ack; reads outcomes off the board
+and moves the stage label only when a commit is on the role's branch, closes
+at the last stage, labels `blocked`, frees the role on failed; stops routing
+at ninety percent of the ceiling. `main.ts` connects as the executor's bus
+user, starts every role's session and the decider's through the guest
+program, reads `control:*`, `commands` and `operator`, checks outcomes every
+ten seconds, and publishes the board and the spend to `events:executor`.
+`mirror` fetches `main` from the forge, writes the issues as
+`refs/cageworks/record`, and pushes both to origin; nothing reads the record
+back yet.
 
-## Work
+## The decider
 
-A task is a directory under the guest's task root, one file per field,
-written by rename (`modules/task-store.sh`, ADR-014). States: `proposed`,
-`ready`, `running`, `blocked`, `awaiting-review`, `done`, `failed`,
-`cancelled`. Scalars (`state attempts role workflow stage parent seq item
-gate`) share one file rewritten whole.
+`factory/src/decider/core.ts` (ADR-034): the prompt is the machine's rules,
+the declaration as data, the board with the ready set, and the policy file,
+each labelled. Tool calls `assign`, `retry`, `block`, `file`, `push`, `stop`
+and `wait` pass the vocabulary and the declaration before one entry lands on
+`commands`; the executor validates again against the board. It thinks every
+thirty seconds and whenever an actor says something.
 
-A workflow is a list of stages. A stage names a capability (`needs`), lists
-the fields a task must carry before it is taken (`ready`, enforced as
-presence), states what finishing means (`done`, prose handed to the role and
-never checked), and may name a gate (ADR-015; `modules/workflow-config.sh`).
-`consults` says who may ask whom. `budget.runs` bounds the workflow.
+## The operator
 
-`cageworks task file <factory> <workflow>` creates a task at the first stage
-and opens its item in the record. `cageworks task run <factory> <id>` is one
-run, typed by a person:
-
-1. Refuse if the factory is halted.
-2. Resolve the taker: the role already on the task, else the first idle role
-   in declaration order providing the stage's capability. The task then
-   sticks to that role, because its branch is in that role's namespace.
-3. Claim a concurrency slot (`concurrency`, machine-wide) and spend one run
-   of the workflow's budget (`modules/caps.sh`). Both are files, because the
-   supervisor is not a daemon.
-4. Count an attempt against `taskAttempts`.
-5. Write the brief into a run directory: task, role, acceptance, the stage's
-   `done`, the body, the factory's own guidance from the clone, the record
-   so far and what is new since this role last looked. The brief is
-   read-only to the role; `outcome`, `mentions` and `comments/` are owned
-   by the role's uid.
-6. `role-enter` with `--task-dir` and `--signing-key`, under
-   `runTimeoutSeconds`.
-7. Ingest what the role wrote into the record, as that role. Settle on the
-   outcome, or fail the task back to `ready` while attempts remain.
-8. At a gated stage stop in `awaiting-review` for `cageworks task answer`.
-   Otherwise advance: open a child task at the next stage, seeded with the
-   parent's thread, or finish the pipeline.
-
-Nothing a role writes reaches a command line: brief, outcome, mentions and
-comments are files.
-
-## The record
-
-git-bug inside the factory's clone (ADR-013, ADR-022; `modules/record.sh`).
-The supervisor is the only writer and acts as each role in turn, one git-bug
-identity per role. No git-bug call is trusted bare: each is confirmed by
-reading back what landed, within a bound (ADR-024). Mentions are labels.
-`cageworks task thread` reads it; `cageworks factory reports` lists what
-needs a person.
-
-ADR-023 (superseded) and ADR-024 (accepted) describe a leased claim by which
-a role would take its own work. No code implements a claim; PRD-005 is
-proposed and not started.
-
-## Integration
-
-`cageworks factory integrate <factory> <commit>` fast-forwards the shared
-branch `main` in the clone to that commit, refusing anything else, then
-syncs. `cageworks factory sync` pushes the clone's `main` to the operator's
-repository, and halts the factory instead when the two histories have
-diverged, until `cageworks factory resume` (`modules/integrate.sh`,
-ADR-011). Deciding what to merge is content and
-stays in a cage.
-
-## Console and observation
-
-`cageworks role --pane` runs a session in a herdr pane and reports state to
-herdr's socket. ADR-026 (proposed) replaces this with a unix socket per role
-relayed by the loop and removes herdr; neither is built.
-
-Three sources record a factory (ADR-027): the journald namespace stamped
-with `_UID` off `SO_PEERCRED`, which a role can write and cannot edit
-(`modules/journal.sh`); the proxy's access log; and the kernel probes. The
-ledger is queried by exporting NDJSON.
-
-## State on the guest
-
-Under `/var/lib/nixcage` (`CAGEWORKS_STATE` overrides it for the suite):
-`factories/<factory>` (the clone), `worktrees/<factory>/<role>`,
-`homes/<factory>-<role>`, `tasks/<factory>/<id>`, `runs/<factory>/<id>`
-(brief, outcome, mentions, comments, seed), `seen/<factory>/<role>`,
-`halted/<factory>`, `keys/<role>` and `keys/allowed_signers`.
+The relay (`factory/src/relay/`) prints every stream as JSON lines,
+`relay/fixtures.json` being the contract; `cageworks factory watch` carries
+it over ssh. The TUI (`factory/src/tui/`) folds those lines into one state,
+renders roles, board, commands, findings and spend, and writes through the
+CLI: file, steer, stop, retry, block, push, mirror. Merging is a click in
+Forgejo's UI; nothing merges by verb.
 
 ## The invariants
 
-1. The supervisor is uncaged and content-blind. It reads declarations and
-   metadata, never a task body, a comment or a document.
-2. Nothing a role writes ever reaches a command line.
+1. The executor is uncaged and content-blind; the decider is caged and reads
+   everything. Nothing a role or the decider writes reaches a command line:
+   titles and bodies are files, commands are typed JSON on a stream.
+2. A cage holds no credential that reaches off the machine, and no route.
 3. A role session's cage is composed of nixcage flags and nothing else.
 
-## Tests and models
+## Tests
 
 ```
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
-nix develop --command bats --recursive tests/
-docmeta-check docs && docmeta-tracker docs
-alloy6 exec models/factory-structure.als
-quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60
+nix develop --command bats --recursive tests/       # 310 scenarios, minutes
+nix build .#factory                                  # 97 scenarios
+quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+CAGEWORKS_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine
+CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
 ```
 
-`tests/unit/` sources a module and calls it. `tests/command/` drives a
-program with its dependency stubbed on `PATH`. `models/` holds
-`factory-structure.als`, `egress-authority.als`, `factory-lifecycle.qnt`,
-`vm-lifecycle.qnt`, `task-claim.qnt` and `ledger-tap.qnt`.
+## Not built, and known gaps
 
-## Not built, and status drift
-
-- Nothing dispatches. A person types every `task run`.
-- PRD-004 phases 4 and 5 are open; phases 1 to 3 are done.
-- ADR-021 (accepted): no loop exists. ADR-024 (accepted): no claim exists.
-- ADR-026, ADR-029, ADR-031 (proposed): none built. ADR-032 (proposed) is
-  what the clone does; its status lags the code.
-- herdr is still in `cageworks` although ADR-026 point 8 removes it.
+- The record's re-import on a fresh machine.
+- The TUI's memory view and pull request list, which are the forge's and
+  not on the bus.
+- The spend count lives in the proxy's memory and starts at zero when it
+  restarts.
+- The machine's erofs store image build is flaky on this host's linux
+  builder; a retry has always succeeded.
+- `tests/manual/isolation.sh` and `parity.sh` have not yet passed on a
+  machine; see `docs/roadmap.md` 2.4, 2.5 and 5.1.

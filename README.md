@@ -23,24 +23,25 @@ natively.
 ## How it works
 
 ```
-cageworks task file acme ship --acceptance "the importer handles empty files"
+cageworks up acme                  builds and boots the factory's machine from
+     |                             a lock that pins the repository's commit
+cageworks task file acme ship "Add an importer" "handles empty files"
      |
-     +-- the workflow's first stage says what the work needs: "design"
-     +-- the first idle role providing "design" takes it, in declaration order
+     +-- an issue on the machine's forge, labelled with the first stage
+     +-- the decider, a cage of its own, chooses a ready role and asks
+     +-- the executor validates the ask and sends a pointer on the bus
+     +-- the role's cage acks, works, commits on its branch, comments its outcome
+     +-- the executor checks the commit and moves the label; the decider goes on
      |
-cageworks task run acme task-0001
-     |
-     +-- brief written to a directory the role's cage gets read-only
-     +-- nixcage-container enter --uid ... --user architect --bind ... --no-agent
-     +-- the role writes an outcome; the supervisor reads it and moves the work on
-     |
-cageworks factory sync acme        hands the shared branch back to you
+cageworks factory console acme     one screen: roles, board, live stream, keys
+cageworks factory mirror acme      merged main and the record reach origin,
+                                   on your word and never before
 ```
 
-The supervisor is uncaged and content-blind. It reads declarations and
-metadata, never a task body, a comment or a document, and mentions are labels
-rather than parsed prose. Judging whether work meets a bar is reading content,
-which is what a cage is for.
+The executor is uncaged and content-blind: it validates every verb against
+the declaration and the board, and acts. The decider is caged and reads
+everything, and can only ask. Nothing a cage writes reaches a command line,
+and a cage has no route off the machine.
 
 ## Install
 
@@ -94,41 +95,39 @@ handing numbers out is the only one that can promise never to reissue one.
 | `cageworks up <factory>` | Build and boot the machine that factory runs in |
 | `cageworks down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
 | `cageworks vm status` | The machines on this host, what each is doing, and the port it answers on |
-| `cageworks role [--pane] <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid (`--pane`: in a herdr pane of its own) |
-| `cageworks task file <factory> <workflow> [--acceptance <text>]` | File a goal. It enters at the workflow's first stage; you never name a role |
-| `cageworks task list <factory> [state]` | What is filed, and who holds it |
-| `cageworks task show <factory> <id>` | One task's fields |
-| `cageworks task thread <factory> <id>` | The discussion of one task |
-| `cageworks task run <factory> <id>` | Run one task in the cage of whoever takes it |
-| `cageworks task answer <factory> <id> approve\|reject [reason]` | Answer a gate |
-| `cageworks factory status\|sync\|resume\|reports <factory>` | What a factory is doing, and handing its work to you |
-| `cageworks factory integrate <factory> <commit>` | Advance the shared branch to a commit a role produced |
+| `cageworks role <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid |
+| `cageworks role stop <factory> <role>` | End a role's running turn; its task stays with it |
+| `cageworks role steer <factory> <role> <text>` | Speak into a role's running turn |
+| `cageworks task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
+| `cageworks factory console <factory>` | The one face: roles, board, live stream, and the keys |
+| `cageworks factory watch <factory>` | The factory's bus as JSON lines, for any client |
+| `cageworks factory send <factory> '<json>'` | A command in the decider's vocabulary, from you |
+| `cageworks factory mirror <factory>` | Push merged main and the record to the repository's origin |
 
 ## How work moves
 
-A pipeline's stage names a **capability** rather than a role, roles declare what
-they **provide**, and taking a task resolves the first idle capable role in
-declaration order. After that the task sticks to it, because the branch is in
-that role's namespace and no peer can write it. Adding a second backend adds
-capacity without touching the pipeline.
+A pipeline's stage names a **capability** rather than a role, and roles declare
+what they **provide**. A stage is a label on the issue. The decider chooses
+among the ready roles that provide what the stage needs; after that the task
+sticks to its role, because the branch is in that role's namespace. Adding a
+second backend adds capacity without touching the pipeline (ADR-015).
 
-Each stage states its own `ready` -- the fields a task must carry before the
-stage will take it, checked for presence and nothing else -- and its own `done`,
-which is prose handed to the role and never checked (ADR-015).
+The board and the record are a Forgejo on the factory's own machine
+(ADR-036): every actor reads it, a role comments its outcome under a token
+that can do that and nothing else, and the executor alone labels and closes.
+Merging is your click in its web UI over the forwarded port; `factory mirror`
+carries merged `main` and the record to origin afterwards.
 
-Discussion lives in [git-bug](https://github.com/git-bug/git-bug) inside the
-repository, so there is no shared database anywhere (ADR-013). The supervisor is
-the only writer and acts as each role in turn.
-
-Roles work a clone on nixcage's own storage rather than your checkout, because
-role ownership needs a filesystem carrying ownership and ACLs and a macOS
-operator's share has neither. `cageworks factory sync` keeps the two in
-agreement, in the only direction each is allowed to move (ADR-011).
+The machine trusts no cage (ADR-033, ADR-037): each has one address on a
+bridge with no route off the machine, the proxy holds the model credential
+and counts every cage's spend, and an actor's word about what it holds is a
+claim the executor checks against its own board.
 
 ## What is not here yet
 
-Nothing dispatches. `cageworks task run <factory> <id>` starts one run and a
-person types it. A loop that picks ready work is what remains of PRD-002.
+`docs/roadmap.md` keeps the list. The record is exported to origin and not yet
+read back on a fresh machine; the TUI shows what the bus carries and not yet
+the forge's own views; the real-machine proofs have not yet passed.
 
 ## Development
 
@@ -136,9 +135,9 @@ person types it. A loop that picks ready work is what remains of PRD-002.
 nix develop
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/
+nix build .#factory
 docmeta-check docs && docmeta-tracker --check docs
-alloy6 exec models/factory-structure.als
-quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
 ```
 
 `docs/TRACKER.md` indexes every decision. ADR-001 through ADR-008 describe code

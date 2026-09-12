@@ -220,6 +220,7 @@ One package, built through the flake, tests in its own runner.
   `guest_services.bats` on the bridge rules and the bus ACLs,
   `prepare.bats` on the tokens and the memory issues.
 - 5.3 `docs/architecture.md` rewritten from the branch; `CLAUDE.md` follows.
+  Done 2026-09-12, `README.md` with them.
 - 5.4 Branch merged to `main`. `REDESIGN-LOG.md` deleted, its content in
   `docs/`; this file stays and points at PRD-006.
 
