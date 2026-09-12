@@ -12,6 +12,19 @@ phases as its own, and this file then points at it.
 Status is kept here, one line per item, edited when an item's exit holds.
 Nothing below is started as of 2026-09-12.
 
+## Method
+
+Every component is built behaviour first. Before the code of any item in
+phases 1 to 4, its behaviours are written as Given/When/Then scenarios in
+the test runner that component uses, run, and seen failing for the right
+reason; the code then makes them pass and nothing more. Shell components use
+bats with test names that read as the scenario; the TypeScript package uses
+its own runner with the same three-part naming; what needs a real machine is
+a script under `tests/manual/` whose steps are the scenario. A boundary
+between two components gets a contract test on each side, written the same
+way. The formal models are dropped from this plan: items 0.1 and 0.2 are
+withdrawn and 0.3 and 5.2 reduced to what the models already say.
+
 Ordered by dependency. Nothing in a phase starts before the previous phase's
 exit holds, except phase 1, which is upstream and runs beside phase 0. Every
 item names what exists when it is done; "written" means committed and green.
@@ -21,14 +34,12 @@ item names what exists when it is done; "written" means committed and green.
 The parity bar and the models exist before the branch does (decisions 37
 and 38, section 4).
 
-- 0.1 `models/routing.qnt`: executor, board, bus, actors that crash, stall
-  and lie at reconciliation; `assigning` and `assigned` as distinct rows;
-  send and ack as separate steps. Invariants from section 4. Exit:
-  `quint run --invariant=allInvariants --max-steps=60` green, and a
-  deliberately broken variant (record on ack only) reports the violation.
-- 0.2 `models/factory-structure.als` extended: decider and executor as
-  subjects, capability provided by role, stage as label, memory issue per
-  role, token scope per account. Exit: `alloy6 exec` green.
+- 0.1 Withdrawn. The routing protocol's scenarios (crash, stall, a liar at
+  reconciliation, `assigning` before send, `assigned` on ack) are the
+  executor's own scenarios in 3.3.
+- 0.2 Withdrawn. What it would have stated is stated as scenarios in 2.2
+  (bridge rules, spend attribution), 2.3 (tokens, memory issues, labels) and
+  3.3 (board rows, capability checks).
 - 0.3 `models/vm-lifecycle.qnt` amended: rebuild is the normal path, drain is
   per task. Exit: green.
 - 0.4 Decision 48 amended to the TUI scope decision 53 implies.
@@ -91,8 +102,8 @@ One package, built through the flake, tests in its own runner.
   after the executor's own commit, signature and namespace check; push and
   pull request on Forgejo; token minting; unit watching; decider restart;
   soft limit stops routing; `mirror` as a server-side verb exporting issues
-  to `refs/cageworks/record` and pushing with `main`. Exit: routing model's
-  scenarios replayed as tests, including the liar.
+  to `refs/cageworks/record` and pushing with `main`. Exit: the routing
+  scenarios of 0.1 pass as tests, including the liar.
 - 3.4 Decider: a cage like any other, prompt from the four parts of
   decision 41, read token on Forgejo, typed commands out. Exit: a recorded
   board produces a valid `assign` and an invalid one is refused upstream.
@@ -116,8 +127,9 @@ One package, built through the flake, tests in its own runner.
 - 5.1 `tests/manual/parity.sh` passes on a real machine: goal filed, assigned
   by the decider, worked, tested by the testing capability, pull request
   opened, mirrored, no command typed after the goal.
-- 5.2 Models green; `task-claim.qnt`, `egress-authority.als`,
-  `ledger-tap.qnt` and `factory-lifecycle.qnt` deleted.
+- 5.2 `factory-structure.als` and `vm-lifecycle.qnt` green or deleted with
+  a reason; `task-claim.qnt`, `egress-authority.als`, `ledger-tap.qnt` and
+  `factory-lifecycle.qnt` deleted.
 - 5.3 `docs/architecture.md` rewritten from the branch; `CLAUDE.md` follows.
 - 5.4 Branch merged to `main`. `REDESIGN-LOG.md` deleted, its content in
   `docs/`; this file stays and points at PRD-006.
