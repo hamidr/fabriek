@@ -69,6 +69,10 @@ enter)
 	;;
 esac
 EOF
+	# Whether a cage of the role's name is running, which a hand session
+	# asks before taking a veth. No cage runs unless a scenario says so.
+	printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB_DIR/pgrep"
+	chmod +x "$STUB_DIR/pgrep"
 	# Root-only mechanics a role's worktree needs, and which say nothing
 	# about the seam.
 	for tool in chown setfacl; do
@@ -228,6 +232,42 @@ JSON
 # The declared command is what an actor runs (ADR-033); a person entering by
 # hand is not one, and a hand that asks for a command gets that command.
 # Found by tests/manual/isolation.sh, whose every question to a cage ran pi.
+## An actor's cage holds the role's one veth and one address, and a second
+## cage of that name would collide with it on both; a person entering the
+## role while its actor runs joins the actor's network namespace instead
+## (nixcage ADR-011 point 5). The cage's leader is the child of the nspawn
+## whose argv names the machine, since a cage is not registered.
+running_cage() {
+	cat >"$STUB_DIR/pgrep" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+*"--machine=$1( |\$)"*) echo 4242 ;;
+"-P 4242") echo 4243 ;;
+*) exit 1 ;;
+esac
+EOF
+	chmod +x "$STUB_DIR/pgrep"
+}
+
+@test "a person entering a role whose actor is running joins its cage's network instead of taking a second veth" {
+	running_cage builder
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+	run recorded
+	assert_output --partial "--network ns:/proc/4243/ns/net"
+	refute_output --partial "--network cageworks-acme:"
+}
+
+@test "a supervised run takes the bridge placement whatever else is running under the role's name" {
+	running_cage builder
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_cageworks_container role-enter --repository "$REPO" --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
+	assert_success
+	run recorded
+	assert_output --partial "--network cageworks-acme:10.77.0.10/24"
+	refute_output --partial "ns:/proc"
+}
+
 @test "a person entering by hand with a command runs that command, not the declared one" {
 	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder ip -o link show
 	assert_success

@@ -37,8 +37,9 @@ Three primitives, and nothing else, cross it:
 
 Two options on `enter` were added upstream for this design (nixcage
 ADR-011): `--network <bridge>:<addr>/<prefix>` gives a cage one veth on the
-factory's bridge and no other interface, and `--no-nix-daemon` leaves the
-daemon socket unbound and runs the command in the base userland with
+factory's bridge and no other interface, or `--network ns:<path>` joins the
+network namespace of a cage already running; and `--no-nix-daemon` leaves
+the daemon socket unbound and runs the command in the base userland with
 `NIXCAGE_PATH_PREFIX` on the front of `PATH`.
 
 `tests/command/seam.bats` stubs `nixcage-container` on `PATH`, records the
@@ -124,7 +125,10 @@ a file.
 
 `cmd_role_enter` composes one `nixcage-container enter` line in a fixed
 order, asserted whole by `seam.bats`: `--uid`, `--user`, `--home`,
-`--network` from the plan, `--no-nix-daemon`, the profile on
+`--network` (the plan's placement for a supervised run; for a person, the
+running actor's namespace when there is one, found through the nspawn
+that holds it, so a hand beside an actor takes no second veth),
+`--no-nix-daemon`, the profile on
 `NIXCAGE_PATH_PREFIX` when the build realised one, then `--auth-sock` (by
 hand) or `--no-agent` (supervised), the guidance bind, the task bind if
 given, the signing binds, and for a supervised run the actor's part: pi's
@@ -215,12 +219,6 @@ CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
   restarts.
 - The machine's erofs store image build is flaky on this host's linux
   builder; a retry has always succeeded.
-- A role has one cage name and one address, and the executor keeps that
-  cage running; `cageworks role <factory> <role>` by hand while the factory
-  is up collides with it on the veth and the address. The proofs stop the
-  executor for their duration. Entering a running role by hand needs a
-  second address per role or a way into the running cage, and neither is
-  decided.
 - `tests/manual/parity.sh` passes up to the first assignment and is gated
   there on a credential the endpoint accepts; see `docs/roadmap.md` 5.1.
 - Which model a session starts on is the machine's choice, a table in

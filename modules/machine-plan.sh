@@ -33,6 +33,32 @@ cageworks_bridge_placement() {
 	jq -r --arg a "$address" '"\(.bridge):\($a)/\(.prefix)"' "$plan"
 }
 
+## The leader pid of a running cage of this name, or nothing. A cage is not
+## registered with machined (nixcage enters with --register=no), so it is
+## found through the nspawn that holds it: the one whose argv names the
+## machine, and its child. Asked by a hand session before it takes a veth,
+## because an actor's cage holds the role's one veth and one address.
+cageworks_cage_leader() {
+	local name="$1" nspawn
+	cageworks_name_ok "$name" || return 1
+	nspawn="$(pgrep -f -- "--machine=$name( |\$)" 2>/dev/null | head -1)"
+	[ -n "$nspawn" ] || return 1
+	pgrep -P "$nspawn" 2>/dev/null | head -1 | grep .
+}
+
+## What a session's --network is: a running cage's namespace when a hand
+## joins one, the bridge placement otherwise (nixcage ADR-011).
+cageworks_cage_network() {
+	local plan="$1" role="$2" leader
+	if leader="$(cageworks_cage_leader "$role")"; then
+		printf 'ns:/proc/%s/ns/net\n' "$leader"
+	else
+		local address
+		address="$(cageworks_bridge_address "$plan" "$role")" || return 1
+		cageworks_bridge_placement "$plan" "$address"
+	fi
+}
+
 ## The store path of a role's profile, resolved through the machine's own
 ## symlink so that what the session is handed is a path the cage can read
 ## through its read-only store. Fails quietly when the build realised none.

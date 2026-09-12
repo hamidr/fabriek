@@ -43,10 +43,9 @@ fi
 bridge="cageworks-$F"
 
 ## The executor keeps one session per role, and a cage is one veth and one
-## address on the bridge under the role's name; a second session of the same
-## role would collide on both. The proof runs its own sessions, so the
-## executor's are stopped for its duration and started again after.
-sshm systemctl stop cageworks-executor
+## address on the bridge under the role's name. A hand session joins the
+## running cage's network (nixcage ADR-011 point 5), so this proof asks its
+## questions beside the actors rather than in their place.
 
 ## The address a role's cage was given, read from inside the cage, which is
 ## the only place the answer is not a guess.
@@ -60,8 +59,9 @@ interfaces_of() { in_cage "$1" ls -1 /sys/class/net | tr -d '\r' | grep -v '^lo$
 spent_by() { sshm curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 0'; }
 
 scenario "A cage is on the factory's bridge and nowhere else"
-given "a factory whose machine is up"
-when "a role's cage is entered"
+given "a factory whose machine is up and its actors running"
+check "the executor is running the actors" active "$(sshm systemctl is-active cageworks-executor 2>/dev/null)"
+when "a role's cage is entered by hand, beside its actor"
 check "the bridge $bridge exists on the machine" present \
 	"$(sshm ip link show "$bridge" >/dev/null 2>&1 && echo present || echo absent)"
 check "role $a sees host0 and nothing else besides lo" host0 "$(interfaces_of "$a")"
@@ -125,27 +125,12 @@ scenario "A forged source address is dropped at the bridge"
 given "root on the machine inside $a's network namespace"
 ## A cage is not registered with machined, so its leader is found by the
 ## nspawn that holds it: the one whose argv names the machine, and its child.
-in_cage "$a" sleep 120 >/dev/null 2>&1 &
-holder=$!
-pid=""
-for _ in $(seq 1 30); do
-	pid="$(sshm "pgrep -P \"\$(pgrep -f -- '--machine=$a( |\$)' | head -1)\" 2>/dev/null | head -1")"
-	[ -n "$pid" ] && break
-	sleep 1
-done
-check "the cage's leader pid is known" yes "$([ -n "$pid" ] && echo yes || echo no)"
+pid="$(sshm "pgrep -P \"\$(pgrep -f -- '--machine=$a( |\$)' | head -1)\" 2>/dev/null | head -1")"
+check "the actor's cage for $a is running and its leader pid is known" yes "$([ -n "$pid" ] && echo yes || echo no)"
 before_b="$(spent_by "$addr_b")"
 when "a request leaves $a's veth carrying $b's address"
 sshm "nsenter -t '$pid' -n sh -c 'ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null'" >/dev/null 2>&1
 check "$b's count did not move" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
-kill "$holder" 2>/dev/null
-wait "$holder" 2>/dev/null
-## The cage outlives its ssh client; the next scenario needs its name free.
-sshm "pkill -f -- '--machine=$a( |\$)'" >/dev/null 2>&1
-for _ in $(seq 1 30); do
-	sshm "pgrep -f -- '--machine=$a( |\$)'" >/dev/null 2>&1 || break
-	sleep 1
-done
 
 scenario "The hard limit is the proxy's"
 ceiling="$(jq -r '.tokenCeiling // empty' "$D/spec.json")"
@@ -163,6 +148,5 @@ else
 	check "the proxy answers 429 at the hard limit" 429 "$code"
 fi
 
-sshm systemctl start cageworks-executor
 bash cageworks down "$F"
 exit "$fail"

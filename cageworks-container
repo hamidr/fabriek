@@ -210,14 +210,23 @@ cmd_role_enter() {
 	## machine's, written by its build from the same declaration the rules
 	## were generated from; a role the plan does not place would have no
 	## address, and a machine without a plan has no bridge to put it on.
-	local address
-	address="$(cageworks_bridge_address "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+	## A supervised run is the role's cage and takes its place; a person
+	## entering while that cage runs joins its network instead, because the
+	## place is taken and a second veth of that name would collide with it.
+	local network
+	if [ -n "$signing_role" ]; then
+		local address
+		address="$(cageworks_bridge_address "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+		network="$(cageworks_bridge_placement "$CAGEWORKS_ETC/bridge.json" "$address")"
+	else
+		network="$(cageworks_cage_network "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+	fi
 
 	local -a opts=(
 		--uid "$uid"
 		--user "$role"
 		--home "$STATE_DIR/homes/$factory-$role"
-		--network "$(cageworks_bridge_placement "$CAGEWORKS_ETC/bridge.json" "$address")"
+		--network "$network"
 		--no-nix-daemon
 	)
 
