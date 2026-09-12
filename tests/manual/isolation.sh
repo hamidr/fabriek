@@ -4,7 +4,9 @@
 ## phase 2.4 has something to make pass; today every scenario fails at its
 ## first Then, and the first line of output says the bridge is absent.
 ##
-## Replaces tests/manual/egress.sh, whose uid filter ADR-037 deletes.
+## Replaced tests/manual/egress.sh, whose uid filter ADR-037 deleted; that
+## script, with moves-in.sh and observe.sh, is in the history for the ADRs
+## that cite them.
 ##
 ## Wants the scratch directory the other proofs use: an operator config and a
 ## repository declaring a factory called acme with at least two roles, an
