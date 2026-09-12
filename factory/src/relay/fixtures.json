@@ -1,0 +1,11 @@
+[
+  {"stream":"control:builder","id":"1700000000000-0","fields":{"kind":"ready","capabilities":"build,test"}},
+  {"stream":"control:builder","id":"1700000000001-0","fields":{"kind":"ack","issue":"7"}},
+  {"stream":"mailbox:builder","id":"1700000000002-0","fields":{"kind":"assignment","issue":"7","attempt":"1"}},
+  {"stream":"events:builder","id":"1700000000003-0","fields":{"kind":"event","name":"tool_call","json":"{\"toolName\":\"bash\"}"}},
+  {"stream":"findings:builder","id":"1700000000004-0","fields":{"kind":"finding","text":"the importer chokes on BOMs"}},
+  {"stream":"commands","id":"1700000000005-0","fields":{"json":"{\"verb\":\"assign\",\"issue\":7,\"role\":\"builder\"}"}},
+  {"stream":"operator","id":"1700000000006-0","fields":{"json":"{\"op\":\"mirror\"}"}},
+  {"stream":"events:executor","id":"1700000000007-0","fields":{"kind":"event","name":"command","json":"{\"result\":{\"ok\":true}}"}},
+  {"stream":"probes","id":"1700000000008-0","fields":{"uid":"700010","event":"exec uid=700010 pid=4242 comm=git"}}
+]
