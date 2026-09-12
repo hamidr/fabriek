@@ -602,6 +602,18 @@ supersessions are noted.
     timestamp. Script: a throwaway in the session scratchpad, twenty probes,
     rerunnable against any image tag.
 
+53. **cageworks is the machine; the operator's host holds a launcher and a
+    client.** Stated because nothing above said it and things grow where
+    nothing forbids them. On the operator's host: `cageworks up`, `down`,
+    `vm status`, `factory mirror`, the TUI (decision 49), `config.toml` with
+    its ceilings and credential paths, and the origin URL read off the
+    checkout. Everything else, executor, decider, Forgejo, Valkey, proxy,
+    probes, the relay, lives on the machine, and a new capability is added
+    there first. The TUI is the operator's one face: every operation the
+    factory offers is reachable from it, and Forgejo's web UI over the
+    forwarded port is available but required for nothing except the merge
+    click (decision 45). If a merge verb ever lands, that exception goes too.
+
 ## 3. What this replaces in `docs/`
 
 Fully reversed or deleted: ADR-013 (no shared database), ADR-022 (the task is a
@@ -669,7 +681,7 @@ send; every `assigning` row resolves after reconciliation.
   own memory's history as well as its comments.
 - `main` merges by hand. A factory with no operator present stops at its
   pull requests.
-- The relay is a second interface (after nixcage's four primitives) that the
+- The relay is a second interface (after nixcage's three primitives) that the
   suite must assert on.
 - A role's Forgejo token can edit that role's own comments, so a role can
   revise its own account after the fact.
