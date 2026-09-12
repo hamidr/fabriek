@@ -30,6 +30,13 @@ is the uid block, `bindMounts` are the binds, `ephemeral` is a fresh root per
 start. The roles are known when the image is built, which is the one fact a
 declarative container needs and the one ADR-040 supplies.
 
+Checked against the nixpkgs this flake pins (`c043004d`): `privateUsers`
+takes `"pick"` or a base uid and passes `--private-users=` to nspawn, so
+a container's root is that base on the machine and its block is nspawn's
+65536; `hostBridge` passes `--network-bridge=`, so the host end of the
+veth is `vb-<name>` exactly as the bare nspawn line names it today and the
+bridge rules keyed on `vb-*` stand unchanged.
+
 ## Decision
 
 **1. One `containers.<role>` per declared role, and one for the decider,**
@@ -49,22 +56,48 @@ configuration instead of an argv.
 and restarted by the executor as before (ADR-035 point 4 as amended). The
 container itself stays up between sessions; a session is a process in it.
 
-**4. Uids are declared, not allocated.** Each role's block is a fixed range
-in the machine's configuration, derived from its position in the
-declaration, so `nixcage-container uid` has no caller. A dataset per role is
-a `fileSystems` entry made by the storage unit that makes the pool, so
-`storage ensure` has none either. The daemon socket is simply not bound.
+**4. Uids are allocated once on the operator's host and declared into the
+image.** A role's uid must outlive every rebuild, because its dataset, its
+home and its key on the pool are owned by it; a number derived from the
+role's position in the declaration would move when a role is added before
+it in the alphabet, and every file the displaced role owns would belong to
+a stranger, which is the class of loss ADR-017 exists to prevent. So
+`cageworks up` allocates a base per role and for the decider the first time
+it sees the name, never reissues it, and keeps the table in the machine's
+`local.json` beside the port and the key, written by rename; `lib.factory`
+declares each container's `privateUsers` from that table. A machine that
+already has a pool imports nixcage's uid store into the table once. A
+dataset per role is a `fileSystems` entry made by the storage unit that
+makes the pool, so `storage ensure` has no caller either. The daemon socket
+is simply not bound.
 
-**5. nixcage leaves the flake.** No input, no lock bump, no ADR-018 seam. The
+**5. A container starts after its dataset is mounted, or not at all.** A
+`bindMounts` entry onto a path the pool has not yet mounted binds the empty
+mountpoint, and a role would work in a directory that is gone at the next
+boot with nothing said. Each `container@<role>` unit is ordered `after` and
+`requires` the storage unit that imports the pool and mounts the datasets,
+and `tests/command/guest_services.bats` asserts that ordering on the
+evaluated machine; `tests/manual/stop-and-start.sh` carries the role
+datasets in its manifest so the bind is seen to hold across cycles.
+
+**6. nixcage leaves the flake.** No input, no lock bump, no ADR-018 seam. The
 userland floor becomes the container's own package list.
 
 ## Consequences
 
 Each cage is a NixOS with its own systemd: slower to start than a bare
-nspawn line, and a rebuild of the machine when a role is added, which ADR-040
-already made the normal path. A person entering by hand becomes
-`nixos-container root-login` or `run`, with the agent forwarded by the
-executor's transport rather than by nixcage's. What is deleted:
+nspawn line, one NixOS evaluation per role inside the image build, and a
+rebuild of the machine when a role is added, which ADR-040 already made the
+normal path. A person entering by hand becomes `nixos-container run` into
+the running cage, which also closes the gap `docs/architecture.md` records
+today: a second session of a role no longer collides with the executor's
+on the veth and the address, because there is no second cage. The agent
+socket for that person is bound into the running container with
+`machinectl bind`, which a registered container allows and a bare nspawn
+with `--register=no` did not. The executor's sessions become
+`nixos-container run <role> -- pi --mode rpc` over a pty rather than a
+pipe, so the process-per-task shape of ADR-035 stays and its stdin handling
+changes. What is deleted:
 `modules/machine-plan.sh`'s argv composition, `role-worktree.sh`'s ACL
 dance (a bind mount of a dataset the role owns needs none), `signing.sh`'s
 binds become mounts, `tests/command/seam.bats` becomes an evaluation test of
@@ -79,6 +112,11 @@ at once.
 ## Verification
 
 `tests/command/guest_services.bats` gains scenarios per container: address,
-uid range, mounts, packages and environment as the declaration implies.
-`tests/manual/isolation.sh` passes unchanged, since it asks the bridge and
-the proxy and not the cage. `tests/manual/parity.sh` passes unchanged.
+uid base from the table in `local.json`, mounts, packages, environment and
+the ordering after the storage unit, as the declaration implies; and one
+scenario that a role added in front of another in the alphabet leaves the
+other's uid where it was. `tests/manual/isolation.sh` passes with its cage
+entry changed to `nixos-container run` and its leader found through
+`machinectl`, since it asks the bridge and the proxy and not the cage.
+`tests/manual/stop-and-start.sh` passes with the role datasets in its
+manifest. `tests/manual/parity.sh` passes unchanged.
