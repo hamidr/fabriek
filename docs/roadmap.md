@@ -1,13 +1,14 @@
 # Roadmap
 
-The steps from the design that runs today (`docs/architecture.md`) to the one
-ADR-033 through ADR-040 and PRD-006 decide. Decision numbers below refer to
-`REDESIGN-LOG.md`, which those documents supersede and which keeps the
-reasoning until phase 5.4.
+The steps from the design that ran before the redesign to the one ADR-033
+through ADR-041 and PRD-006 decide; `docs/architecture.md` is what runs
+now. Decision numbers below refer to `REDESIGN-LOG.md`, the working log
+those documents superseded and phase 5.4 deleted; it is in the history
+before that commit for anyone who wants the reasoning as it was written.
 
 No docmeta frontmatter on purpose: this is a plan, not a decision, and
-`docmeta-tracker` should not index it. PRD-006 (phase 0.5) will carry these
-phases as its own, and this file then points at it.
+`docmeta-tracker` should not index it. PRD-006 carries these phases as its
+own; this file is the status beside each.
 
 Status is kept here, one line per item, edited when an item's exit holds.
 Nothing below is started as of 2026-09-12.
@@ -242,8 +243,11 @@ One package, built through the flake, tests in its own runner.
   Done 2026-09-12, `README.md` with them.
 - 5.4 Branch merged to `main`. `REDESIGN-LOG.md` deleted, its content in
   `docs/`; this file stays and points at PRD-006.
+  Done 2026-09-12, with 5.1 gated as recorded above: the operator chose
+  to merge with the gate written down rather than hold the branch for a
+  credential.
 
-## Where the log's open items land (REDESIGN-LOG.md section 6)
+## Where the log's open items landed (its section 6)
 
 Relay shape: 3.5. Record export format and re-import: 3.3, with re-import
 in 2.3. `probes` cap and the proxy log's place: 2.2. Re-announce after a

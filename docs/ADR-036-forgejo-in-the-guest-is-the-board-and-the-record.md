@@ -24,7 +24,7 @@ a web UI, none of which would be built as well here. What it costs is the
 property ADR-013 bought, and that cost is paid deliberately.
 
 Every permission below was measured on Forgejo 16.0.4 with a read
-collaborator holding a `write:issue` token (REDESIGN-LOG.md decision 52).
+collaborator holding a `write:issue` token (decision 52 of the redesign log, in the history before roadmap 5.4).
 
 ## Decision
 

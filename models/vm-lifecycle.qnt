@@ -1,6 +1,6 @@
 // The lifecycle of a factory's own machine, as decided in
 // docs/ADR-019-cageworks-owns-a-factory-vm.md and required by phase 2 of
-// docs/PRD-004-a-factory-of-its-own.md, amended for REDESIGN-LOG.md
+// docs/PRD-004-a-factory-of-its-own.md, amended for the redesign (ADR-033 to ADR-040)
 // decision 15 (docs/roadmap.md 0.3): the declaration is built into the image,
 // so every edit to it is a rebuild, and what drains before one is the tasks
 // in flight rather than the roles, which are permanent and lose nothing.

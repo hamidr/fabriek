@@ -30,9 +30,9 @@ isolating anything.
 
 The operator also has no single place to look. The record is inside a git
 clone on the machine, the console is a pane that dies with its terminal, and
-what a role spent is in a journal nobody exports. REDESIGN-LOG.md re-derived
-the factory from the threat model; this document is the product that
-re-derivation describes.
+what a role spent is in a journal nobody exports. The redesign log, in the
+history before roadmap 5.4, re-derived the factory from the threat model;
+this document is the product that re-derivation describes.
 
 ## Users
 
