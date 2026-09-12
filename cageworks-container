@@ -292,10 +292,12 @@ cmd_role_enter() {
 		done <<<"$actor_lines"
 	fi
 
-	## The declaration wins over anything the caller passes, because what a
-	## role runs is a property of the factory and not of whoever started it.
-	## It arrives as argv words, one per line, so nothing in it is re-split.
-	if [ -n "$declared_cmd" ]; then
+	## A supervised run is an actor, and what an actor runs is the factory's
+	## to declare and not the executor's to pass (ADR-033): the declaration
+	## wins. A person entering by hand is not an actor and runs what they
+	## asked, or the cage's shell when they asked nothing. The declared words
+	## arrive as argv, one per line, so nothing in them is re-split.
+	if [ -n "$signing_role" ] && [ -n "$declared_cmd" ]; then
 		local -a declared=()
 		local word
 		while IFS= read -r word; do

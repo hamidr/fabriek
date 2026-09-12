@@ -156,7 +156,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md builder $STATE/worktrees/acme/builder"
 }
 
 @test "the uid comes from nixcage rather than from a store cageworks keeps" {
@@ -223,6 +223,24 @@ JSON
 	refute_output --partial "PI_CODING_AGENT_DIR"
 	refute_output --partial "bus-password"
 	refute_output --partial "CAGEWORKS_ROLE="
+}
+
+# The declared command is what an actor runs (ADR-033); a person entering by
+# hand is not one, and a hand that asks for a command gets that command.
+# Found by tests/manual/isolation.sh, whose every question to a cage ran pi.
+@test "a person entering by hand with a command runs that command, not the declared one" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder ip -o link show
+	assert_success
+	run recorded
+	assert_output --partial " builder $STATE/worktrees/acme/builder ip -o link show"
+	refute_output --partial "agent --print"
+}
+
+@test "a person entering by hand with no command gets the cage's shell, not the declared command" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+	run recorded
+	refute_output --partial "agent --print"
 }
 
 @test "a supervised run without its credentials on the machine is refused rather than started deaf" {
