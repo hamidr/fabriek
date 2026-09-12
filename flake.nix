@@ -38,11 +38,14 @@
             inherit pkgs;
             inherit (inputs) self;
           };
+          factory = import ./factory { inherit pkgs; };
         in
         {
           packages = {
             default = cageworks.cli;
             cageworks = cageworks.cli;
+            ## The TypeScript half: executor, extension, decider, relay, TUI.
+            factory = factory.package;
           }
           ## The guest program runs on the machine the cages are on, which on
           ## macOS is the VM and never this one. It is not offered here at
@@ -65,12 +68,19 @@
               git-bug
               ## A machine's key is made with ssh-keygen (ADR-019).
               openssh
+              ## The TypeScript package (ADR-034): compiled with tsc and
+              ## tested with node's own runner, so nothing is fetched.
+              nodejs
+              typescript
             ];
 
             BATS_LIB_PATH = "${pkgs.bats.libraries.bats-support}/share/bats:${pkgs.bats.libraries.bats-assert}/share/bats";
 
             shellHook = ''
               export PATH="$PWD:$PATH"
+              ## pi's types, linked in from the store rather than fetched;
+              ## the same directory the package build uses.
+              ln -sfn ${factory.nodeModules} "$PWD/factory/node_modules"
             '';
           };
 

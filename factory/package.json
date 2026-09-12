@@ -1,0 +1,12 @@
+{
+  "name": "@cageworks/factory",
+  "version": "0.1.0",
+  "description": "The executor, the extension, the decider, the relay and the TUI of a cageworks factory, in one package so the vocabulary and the bus messages are defined once",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test \"dist/**/*.test.js\""
+  }
+}

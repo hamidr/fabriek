@@ -6,3 +6,5 @@ result-*
 ## alloy6 writes its solutions and receipt beside the model it was given.
 factory-structure/
 egress-authority/
+factory/node_modules
+factory/dist

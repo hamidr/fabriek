@@ -128,7 +128,11 @@ One package, built through the flake, tests in its own runner.
 - 3.1 Skeleton: the six-verb vocabulary and every bus message as types,
   validators for both, `cageworks.nix` schema mirrored for the executor's
   checks. Exit: a malformed command and a malformed message are refused by
-  test.
+  test. Done 2026-09-12 on the branch: `factory/`, built by the flake with
+  `tsc` and tested with node's own runner, no npm and no lockfile; pi's
+  types and `@types/node` are linked in from the pi already in the closure.
+  `names.ts`, `vocabulary.ts`, `messages.ts`, `declaration.ts`, 25
+  scenarios green, `nix build .#factory` runs them.
 - 3.2 Extension: `session_start` and `session_shutdown` lifecycle, `ready`
   with capabilities, mailbox subscription with reconnect and re-announce,
   assignment pointer to fresh session, issue read by token, outcome comment,
