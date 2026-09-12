@@ -93,6 +93,11 @@ in
           ${stateDir}/forgejo "$(id -u forgejo)" ${toString cfg.recordQuota}M >/dev/null
         chown forgejo:forgejo ${stateDir}/forgejo
         chmod 0750 ${stateDir}/forgejo
+        ## The forge's own tmpfiles rules ran at boot, before this dataset
+        ## was mounted over the directory they made, so its custom/conf was
+        ## under the mount and not on it. Run again, now that it is here.
+        ## Found on a machine whose forge could not write its first secret.
+        systemd-tmpfiles --create --prefix=${stateDir}/forgejo
       '';
     };
   };

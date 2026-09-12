@@ -94,6 +94,13 @@ declare_machine() {
   "cages": { "builder": "10.77.0.10", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
+	cat >"$CAGEWORKS_ETC/declaration.json" <<'JSON'
+{ "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend" } } }
+JSON
+	# What prepare made for the role: its bus password and its forge token.
+	mkdir -p "$STATE/bus" "$STATE/forge" "$CAGEWORKS_ETC/pi/extensions"
+	echo pass >"$STATE/bus/builder"
+	echo tok >"$STATE/forge/builder-token"
 }
 
 teardown() {
@@ -139,7 +146,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $CAGEWORKS_ETC/pi:/run/cageworks/pi --setenv PI_CODING_AGENT_DIR=/run/cageworks/pi --bind-ro $STATE/bus/builder:/run/cageworks/bus-password --bind-ro $STATE/forge/builder-token:/run/cageworks/forge-token --setenv CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password --setenv CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token --setenv CAGEWORKS_ROLE=builder --setenv CAGEWORKS_CAPABILITIES=build,test --setenv CAGEWORKS_BUS=10.77.0.1:6379 --setenv CAGEWORKS_FORGE=http://10.77.0.1:3000/api/v1 --setenv CAGEWORKS_REPOSITORY=operator/acme --setenv CAGEWORKS_BASE_BRANCH=main builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -200,6 +207,29 @@ JSON
 	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_failure
 	assert_output --partial "builder"
+	[ ! -f "$CALLS" ]
+}
+
+# ADR-035: a supervised run is an actor, so it is handed the loop (pi's
+# configuration directory, with the extension and models.json in it), its two
+# credentials as read-only files, and where the bus and the board are. A
+# person entering by hand gets none of that: they are not an actor.
+@test "a person entering by hand is handed no loop, no bus password and no forge token" {
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+	run recorded
+	refute_output --partial "PI_CODING_AGENT_DIR"
+	refute_output --partial "bus-password"
+	refute_output --partial "CAGEWORKS_ROLE="
+}
+
+@test "a supervised run without its credentials on the machine is refused rather than started deaf" {
+	rm "$STATE/bus/builder"
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_cageworks_container role-enter --repository "$REPO" \
+		--task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
+	assert_failure
+	assert_output --partial "bus password"
 	[ ! -f "$CALLS" ]
 }
 

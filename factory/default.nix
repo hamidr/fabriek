@@ -14,6 +14,7 @@ let
   nodeModules = pkgs.runCommand "cageworks-factory-node-modules" { } ''
     mkdir -p $out/@earendil-works
     ln -s ${piModules}/node_modules/@types $out/@types
+    ln -s ${piModules}/node_modules/typebox $out/typebox
     ln -s ${piModules} $out/@earendil-works/pi-coding-agent
   '';
 in

@@ -61,6 +61,7 @@ describe("messages on the bus", () => {
       { kind: "ready", capabilities: "build" },
       { kind: "assignment", issue: "7", attempt: "1" },
       { kind: "ack", issue: "7" },
+      { kind: "reconcile" },
       { kind: "held", issues: "1,2" },
       { kind: "steer", text: "hi" },
       { kind: "abort" },

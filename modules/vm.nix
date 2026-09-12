@@ -38,6 +38,9 @@ nixpkgs.lib.nixosSystem {
               pkgs = final;
               inherit self;
             }).container;
+          ## The TypeScript half, for the loop the floor carries (ADR-035)
+          ## and the executor, the decider and the relay beside it.
+          cageworks-factory = (import ../factory { pkgs = final; }).package;
         })
       ];
     }

@@ -139,6 +139,15 @@ One package, built through the flake, tests in its own runner.
   memory issue read at start and rewrite at end, `findings:<role>`
   broadcast, turn and tool events to the bus, advisory checks on branch,
   signature and commit. Exit: driven against a stubbed bus and Forgejo.
+  Done 2026-09-12 on the branch: `factory/src/extension/actor.ts` is the
+  loop against three interfaces, 14 scenarios on fakes; `index.ts` binds
+  it to pi, a RESP client and a forge client each tested against a local
+  fake. A fresh session is a fresh process (ADR-035 point 4 amended), the
+  outcome is a `report_outcome` tool the agent calls, memory an
+  `update_memory` tool. The machine carries the extension and a
+  `models.json` under `/etc/cageworks/pi` (`guest/floor.nix`), and a
+  supervised session is handed them with its two credentials and its
+  environment (`seam.bats`).
 - 3.3 Executor: reconciliation on start against `assigning` rows; the six
   verbs validated against the declaration; sessions started as
   `nixcage-container enter` argv (seam applies); labels moved on outcome

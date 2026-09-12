@@ -146,6 +146,7 @@ in
     ./guest/bus.nix
     ./guest/proxy.nix
     ./guest/probes.nix
+    ./guest/floor.nix
   ];
 
   config = {
@@ -331,16 +332,6 @@ in
       base = 700000;
       size = 64;
     };
-
-    ## What every cage carries whatever the repository it works declares
-    ## (ADR-030 point 1). A repository forgetting the agent declares a factory
-    ## whose roles start and immediately fail, and the operator holding that
-    ## error cannot repair it without editing somebody else's repository.
-    ##
-    ## The tools an agent reaches for are nixcage's own userland now and are
-    ## not repeated here. A project naming its own build of pi in a devShell
-    ## shadows this one rather than competing with it: nix develop prepends.
-    nixcage.containerPackages = [ pkgs.pi-coding-agent ];
 
     ## The machine's own way of being handed a secret. Present only where
     ## there is somewhere to reach, which is the same condition the proxy has.

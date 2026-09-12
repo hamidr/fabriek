@@ -43,3 +43,40 @@ cageworks_role_profile() {
 	[ -L "$link" ] || [ -d "$link" ] || return 1
 	readlink -f "$link"
 }
+
+## What makes a supervised session an actor (ADR-033, ADR-035): pi's
+## configuration directory bound where PI_CODING_AGENT_DIR names it, the bus
+## password and the forge token bound read-only, and the environment the
+## extension reads. One flag per line, in a fixed order, because seam.bats
+## asserts the whole line.
+##
+## cageworks_actor_args <etc> <state> <factory> <role>
+cageworks_actor_args() {
+	local etc="$1" state="$2" factory="$3" role="$4"
+	local password="$state/bus/$role" token="$state/forge/$role-token"
+	if [ ! -s "$password" ]; then
+		echo "cageworks: role $role has no bus password at $password; run cageworks up" >&2
+		return 1
+	fi
+	if [ ! -s "$token" ]; then
+		echo "cageworks: role $role has no forge token at $token; run cageworks up" >&2
+		return 1
+	fi
+	local capabilities forge bus
+	capabilities="$(jq -r --arg r "$role" '.roles[$r].provides | join(",")' "$etc/declaration.json")"
+	forge="$(jq -r .forgejo "$etc/bridge.json")"
+	bus="$(jq -r .valkey "$etc/bridge.json")"
+	printf '%s\n' \
+		"--bind-ro" "$etc/pi:/run/cageworks/pi" \
+		"--setenv" "PI_CODING_AGENT_DIR=/run/cageworks/pi" \
+		"--bind-ro" "$password:/run/cageworks/bus-password" \
+		"--bind-ro" "$token:/run/cageworks/forge-token" \
+		"--setenv" "CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password" \
+		"--setenv" "CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token" \
+		"--setenv" "CAGEWORKS_ROLE=$role" \
+		"--setenv" "CAGEWORKS_CAPABILITIES=$capabilities" \
+		"--setenv" "CAGEWORKS_BUS=$bus" \
+		"--setenv" "CAGEWORKS_FORGE=http://$forge/api/v1" \
+		"--setenv" "CAGEWORKS_REPOSITORY=operator/$factory" \
+		"--setenv" "CAGEWORKS_BASE_BRANCH=main"
+}

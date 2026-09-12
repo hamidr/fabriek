@@ -232,7 +232,7 @@ EOF
 	assert_output --partial "factory-prepare acme"
 	# After the credential, because the forge and the bus are up by then and
 	# a prepare that ran first would be a prepare against nothing.
-	run bash -c "grep -n 'cageworks-egress-credential\|xargs -0 cageworks-container' '$SSH_CALLS' | head -2"
+	run bash -c "grep -n 'cageworks-egress-credential \|xargs -0 cageworks-container' '$SSH_CALLS' | head -2"
 	assert_line --index 0 --partial "egress-credential"
 	assert_line --index 1 --partial "xargs -0 cageworks-container"
 }

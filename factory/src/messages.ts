@@ -12,6 +12,8 @@ export type Message =
   | { kind: "assignment"; issue: number; attempt: number }
   /** The actor took it; the executor moves assigning to assigned on this. */
   | { kind: "ack"; issue: number }
+  /** The executor asks every live actor what it holds (ADR-033 point 4). */
+  | { kind: "reconcile" }
   /** What an actor holds, answered at reconciliation; taken as a claim. */
   | { kind: "held"; issues: number[] }
   /** The operator speaks into a running turn, or ends it. */
@@ -33,6 +35,7 @@ const SHAPE: Record<Kind, readonly string[]> = {
   ready: ["capabilities"],
   assignment: ["issue", "attempt"],
   ack: ["issue"],
+  reconcile: [],
   held: ["issues"],
   steer: ["text"],
   abort: [],
@@ -77,6 +80,8 @@ export function parseMessage(fields: Fields): Message {
       return { kind: k, issue: integer(fields, "issue"), attempt: integer(fields, "attempt") };
     case "ack":
       return { kind: k, issue: integer(fields, "issue") };
+    case "reconcile":
+      return { kind: k };
     case "held": {
       const issues = list(fields, "issues").map((s) => {
         if (!/^[1-9][0-9]*$/.test(s)) refuse(`issues must be issue numbers: ${s}`);
@@ -113,6 +118,8 @@ export function toFields(m: Message): Fields {
       return { kind: m.kind, issue: String(m.issue), attempt: String(m.attempt) };
     case "ack":
       return { kind: m.kind, issue: String(m.issue) };
+    case "reconcile":
+      return { kind: m.kind };
     case "held":
       return { kind: m.kind, issues: m.issues.join(",") };
     case "steer":

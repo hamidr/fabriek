@@ -46,9 +46,17 @@ purpose. What the loop writes is as trustworthy as the agent, so the budget
 lives at the proxy (ADR-037) and ADR-021 point 5's self-checked budget is
 deleted with the threat model.
 
-**4. The pi process is long-lived; the session is per task.** Context does
-not bleed between tasks. The role's memory is one issue on the forge
-(ADR-036), read at session start and rewritten at session end.
+**4. A pi process per task; the session is the process.** *Amended
+2026-09-12:* as first written the process outlived the task and opened a
+fresh session per assignment, but pi opens a new session only from a
+user-invoked command, never from an event handler. So the extension ends
+the process after a done or failed outcome, the executor starts the next,
+and that one announces ready; a blocked outcome keeps the process alive
+and silent, holding its task, and a process that starts asks the board
+whether it is blocked before it announces anything. Context does not bleed
+between tasks because there is no process to bleed through. The role's
+memory is one issue on the forge (ADR-036), read at session start and
+rewritten when the agent says so.
 
 **5. The agent makes its own commits.** Deciding what constitutes one logical
 change is judgement and belongs in the cage. The extension checks the branch

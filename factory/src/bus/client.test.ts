@@ -16,7 +16,10 @@ interface Fake {
 
 async function fakeValkey(answer: (cmd: string[]) => string): Promise<Fake> {
   const asked: string[][] = [];
+  const sockets = new Set<Socket>();
   const server = createServer((socket: Socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
     const d = new Decoder();
     socket.on("data", (chunk) => {
       for (const cmd of d.feed(chunk) as string[][]) {
@@ -28,7 +31,13 @@ async function fakeValkey(answer: (cmd: string[]) => string): Promise<Fake> {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
-  return { server, port, asked, close: () => new Promise((r) => server.close(() => r())) };
+  // Closing drops every connection too, the way a bus that went away would.
+  const close = () =>
+    new Promise<void>((r) => {
+      for (const s of sockets) s.destroy();
+      server.close(() => r());
+    });
+  return { server, port, asked, close };
 }
 
 describe("a bus client", () => {

@@ -83,7 +83,17 @@ EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$FORGE/systemctl-calls"
 EOF
-	chmod +x "$STUB_DIR/forgejo" "$STUB_DIR/curl" "$STUB_DIR/systemctl"
+	# The uid a role's credentials must belong to, and the chown that gives
+	# them to it, which the suite cannot do for real.
+	cat >"$STUB_DIR/nixcage-container" <<EOF
+#!/usr/bin/env bash
+case "\$2" in builder) echo 60000 ;; reviewer) echo 60064 ;; tester) echo 60128 ;; *) exit 1 ;; esac
+EOF
+	cat >"$STUB_DIR/chown" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FORGE/chown-calls"
+EOF
+	chmod +x "$STUB_DIR/forgejo" "$STUB_DIR/curl" "$STUB_DIR/systemctl" "$STUB_DIR/nixcage-container" "$STUB_DIR/chown"
 }
 
 teardown() {
@@ -124,6 +134,15 @@ teardown() {
 	assert_output --partial reviewer
 	run grep -c '"permission":"read"' "$FORGE/api-calls"
 	assert_output 3
+}
+
+@test "a role's bus password and forge token belong to the role's uid, so its cage can read them and nothing else can" {
+	run_cageworks_container factory-prepare acme
+	assert_success
+	run cat "$FORGE/chown-calls"
+	assert_output --partial "60000 $STATE/bus/builder $STATE/forge/builder-token"
+	assert_output --partial "60064 $STATE/bus/reviewer $STATE/forge/reviewer-token"
+	[ "$(stat -c %a "$STATE/forge/builder-token")" = 400 ]
 }
 
 @test "the decider gets an account and a token that can only read" {

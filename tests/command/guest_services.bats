@@ -109,6 +109,9 @@ machine_text() {
 	assert_output --partial 'storage ensure'
 	assert_output --partial '/var/lib/nixcage/forgejo'
 	assert_output --partial '3072M'
+	# The forge's directories are made by tmpfiles at boot, under the mount
+	# this makes; they are made again on it.
+	assert_output --partial 'systemd-tmpfiles --create --prefix=/var/lib/nixcage/forgejo'
 }
 
 @test "the journal namespace and its ledger are gone" {
@@ -172,4 +175,15 @@ machine_text() {
 	assert_output '["builder","reviewer"]'
 	run machine_eval '(builtins.fromJSON c.environment.etc."cageworks/declaration.json".text).resources.tokens'
 	assert_output 500000
+}
+
+@test "every supervised session is handed the loop and a models.json that points pi at the proxy" {
+	run machine_text 'c.environment.etc."cageworks/pi/extensions/cageworks/index.ts".text'
+	assert_output --partial 'cageworks-factory'
+	assert_output --partial 'dist/extension/index.js'
+	run machine_text 'c.environment.etc."cageworks/pi/models.json".text'
+	assert_output --partial '"anthropic":{"apiKey":"cageworks","baseUrl":"http://10.77.0.1:8118/api.anthropic.com"}'
+	refute_output --partial openai
+	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'
+	assert_output --partial pi-coding-agent
 }

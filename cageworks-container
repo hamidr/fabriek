@@ -130,6 +130,7 @@ usage: cageworks-container
   factory-resume <factory>
   factory-status <factory>
   factory-reports <factory>
+  factory-prepare <factory>
 USAGE
 }
 
@@ -293,6 +294,22 @@ cmd_role_enter() {
 			[ -n "$line" ] || continue
 			opts+=(--bind-ro "$line")
 		done < <(cageworks_signing_binds "$key" "$signers" "$gitconfig")
+
+		## A supervised run is an actor (ADR-033): it gets the loop, which is
+		## pi's configuration directory with the extension in it (ADR-035
+		## point 2), its two credentials as read-only files, and where the bus
+		## and the board are. A person entering by hand is not an actor and
+		## gets none of this. Refused when a credential is missing, because a
+		## session started without one is an actor nobody can reach.
+		## Resolved into a variable rather than read from a process
+		## substitution, because a refusal has to stop the session and a
+		## loop's status is the loop's, not the substitution's.
+		local actor_lines actor_line
+		actor_lines="$(cageworks_actor_args "$CAGEWORKS_ETC" "$STATE_DIR" "$factory" "$role")" || exit 1
+		while IFS= read -r actor_line; do
+			[ -n "$actor_line" ] || continue
+			opts+=("$actor_line")
+		done <<<"$actor_lines"
 	fi
 
 	## The declaration wins over anything the caller passes, because what a
@@ -809,7 +826,7 @@ cmd_factory_prepare() {
 			die "could not make the label $label"
 	done < <(jq -r '[.workflows[].stages[].needs] + ["blocked", "memory"] | unique | .[]' "$declaration")
 
-	local role
+	local role uid
 	while IFS= read -r role; do
 		cageworks_forge_ensure_user "$role" "$role@$factory.invalid" ||
 			die "could not make an account for role $role"
@@ -817,8 +834,15 @@ cmd_factory_prepare() {
 			die "could not give role $role read on the repository"
 		cageworks_forge_ensure_token "$STATE_DIR" "$role" write:issue ||
 			die "could not mint a token for role $role"
-		cageworks_forge_ensure_memory "$base" "$operator" 			"$(cageworks_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
+		cageworks_forge_ensure_memory "$base" "$operator" \
+			"$(cageworks_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
 			die "could not open the memory issue for role $role"
+		## Both files are bound read-only into the role's cage, and a bind
+		## keeps the host's ownership, so they have to be the role's uid's.
+		uid="$(nixcage-container uid "$role")" || die "could not get a uid for role $role"
+		chown "$uid" "$(cageworks_bus_dir "$STATE_DIR")/$role" \
+			"$(cageworks_forge_token_path "$STATE_DIR" "$role")" ||
+			die "could not give role $role its credentials"
 	done < <(jq -r '.roles | keys[]' "$declaration")
 
 	cageworks_forge_ensure_user decider "decider@$factory.invalid" ||

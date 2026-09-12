@@ -1,0 +1,50 @@
+## What every cage carries whatever the repository declares (ADR-030), now
+## including the loop (ADR-035 point 2): pi's configuration directory with
+## the extension in it and a models.json that points pi's provider at the
+## proxy (ADR-029 point 6, ADR-037). Bound read-only into every supervised
+## session at the path PI_CODING_AGENT_DIR names, so a repository that forgets
+## the agent, the loop or the proxy still gets a role that starts.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.cageworks.machine;
+  plan = builtins.fromJSON config.environment.etc."cageworks/bridge.json".text;
+  extension = "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/extension/index.js";
+  ## Which of pi's built-in providers answers at which allowed endpoint. Only
+  ## the ones cageworks knows; an endpoint outside this table is reachable
+  ## through the proxy but pi is not pointed at it.
+  providers = {
+    "api.anthropic.com" = "anthropic";
+    "api.openai.com" = "openai";
+  };
+  routed = lib.filterAttrs (host: _: lib.elem host cfg.egress) providers;
+in
+{
+  config = {
+    nixcage.containerPackages = [ pkgs.pi-coding-agent ];
+
+    environment.etc."cageworks/pi/extensions/cageworks/index.ts".text = ''
+      // The loop (ADR-035). Built into the machine; nothing here is the
+      // repository's to change.
+      export { default } from "${extension}";
+    '';
+
+    ## The credential is the proxy's to add; the placeholder only makes pi
+    ## consider the provider configured. The path is the proxy's per-host
+    ## location, so a request to the provider lands at the proxy and leaves
+    ## the machine with the header the operator holds.
+    environment.etc."cageworks/pi/models.json".text = builtins.toJSON {
+      providers = lib.mapAttrs' (
+        host: provider:
+        lib.nameValuePair provider {
+          baseUrl = "http://${plan.proxy}/${host}";
+          apiKey = "cageworks";
+        }
+      ) routed;
+    };
+  };
+}
