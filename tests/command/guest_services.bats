@@ -197,6 +197,22 @@ machine_text() {
 	done
 }
 
+# pi starts on no model unless told one, and asks before trusting a
+# project's own .pi; a session with nobody at the keyboard needs both
+# answered. Found on a machine whose decider said "No API key found for the
+# selected model" every thirty seconds.
+@test "every supervised session starts on a model of the routed provider and trusts no project settings" {
+	local d
+	for d in pi pi-decider; do
+		run machine_text "c.environment.etc.\"cageworks/$d/settings.json\".text"
+		assert_output --partial '"defaultProvider":"anthropic"'
+		assert_output --partial '"defaultModel":"claude-sonnet-4-5"'
+		assert_output --partial '"defaultProjectTrust":"never"'
+		run machine_eval "c.environment.etc.\"cageworks/$d/settings.json\".mode"
+		assert_output '"0444"'
+	done
+}
+
 @test "the declaration is on the machine as a file, and the machine's options carry it" {
 	run machine_eval 'builtins.attrNames c.cageworks.machine.declaration.roles'
 	assert_output '["builder","reviewer"]'

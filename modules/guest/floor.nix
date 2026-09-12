@@ -22,6 +22,26 @@ let
     "api.openai.com" = "openai";
   };
   routed = lib.filterAttrs (host: _: lib.elem host cfg.egress) providers;
+  ## Where a session starts: on a model of the first routed provider, in
+  ## declaration order of the table above. pi starts on no model unless
+  ## told one, and a session with nobody at the keyboard cannot be asked.
+  ## Which model is the machine's choice for now; a declaration cannot name
+  ## one (ADR-029 pins the agent, not the model).
+  defaultModels = {
+    anthropic = "claude-sonnet-4-5";
+    openai = "gpt-5";
+  };
+  startOn = lib.head ((lib.attrValues routed) ++ [ "anthropic" ]);
+  settings = {
+    mode = "0444";
+    text = builtins.toJSON {
+      defaultProvider = startOn;
+      defaultModel = defaultModels.${startOn};
+      ## A repository's own .pi is not the machine's to run: a session asks
+      ## nobody, and what a role runs is declared, not found in the tree.
+      defaultProjectTrust = "never";
+    };
+  };
 in
 {
   config = {
@@ -47,6 +67,8 @@ in
         export { default } from "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/decider/index.js";
       '';
     };
+    environment.etc."cageworks/pi/settings.json" = settings;
+    environment.etc."cageworks/pi-decider/settings.json" = settings;
     environment.etc."cageworks/pi-decider/models.json" = {
       mode = "0444";
       source = config.environment.etc."cageworks/pi/models.json".source;
