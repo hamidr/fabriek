@@ -17,9 +17,9 @@
 ## Prints down, up and boot seconds per cycle, which is also where ADR-019's
 ## measurement of what a machine costs comes from.
 ##
-## The ledger is checked alongside the work, because ADR-027 puts the journal
-## on the same pool and a ledger that does not come back is one nobody can rely
-## on after the first restart.
+## The record is checked alongside the work, because ADR-036 puts the forge's
+## data on the same pool and a board that does not come back is one nobody
+## can rely on after the first restart.
 set -uo pipefail
 cd "${CAGEWORKS_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 1
 S="${CAGEWORKS_PROOF_DIR:?set CAGEWORKS_PROOF_DIR to a scratch directory}"
@@ -42,15 +42,17 @@ sshm 'set -e; rm -rf /var/lib/nixcage/proof; mkdir -p /var/lib/nixcage/proof
   cd /var/lib/nixcage/proof && sha256sum f* > /var/lib/nixcage/manifest.sha256
   wc -l < /var/lib/nixcage/manifest.sha256' || exit 1
 
-# One entry in the ledger, written before the first stop. It is written through
-# journald rather than into a file, because what is being checked is that the
-# journal came back and not that a file did.
+# One issue on the record, opened before the first stop. It is opened through
+# the forge rather than written into a file, because what is being checked is
+# that the board came back and not that a file did (roadmap 2.5).
 # shellcheck disable=SC2016  # runs in the guest, expands there
 sshm 'set -e
-  mountpoint -q /var/log/journal
-  systemd-cat --namespace=acme -t cageworks-proof \
-    <<< "cageworks stop-and-start proof entry"
-  journalctl --namespace=acme -t cageworks-proof --no-pager -q | wc -l' || exit 1
+  mountpoint -q /var/lib/nixcage/forgejo
+  t="$(cat /var/lib/nixcage/forge/operator-token)"
+  curl -sf -X POST -H "Authorization: token $t" -H "Content-Type: application/json" \
+    -d "{\"title\":\"stop-and-start proof issue\"}" \
+    http://10.77.0.1:3000/api/v1/repos/operator/acme/issues >/dev/null
+  echo opened' || exit 1
 
 for cycle in $(seq 1 10); do
   t0=$(date +%s)
@@ -63,14 +65,17 @@ for cycle in $(seq 1 10); do
     echo "cycle $cycle: MANIFEST MISMATCH"; exit 1
   fi
   empty=$(sshm 'find /var/lib/nixcage/proof -type f -size 0 | wc -l')
-  # The ledger is on the pool too, so it is part of what a stop has to survive.
-  if ! sshm 'mountpoint -q /var/log/journal' 2>/dev/null; then
-    echo "cycle $cycle: THE LEDGER IS NOT ON THE POOL"; exit 1
+  # The record is on the pool too, so it is part of what a stop has to survive.
+  if ! sshm 'mountpoint -q /var/lib/nixcage/forgejo' 2>/dev/null; then
+    echo "cycle $cycle: THE RECORD IS NOT ON THE POOL"; exit 1
   fi
-  ledger=$(sshm 'journalctl --namespace=acme -t cageworks-proof --no-pager -q | wc -l')
-  if [ "${ledger:-0}" -lt 1 ]; then
-    echo "cycle $cycle: THE LEDGER DID NOT COME BACK"; exit 1
+  # shellcheck disable=SC2016  # runs in the guest, expands there
+  record=$(sshm 'for _ in $(seq 1 60); do curl -sf http://10.77.0.1:3000/api/v1/version >/dev/null && break; sleep 1; done
+    curl -sf -H "Authorization: token $(cat /var/lib/nixcage/forge/operator-token)" \
+      "http://10.77.0.1:3000/api/v1/repos/operator/acme/issues?state=all&type=issues" | grep -c "stop-and-start proof issue"')
+  if [ "${record:-0}" -lt 1 ]; then
+    echo "cycle $cycle: THE RECORD DID NOT COME BACK"; exit 1
   fi
-  echo "cycle $cycle: down=$((t1-t0))s up=$((t2-t1))s boot=${boot}s intact empty=$empty ledger=$ledger"
+  echo "cycle $cycle: down=$((t1-t0))s up=$((t2-t1))s boot=${boot}s intact empty=$empty record=$record"
 done
 echo "ALL TEN CYCLES INTACT"
