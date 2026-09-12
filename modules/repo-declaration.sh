@@ -22,7 +22,8 @@ cageworks_declaration_program() {
 	## resources is not written out here. What a factory may ask of the machine
 	## is one table in resources.sh, read by this schema, by the operator's own
 	## schema and by the clamp that meets one against the other.
-	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources"]\n'
+	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider"]\n'
+	printf '  , decider:   ["policy"]\n'
 	printf '  , role:      ["command", "provides", "shell"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout"]\n'
@@ -98,6 +99,17 @@ cageworks_declaration_program() {
        ] | cat) | cat),
 
     unknown(($d.resources? // {}); schema.resources; "resources"),
+    unknown(($d.decider? // {}); schema.decider; "decider"),
+
+    ## The decider's policy is a file inside the repository (ADR-034 point
+    ## 5), read at build time; a path that could leave it is refused.
+    ((($d.decider? // {}) | .policy?) as $p
+     | if $p == null then []
+       elif ($p | type) != "string" or ($p | length) == 0
+       then ["decider: policy must name a file"]
+       elif ($p | startswith("/")) or ($p | split("/") | index("..")) != null
+       then ["decider: policy must be a path inside the repository: \($p)"]
+       else [] end),
 
     ((($d.resources? // {}) | if type == "object" then . else {} end)
      | [ (if ((.cores? // 1) | type) != "number"
@@ -157,8 +169,13 @@ cageworks_declaration_check_names() {
 			echo "cageworks: $where: egress is not a host: $value" >&2
 			;;
 		role)
-			cageworks_role_name_ok "$value" && continue
-			echo "cageworks: $where: a role name is at most $CAGEWORKS_ROLE_NAME_MAX characters of a usable name: $value" >&2
+			if [ "$value" = "$CAGEWORKS_DECIDER" ]; then
+				echo "cageworks: $where: $value is the machine's own role and cannot be declared" >&2
+			elif cageworks_role_name_ok "$value"; then
+				continue
+			else
+				echo "cageworks: $where: a role name is at most $CAGEWORKS_ROLE_NAME_MAX characters of a usable name: $value" >&2
+			fi
 			;;
 		*)
 			cageworks_name_ok "$value" && continue

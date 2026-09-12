@@ -146,6 +146,12 @@ validate_with() {
 	assert_success
 }
 
+@test "a role named decider is refused, because the machine provides that one" {
+	run validate_with '{name, roles: {"decider": .roles.backend}}'
+	assert_failure
+	assert_output --partial "machine's own role"
+}
+
 @test "a devShell name that could reach somebody else's flake is refused" {
 	run validate_with '.roles.backend.shell = "github:evil/flake#sh"'
 	assert_failure
@@ -233,6 +239,22 @@ validate_example() {
 # An endpoint reaches a firewall rule and a proxy's allowlist (ADR-025), so it
 # is checked where it is declared, like every other name that reaches something
 # that would otherwise have to escape it.
+
+# ADR-034 point 5: one policy file the repository names, appended to the
+# decider's prompt as its own labelled section. A path inside the repository,
+# and nothing that could climb out of it.
+@test "a declaration may name a policy file for the decider, inside the repository" {
+	run validate_with '.decider = {policy: "docs/factory-policy.md"}'
+	assert_success
+	run validate_with '.decider = {policy: "../../etc/passwd"}'
+	assert_failure
+	assert_output --partial policy
+	run validate_with '.decider = {policy: "/etc/passwd"}'
+	assert_failure
+	run validate_with '.decider = {colour: "blue"}'
+	assert_failure
+	assert_output --partial colour
+}
 
 @test "a declaration may name the endpoints its agents reach" {
 	run validate_with '.resources.egress = ["api.anthropic.com"]'

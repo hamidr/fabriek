@@ -87,6 +87,20 @@ export class BusClient {
     return entriesOf(reply, stream);
   }
 
+  /** Entries after each stream's id, on several streams, waiting up to block milliseconds. */
+  async xreadMany(after: Record<string, string>, block: number): Promise<Record<string, Entry[]>> {
+    const names = Object.keys(after);
+    if (names.length === 0) return {};
+    const reply = await this.call(["XREAD", "BLOCK", String(block), "STREAMS", ...names, ...names.map((n) => after[n] ?? "$")]);
+    const out: Record<string, Entry[]> = {};
+    if (!Array.isArray(reply)) return out;
+    for (const s of reply) {
+      const [name, entries] = s as [string, Reply];
+      out[String(name)] = rawEntries(entries);
+    }
+    return out;
+  }
+
   /** Entries in a range, oldest first. */
   async xrange(stream: string, from = "-", to = "+", count?: number): Promise<Entry[]> {
     const words = ["XRANGE", stream, from, to];

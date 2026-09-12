@@ -98,9 +98,11 @@ JSON
 { "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend" } } }
 JSON
 	# What prepare made for the role: its bus password and its forge token.
-	mkdir -p "$STATE/bus" "$STATE/forge" "$CAGEWORKS_ETC/pi/extensions"
+	mkdir -p "$STATE/bus" "$STATE/forge" "$CAGEWORKS_ETC/pi/extensions" "$CAGEWORKS_ETC/pi-decider/extensions"
 	echo pass >"$STATE/bus/builder"
 	echo tok >"$STATE/forge/builder-token"
+	echo pass >"$STATE/bus/decider"
+	echo tok >"$STATE/forge/decider-token"
 }
 
 teardown() {
@@ -146,7 +148,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $CAGEWORKS_ETC/pi:/run/cageworks/pi --setenv PI_CODING_AGENT_DIR=/run/cageworks/pi --bind-ro $STATE/bus/builder:/run/cageworks/bus-password --bind-ro $STATE/forge/builder-token:/run/cageworks/forge-token --setenv CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password --setenv CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token --setenv CAGEWORKS_ROLE=builder --setenv CAGEWORKS_CAPABILITIES=build,test --setenv CAGEWORKS_BUS=10.77.0.1:6379 --setenv CAGEWORKS_FORGE=http://10.77.0.1:3000/api/v1 --setenv CAGEWORKS_REPOSITORY=operator/acme --setenv CAGEWORKS_BASE_BRANCH=main builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $CAGEWORKS_ETC/pi:/run/cageworks/pi --setenv PI_CODING_AGENT_DIR=/run/cageworks/pi --bind-ro $STATE/bus/builder:/run/cageworks/bus-password --bind-ro $STATE/forge/builder-token:/run/cageworks/forge-token --setenv CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password --setenv CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token --setenv CAGEWORKS_ROLE=builder --setenv CAGEWORKS_CAPABILITIES=build,test --setenv CAGEWORKS_BUS=10.77.0.1:6379 --setenv CAGEWORKS_FORGE=http://10.77.0.1:3000/api/v1 --setenv CAGEWORKS_REPOSITORY=operator/acme --setenv CAGEWORKS_BASE_BRANCH=main --setenv CAGEWORKS_PROXY=10.77.0.1:8118 --setenv CAGEWORKS_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -231,6 +233,32 @@ JSON
 	assert_failure
 	assert_output --partial "bus password"
 	[ ! -f "$CALLS" ]
+}
+
+# ADR-034 point 1: the decider is a cage like any other, provided by the
+# machine rather than declared. Its session is composed the same way, with
+# its own loop, a read-only token, the declaration and the policy bound in,
+# and no capabilities, no profile and no branch to sign for.
+@test "the decider's session is a role session with the machine's own loop and the policy bound in" {
+	echo "Prefer finishing started work." >"$CAGEWORKS_ETC/decider-policy.md"
+	run_cageworks_container role-enter --repository "$REPO" --signing-key decider acme decider
+	assert_success
+	run recorded
+	assert_output --partial "--network cageworks-acme:10.77.0.2/24 --no-nix-daemon"
+	assert_output --partial "--bind-ro $CAGEWORKS_ETC/pi-decider:/run/cageworks/pi --setenv PI_CODING_AGENT_DIR=/run/cageworks/pi"
+	assert_output --partial "--bind-ro $STATE/forge/decider-token:/run/cageworks/forge-token"
+	assert_output --partial "--bind-ro $CAGEWORKS_ETC/declaration.json:/run/cageworks/declaration.json --setenv CAGEWORKS_DECLARATION=/run/cageworks/declaration.json"
+	assert_output --partial "--bind-ro $CAGEWORKS_ETC/decider-policy.md:/run/cageworks/policy.md --setenv CAGEWORKS_POLICY=/run/cageworks/policy.md"
+	assert_output --partial "--setenv CAGEWORKS_ROLE=decider --setenv CAGEWORKS_CAPABILITIES= "
+	assert_output --partial " decider $STATE/worktrees/acme/decider pi --mode rpc"
+	refute_output --partial NIXCAGE_PATH_PREFIX
+}
+
+@test "without a policy file on the machine, the decider is started without one and told nothing" {
+	run_cageworks_container role-enter --repository "$REPO" --signing-key decider acme decider
+	assert_success
+	run recorded
+	refute_output --partial "CAGEWORKS_POLICY"
 }
 
 @test "a role whose build realised no profile enters with the floor alone" {

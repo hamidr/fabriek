@@ -81,6 +81,20 @@ describe("a bus client", () => {
     bus.close();
   });
 
+  it("xreadMany reads several streams from their own ids and returns each stream's entries", async () => {
+    const fake = await fakeValkey((cmd) =>
+      cmd[0] === "XREAD"
+        ? "*1\r\n*2\r\n$15\r\ncontrol:builder\r\n*1\r\n*2\r\n$3\r\n5-0\r\n*2\r\n$4\r\nkind\r\n$5\r\nready\r\n"
+        : "+OK\r\n",
+    );
+    fakes.push(fake);
+    const bus = await BusClient.connect({ host: "127.0.0.1", port: fake.port, user: "u", password: "p" });
+    const out = await bus.xreadMany({ "control:builder": "0-0", "control:reviewer": "3-0" }, 100);
+    assert.deepEqual(out, { "control:builder": [{ id: "5-0", fields: { kind: "ready" } }] });
+    assert.deepEqual(fake.asked[1], ["XREAD", "BLOCK", "100", "STREAMS", "control:builder", "control:reviewer", "0-0", "3-0"]);
+    bus.close();
+  });
+
   it("when the server answers an error, the call rejects with it", async () => {
     const fake = await fakeValkey((cmd) => (cmd[0] === "AUTH" ? "+OK\r\n" : "-NOPERM this user has no permissions\r\n"));
     fakes.push(fake);

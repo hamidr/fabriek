@@ -22,18 +22,8 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/role-worktree.sh"
 # shellcheck source=modules/factory-clone.sh
 . "$CAGEWORKS_LIB/factory-clone.sh"
-# shellcheck source=modules/task-store.sh
-. "$CAGEWORKS_LIB/task-store.sh"
-# shellcheck source=modules/workflow-config.sh
-. "$CAGEWORKS_LIB/workflow-config.sh"
-# shellcheck source=modules/record.sh
-. "$CAGEWORKS_LIB/record.sh"
-# shellcheck source=modules/caps.sh
-. "$CAGEWORKS_LIB/caps.sh"
 # shellcheck source=modules/signing.sh
 . "$CAGEWORKS_LIB/signing.sh"
-# shellcheck source=modules/integrate.sh
-. "$CAGEWORKS_LIB/integrate.sh"
 # shellcheck source=modules/factory-config.sh
 . "$CAGEWORKS_LIB/factory-config.sh"
 # shellcheck source=modules/schema.sh
@@ -52,6 +42,8 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/forge.sh"
 # shellcheck source=modules/bus.sh
 . "$CAGEWORKS_LIB/bus.sh"
+# shellcheck source=modules/operator.sh
+. "$CAGEWORKS_LIB/operator.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
@@ -64,36 +56,27 @@ STATE_DIR="${CAGEWORKS_STATE:-/var/lib/nixcage}"
 # directory.
 CAGEWORKS_ETC="${CAGEWORKS_ETC:-/etc/cageworks}"
 
-# The tasks of every declared factory, kept beside the clones they are worked
-# in rather than in any repository.
-TASKS_ROOT="$STATE_DIR/tasks"
 
 ## The declaration a factory is working, read out of its own clone (ADR-020)
 ## rather than out of a tree somebody rendered.
 ##
-## Kept under the rev it was read from, which does two things at once. Every
-## reader below asks for the same declaration and only the first of them pays
-## for an evaluation, and which declaration a run used stays answerable
-## afterwards by looking at the name of the file. Written by rename, so a
-## reader never sees half of one.
+## The declaration this machine was built with (ADR-040): a file the build
+## wrote, validated and clamped, and never evaluated here. A machine is one
+## factory's, so a request naming another factory is a mistake to say.
 factory_declaration() {
-	local factory="$1" clone rev dir file
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || return 1
-	[ -d "$clone" ] || die "$factory has no clone to read a declaration from"
-	rev="$(cageworks_declaration_rev "$clone")" ||
-		die "$factory has no commit to read a declaration from"
-
-	dir="$STATE_DIR/declarations/$factory"
-	file="$dir/$rev.json"
-	if [ ! -f "$file" ]; then
-		mkdir -p "$dir"
-		cageworks_declaration_read "$clone" >"$file.new" || {
-			rm -f "$file.new"
-			die "could not read the declaration $factory is working"
-		}
-		mv "$file.new" "$file"
-	fi
+	local factory="$1" file="$CAGEWORKS_ETC/declaration.json" built
+	[ -f "$file" ] || die "this machine carries no declaration at $file"
+	built="$(jq -r '.name // empty' "$file")"
+	[ "$built" = "$factory" ] || die "this machine runs the factory $built, not $factory"
 	printf '%s\n' "$file"
+}
+
+## One limit out of the declaration's resources, with the caller's default
+## when the declaration states none.
+factory_limit() {
+	local factory="$1" field="$2" default="$3" value
+	value="$(jq -r --arg f "$field" '.resources[$f] // empty' "$(factory_declaration "$factory")")" || return 1
+	printf '%s\n' "${value:-$default}"
 }
 
 ## Where a factory's clone came from. Nothing declares this: a clone records
@@ -104,9 +87,6 @@ factory_repository() {
 	[ -d "$clone" ] || die "$factory has no clone yet"
 	git -C "$clone" remote get-url origin
 }
-# How much of each item each role has been shown. The supervisor's bookkeeping,
-# not part of the shared record.
-SEEN_ROOT="$STATE_DIR/seen"
 
 die() {
 	echo "cageworks-container: $*" >&2
@@ -119,31 +99,17 @@ usage: cageworks-container
   role-enter [--agent|--auth-sock <path>|--signing-key <role>] [--task-dir <path>]
              [--repository <path>] <factory> <role> [cmd...]
   role-worktree <factory> <role> <repo>
-  task-run <factory> <id>
-  task-file <factory> <workflow> [acceptance]
-  task-list <factory> [state]
-  task-show <factory> <id>
-  task-thread <factory> <id>
-  task-answer <factory> <id> approve|reject [reason]
-  factory-sync <factory>
-  factory-integrate <factory> <commit>
-  factory-resume <factory>
-  factory-status <factory>
-  factory-reports <factory>
+  task-file <factory> <workflow> <title> [body]
   factory-prepare <factory>
+  role-stop <factory> <role>
+  factory-mirror <factory>
+  factory-watch <factory> [--from <id>]
+  role-steer <factory> <role> <text>
+  factory-send <factory> <json>
+  factory-roles <factory>
 USAGE
 }
 
-## What a factory may spend, as its own declaration states it and the operator
-## capped it before it got here (ADR-020 point 5). A limit nobody stated falls
-## back to the one cageworks would have used anyway, so a factory that declares
-## no resources still runs.
-factory_limit() {
-	local factory="$1" field="$2" fallback="$3" value
-	value="$(jq -r --arg f "$field" '(.resources[$f] // empty)' \
-		"$(factory_declaration "$factory")")" || return 1
-	printf '%s\n' "${value:-$fallback}"
-}
 
 ## Everything a role session is given beyond an ordinary one, as flags on
 ## nixcage's own entry point. Each was a special case inside the cage before
@@ -223,8 +189,14 @@ cmd_role_enter() {
 	[ -n "$repo" ] || exit 1
 	worktree="$(cmd_role_worktree "$factory" "$role" "$repo")" || exit 1
 
-	declared_cmd="$(cageworks_factory_role_command \
-		"$(factory_declaration "$factory")" "$role")" || exit 1
+	## The decider is the machine's own role (ADR-034 point 1): not in the
+	## declaration, running the agent in the mode its loop drives.
+	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+		declared_cmd=$'pi\n--mode\nrpc'
+	else
+		declared_cmd="$(cageworks_factory_role_command \
+			"$(factory_declaration "$factory")" "$role")" || exit 1
+	fi
 
 	## Where on the factory's bridge this cage is (ADR-037). The plan is the
 	## machine's, written by its build from the same declaration the rules
@@ -363,430 +335,24 @@ cmd_role_worktree() {
 		die "could not prepare the worktree for role $role"
 }
 
-## Every role that could take a task at this stage, in declaration order. A
-## stage nothing can work is a declaration mistake and is refused where it is
-## read rather than when a task reaches it (ADR-015).
-stage_roles() {
-	local factory="$1" workflow="$2" stage="$3"
-	local capability roles
-	capability="$(cageworks_workflow_stage_needs \
-		"$(factory_declaration "$factory")" "$workflow" "$stage")" ||
-		die "$workflow stage $stage declares no capability"
-	roles="$(cageworks_factory_roles_providing "$(factory_declaration "$factory")" "$capability")"
-	[ -n "$roles" ] ||
-		die "no role of $factory provides $capability, which $workflow stage $stage needs"
-	printf '%s\n' "$roles"
-}
 
-## A role is busy while it holds a task: one worktree, one branch, one task at a
-## time. Blocked counts as busy because nothing switched branches when the task
-## blocked.
-role_busy() {
-	local factory="$1" role="$2" id state
-	while IFS= read -r id; do
-		[ -n "$id" ] || continue
-		[ "$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" role)" = "$role" ] || continue
-		state="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" state)"
-		case "$state" in
-		running | blocked) return 0 ;;
-		esac
-	done < <(cageworks_task_list "$TASKS_ROOT" "$factory")
-	return 1
-}
 
-## Who works a task. A task already taken answers with its taker, however busy
-## it is: the branch is in that role's namespace and no peer can write it. An
-## untaken one resolves its stage's capability to the first idle role providing
-## it, in declaration order, so a factory replays the same way twice (ADR-015).
-resolve_taker() {
-	local factory="$1" id="$2"
-	local taken workflow stage role
-	taken="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" role)"
-	if [ -n "$taken" ]; then
-		echo "$taken"
-		return 0
-	fi
-	workflow="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
-	stage="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
-	## Resolved into a variable rather than read from a process substitution:
-	## an undeclared capability has to fail here with its own message, and
-	## inside a subshell it would look like every role being busy instead.
-	local candidates
-	candidates="$(stage_roles "$factory" "$workflow" "$stage")" || exit 1
-	while IFS= read -r role; do
-		[ -n "$role" ] || continue
-		role_busy "$factory" "$role" && continue
-		echo "$role"
-		return 0
-	done <<<"$candidates"
-	return 1
-}
 
-## The fields a stage requires before it will take a task, defaulting to the
-## acceptance criteria: a task nobody stated a finish line for is not work
-## anyone can judge.
-stage_ready_fields() {
-	local factory="$1" workflow="$2" stage="$3" fields
-	fields="$(cageworks_workflow_stage_ready \
-		"$(factory_declaration "$factory")" "$workflow" "$stage")"
-	[ -n "$fields" ] || fields=acceptance
-	printf '%s\n' "$fields"
-}
 
 ## File a goal. It enters at the workflow's first stage, which says what
 ## capability the work needs rather than who has it, so the operator names what
 ## should happen and nobody names a role.
-cmd_task_file() {
-	local factory="$1" workflow="$2" acceptance="${3:-}"
-	local entry stage field
-	entry="$(cageworks_workflow_entry "$(factory_declaration "$factory")" "$workflow")" || exit 1
-	stage="${entry%% *}"
-	stage_roles "$factory" "$workflow" "$stage" >/dev/null || exit 1
 
-	local id
-	id="$(cageworks_task_new "$TASKS_ROOT" "$factory" "$workflow" "$stage")" ||
-		die "could not file a task for $workflow"
-	if [ -n "$acceptance" ]; then
-		cageworks_task_set "$TASKS_ROOT" "$factory" "$id" acceptance "$acceptance"
-	fi
 
-	## Every task opens an item in the shared record, so there is one place the
-	## discussion of this work accumulates (ADR-013). The clone must exist
-	## first; filing is the operator's act, so it is made here rather than
-	## waiting for a role to run.
-	local repo clone item
-	repo="$(factory_repository "$factory")" || exit 1
-	clone="$(cageworks_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" || exit 1
-	item="$(printf '%s\n\n%s\n' "$id" "$acceptance" |
-		cageworks_record_new "$clone" supervisor)"
-	[ -n "$item" ] && cageworks_task_set "$TASKS_ROOT" "$factory" "$id" item "$item"
-	## What a stage requires before it will take work is the stage's to state.
-	## A task missing one of those fields stays proposed and says which, rather
-	## than being taken and failing inside a cage.
-	local -a required=()
-	while IFS= read -r field; do
-		[ -n "$field" ] || continue
-		required+=("$field")
-	done < <(stage_ready_fields "$factory" "$workflow" "$stage")
-	cageworks_task_ready "$TASKS_ROOT" "$factory" "$id" "${required[@]}" >/dev/null || true
-	echo "$id"
-}
 
-cmd_task_list() {
-	local factory="$1" want="${2:-}"
-	local id
-	while IFS= read -r id; do
-		[ -n "$id" ] || continue
-		printf '%s\t%s\t%s\n' "$id" \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" state)" \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" role)"
-	done < <(cageworks_task_list "$TASKS_ROOT" "$factory" "$want")
-}
 
-## Move settled work to the next stage, or finish it. Used when a stage has no
-## gate, and again when a gate is approved, so the two paths cannot drift apart.
-advance_work() {
-	local factory="$1" id="$2" clone="$3" item="$4"
-	local workflow stage next child child_item seed
-	workflow="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
-	stage="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
-	next="$(cageworks_workflow_next "$(factory_declaration "$factory")" "$workflow" "$stage")"
 
-	if [ -n "$next" ]; then
-		child="$(cageworks_task_advance "$TASKS_ROOT" "$factory" "$id" \
-			"${next%% *}")" || die "$id: could not advance the work"
-		local -a required=()
-		local field
-		while IFS= read -r field; do
-			[ -n "$field" ] || continue
-			required+=("$field")
-		done < <(stage_ready_fields "$factory" "$workflow" "${next%% *}")
-		cageworks_task_ready "$TASKS_ROOT" "$factory" "$child" "${required[@]}" >/dev/null || true
-		if [ -n "$item" ]; then
-			seed="$STATE_DIR/runs/$factory/$id/seed"
-			mkdir -p "$(dirname "$seed")"
-			{
-				printf '%s\n\n' "$child"
-				printf 'inherited from %s:\n\n' "$id"
-				cageworks_record_show "$clone" "$item"
-			} >"$seed"
-			child_item="$(cageworks_record_new "$clone" supervisor <"$seed")"
-			[ -n "$child_item" ] &&
-				cageworks_task_set "$TASKS_ROOT" "$factory" "$child" item "$child_item"
-			printf 'settled; %s opened, needing %s\n' "$child" "${next#* }" |
-				cageworks_record_comment "$clone" "$item" supervisor
-		fi
-		echo "$id: settled, $child opened, needing ${next#* }"
-	else
-		cageworks_task_advance "$TASKS_ROOT" "$factory" "$id" "" ||
-			die "$id: could not finish the work"
-		[ -n "$item" ] && printf 'settled; the pipeline ends here\n' |
-			cageworks_record_comment "$clone" "$item" supervisor
-		echo "$id: settled, the pipeline ends here"
-	fi
-}
 
-## Answer a gate. Approval lets the work move on by the same path a gateless
-## stage takes; rejection sends it back with the reason kept.
-cmd_task_answer() {
-	local factory="$1" id="$2" answer="$3" reason="${4:-}"
-	local clone item
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	item="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" item)"
 
-	cageworks_task_answer "$TASKS_ROOT" "$factory" "$id" "$answer" "$reason" || exit 1
-	if [ -n "$item" ]; then
-		printf '%s: %s\n' "$answer" "${reason:-no reason given}" |
-			cageworks_record_comment "$clone" "$item" operator
-	fi
 
-	if [ "$answer" = "approve" ]; then
-		advance_work "$factory" "$id" "$clone" "$item"
-	else
-		echo "$id: rejected, back to its role"
-	fi
-}
 
-## Bring the factory and the operator's repository back into agreement, in the
-## only direction each is allowed to move. Divergence stops the factory rather
-## than being resolved: rewriting a shared branch is rare and deliberate, and
-## continuing on a history that no longer exists is worse than stopping.
-cmd_factory_sync() {
-	local factory="$1"
-	local repo clone shared
-	repo="$(factory_repository "$factory")" || exit 1
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	shared="$(cageworks_factory_shared_branch)"
-	[ -d "$clone" ] || die "$factory has no clone yet"
 
-	if cageworks_integrate_diverged "$clone" "$repo" "$shared"; then
-		cageworks_integrate_halt "$STATE_DIR" "$factory" \
-			"the operator's $shared no longer contains what this factory was built on"
-		die "$factory halted: $shared has diverged"
-	fi
 
-	cageworks_integrate_publish "$clone" "$repo" "$shared" ||
-		die "$factory: could not hand $shared to the operator"
-	echo "$factory: $shared published"
-}
-
-## Advance the shared branch to a commit a role produced, then hand it on.
-## Reading nothing: which commit is the reviewer's judgement, made in a cage;
-## moving a ref to a named commit is this, made outside one.
-cmd_factory_integrate() {
-	local factory="$1" commit="$2"
-	local clone shared
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	shared="$(cageworks_factory_shared_branch)"
-	cageworks_integrate_advance "$clone" "$shared" "$commit" ||
-		die "$factory: $commit does not fast-forward $shared"
-	cmd_factory_sync "$factory"
-}
-
-cmd_factory_resume() {
-	local factory="$1"
-	cageworks_integrate_resume "$STATE_DIR" "$factory"
-	echo "$factory: resumed"
-}
-
-## What roles have raised for the operator. The same mechanism a role uses to
-## ask another role, pointed at the one participant who is not a role, so there
-## is one way to ask for attention rather than two.
-cmd_factory_reports() {
-	local factory="$1"
-	local clone item
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	[ -d "$clone" ] || return 0
-	while IFS= read -r item; do
-		[ -n "$item" ] || continue
-		printf '%s\t%s\n' "${item:0:8}" \
-			"$(cageworks_record_show "$clone" "$item" | head -1)"
-	done < <(cageworks_record_needing "$clone" operator)
-}
-
-cmd_factory_status() {
-	local factory="$1" halted
-	if halted="$(cageworks_integrate_halted "$STATE_DIR" "$factory")"; then
-		printf 'halted\t%s\n' "$halted"
-	else
-		printf 'running\t\n'
-	fi
-}
-
-cmd_task_thread() {
-	local factory="$1" id="$2"
-	local clone item
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	item="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" item)"
-	[ -n "$item" ] || die "$id has no item in the record"
-	cageworks_record_show "$clone" "$item"
-}
-
-cmd_task_show() {
-	local factory="$1" id="$2" field
-	for field in state role workflow stage parent item gate attempts acceptance outcome answer; do
-		printf '%s\t%s\n' "$field" \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" "$field")"
-	done
-}
-
-## Run one task in the cage of whoever takes it. The task is handed in as files
-## and the outcome is read back out of one, so nothing about it is ever an
-## argument. Every ending is recorded: settled when the role wrote what it did,
-## failed when it wrote nothing, crashed, or outlived its limit.
-##
-## No role is named by the caller: the stage says what the work needs and the
-## first idle role providing it takes the task, which is then its for every
-## later attempt (ADR-015).
-cmd_task_run() {
-	local factory="$1" id="$2" role
-	local max limit
-	max="$(factory_limit "$factory" taskAttempts 3)"
-	limit="$(factory_limit "$factory" runTimeoutSeconds 3600)"
-
-	local halted
-	if halted="$(cageworks_integrate_halted "$STATE_DIR" "$factory")"; then
-		die "$factory is halted: $halted"
-	fi
-
-	role="$(resolve_taker "$factory" "$id")" ||
-		die "$id: every role that could take this work is busy"
-	cageworks_task_take "$TASKS_ROOT" "$factory" "$id" "$role" || exit 1
-
-	local clone item workflow
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || exit 1
-	item="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" item)"
-	workflow="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" workflow)"
-
-	## The caps are checked before anything is spent, and in this order: the
-	## machine before the workflow, because a slot refused costs nothing while
-	## a budget charged and then abandoned does not come back. Reaching either
-	## stops cleanly and says which one it was.
-	local concurrency budget_runs
-	concurrency="$(factory_limit "$factory" concurrency 0)"
-	budget_runs="$(cageworks_workflow_budget "$(factory_declaration "$factory")" "$workflow" runs)"
-
-	cageworks_cap_claim "$STATE_DIR" "$factory" "$id" "$concurrency" || exit 1
-	# shellcheck disable=SC2064
-	trap "cageworks_cap_release '$STATE_DIR' '$factory' '$id'" EXIT
-
-	if ! cageworks_cap_spend "$STATE_DIR" "$factory" "$workflow" runs 1 "$budget_runs"; then
-		[ -n "$item" ] && printf 'stopped: %s has spent its run budget\n' "$workflow" |
-			cageworks_record_comment "$clone" "$item" supervisor
-		exit 1
-	fi
-
-	cageworks_task_attempt "$TASKS_ROOT" "$factory" "$id" "$max" || exit 1
-
-	## The supervisor writes what it did as it does it, so reading the item top
-	## to bottom is the story of the work rather than its ending.
-	if [ -n "$item" ]; then
-		printf 'attempt %s started for %s\n' \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" attempts)" "$role" |
-			cageworks_record_comment "$clone" "$item" supervisor || true
-	fi
-
-	## Declared here rather than inside the brief below: a { } group is not a
-	## scope, so an assignment made there would outlive this function.
-	local uid run_dir finish own_guidance seen fresh
-	uid="$(nixcage-container uid "$role")" ||
-		die "could not get a uid for role $role"
-	run_dir="$STATE_DIR/runs/$factory/$id"
-	rm -rf "$run_dir"
-	mkdir -p "$run_dir"
-	{
-		printf 'task: %s\n' "$id"
-		printf 'role: %s\n' "$role"
-		printf 'acceptance:\n%s\n' \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" acceptance)"
-		## What finishing means at this stage, as its declaration states it.
-		## Handed over rather than checked: judging whether work meets a bar is
-		## reading content, which is what a cage is for (ADR-015).
-		finish="$(cageworks_workflow_stage_done "$(factory_declaration "$factory")" \
-			"$workflow" "$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" stage)")"
-		if [ -n "$finish" ]; then
-			printf '\ndone at this stage means:\n%s\n' "$finish"
-		fi
-		printf '\nbody:\n%s\n' \
-			"$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" body)"
-		## The conventions of this factory, which the repository carries and
-		## the architect maintains. The baseline cageworks ships states
-		## properties of the cage; this states how this project works.
-		own_guidance="$(cageworks_factory_guidance "$clone")"
-		if [ -n "$own_guidance" ]; then
-			printf '\nthis factory:\n%s\n' "$own_guidance"
-		fi
-
-		## What has already been said about this work. A role opens its turn
-		## reading the discussion rather than only the goal, and is told which
-		## part of it is new since it last looked -- replaying everything as
-		## though it were new is how a record stops being read.
-		if [ -n "$item" ]; then
-			seen="$(cageworks_record_seen "$SEEN_ROOT" "$factory" "$role" "$item")"
-			fresh="$(cageworks_record_since "$clone" "$item" "$seen")"
-			printf '\nrecord:\n%s\n' "$(cageworks_record_show "$clone" "$item")"
-			if [ -n "$fresh" ]; then
-				printf '\nnew since you last looked:\n%s\n' "$fresh"
-			else
-				printf '\nnew since you last looked:\n  nothing\n'
-			fi
-			cageworks_record_mark_seen "$SEEN_ROOT" "$factory" "$role" "$item" \
-				"$(cageworks_record_count "$clone" "$item")"
-		fi
-	} >"$run_dir/brief"
-	: >"$run_dir/outcome"
-	: >"$run_dir/mentions"
-	mkdir -p "$run_dir/comments"
-	chown "$uid:$uid" "$run_dir/outcome" "$run_dir/mentions" "$run_dir/comments"
-	chmod 444 "$run_dir/brief"
-
-	local status=0
-	timeout "$limit" "$0" role-enter \
-		--task-dir "$run_dir" --signing-key "$role" \
-		"$factory" "$role" || status=$?
-
-	## Whatever the role wrote during its turn reaches the record now: it could
-	## not write there itself, and this is the boundary where its writing
-	## becomes visible to anyone else.
-	if [ -n "$item" ]; then
-		cageworks_record_ingest "$clone" "$run_dir" "$role" "$item" || true
-	fi
-
-	local outcome
-	outcome="$(cat "$run_dir/outcome" 2>/dev/null)"
-	if [ "$status" = 124 ]; then
-		cageworks_task_failed "$TASKS_ROOT" "$factory" "$id" \
-			"the run outlived its $limit second limit" "$max"
-		[ -n "$item" ] && printf 'the run outlived its %s second limit\n' "$limit" |
-			cageworks_record_comment "$clone" "$item" supervisor
-		die "$id: run outlived its limit"
-	elif [ -n "$outcome" ]; then
-		cageworks_task_settle "$TASKS_ROOT" "$factory" "$id" "$outcome" ||
-			die "$id: could not record the outcome"
-
-		## A gated stage stops here. The work is done and the hand-off waits on
-		## a person, so the task stays awaiting-review rather than moving on,
-		## and the slot it held was released when this run ended.
-		local stage gate
-		stage="$(cageworks_task_get "$TASKS_ROOT" "$factory" "$id" stage)"
-		gate="$(cageworks_workflow_stage_gate "$(factory_declaration "$factory")" "$workflow" "$stage")"
-		if [ -n "$gate" ]; then
-			cageworks_task_gate "$TASKS_ROOT" "$factory" "$id" "$gate" || exit 1
-			[ -n "$item" ] && printf 'waiting at the %s gate\n' "$gate" |
-				cageworks_record_comment "$clone" "$item" supervisor
-			echo "$id: settled, waiting at the $gate gate"
-			return 0
-		fi
-
-		advance_work "$factory" "$id" "$clone" "$item"
-	else
-		cageworks_task_failed "$TASKS_ROOT" "$factory" "$id" \
-			"the session ended having recorded no outcome" "$max"
-		[ -n "$item" ] && printf 'the session ended having recorded no outcome\n' |
-			cageworks_record_comment "$clone" "$item" supervisor
-		die "$id: no outcome recorded"
-	fi
-}
 
 ## What a machine needs to have before a factory can run on it, made once
 ## and confirmed on every up (ADR-036, roadmap 2.3): bus passwords and the
@@ -854,24 +420,94 @@ cmd_factory_prepare() {
 	echo "$factory: prepared"
 }
 
+## The operator's interventions, each one entry on the operator stream that
+## the executor alone acts on (ADR-039 point 1).
+cmd_task_file() {
+	local factory="${1:-}" workflow="${2:-}" title="${3:-}" body="${4:-}"
+	[ -n "$factory" ] && [ -n "$workflow" ] && [ -n "$title" ] ||
+		die "usage: cageworks-container task-file <factory> <workflow> <title> [body]"
+	cageworks_name_ok "$factory" || die "invalid factory name: $factory"
+	local declaration="$CAGEWORKS_ETC/declaration.json" stage
+	stage="$(jq -r --arg w "$workflow" '.workflows[$w].stages[0].needs // empty' "$declaration")"
+	[ -n "$stage" ] || die "$factory declares no workflow $workflow"
+	local dir
+	dir="$(cageworks_operator_filed "$STATE_DIR")"
+	printf '%s\n' "$title" >"$dir/title"
+	printf '%s\n' "$body" >"$dir/body"
+	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+		"$(jq -cn --arg t "$dir/title" --arg b "$dir/body" --arg s "$stage" \
+			'{verb: "file", titleFile: $t, bodyFile: $b, stage: $s}')" || exit 1
+	echo "$factory: filed at $stage"
+}
+
+cmd_role_stop() {
+	local factory="${1:-}" role="${2:-}"
+	[ -n "$factory" ] && [ -n "$role" ] || die "usage: cageworks-container role-stop <factory> <role>"
+	cageworks_role_name_ok "$role" || die "invalid role name: $role"
+	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+		"$(jq -cn --arg r "$role" '{verb: "stop", role: $r}')" || exit 1
+	echo "$factory: stop sent to $role"
+}
+
+## The bus as JSONL on stdout, for as long as the caller listens (ADR-039
+## point 2). The relay is the factory package's; this only names it.
+cmd_factory_watch() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-watch <factory> [--from <id>]"
+	shift
+	exec cageworks-relay "$@"
+}
+
+cmd_role_steer() {
+	local factory="${1:-}" role="${2:-}" text="${3:-}"
+	[ -n "$factory" ] && [ -n "$role" ] && [ -n "$text" ] ||
+		die "usage: cageworks-container role-steer <factory> <role> <text>"
+	cageworks_role_name_ok "$role" || die "invalid role name: $role"
+	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+		"$(jq -cn --arg r "$role" --arg t "$text" '{op: "steer", role: $r, text: $t}')" || exit 1
+	echo "$factory: steered $role"
+}
+
+## A command in the decider's own vocabulary, from the operator. The executor
+## validates it exactly as it validates the decider's.
+cmd_factory_send() {
+	local factory="${1:-}" json="${2:-}"
+	[ -n "$factory" ] && [ -n "$json" ] || die "usage: cageworks-container factory-send <factory> <json>"
+	jq -e '.verb | type == "string"' <<<"$json" >/dev/null 2>&1 ||
+		die "not a command: $json"
+	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(jq -c . <<<"$json")" || exit 1
+	echo "$factory: sent"
+}
+
+## The declared roles, for a client that needs to know them before the bus
+## has said anything.
+cmd_factory_roles() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-roles <factory>"
+	jq -r '.roles | keys[]' "$(factory_declaration "$factory")" | paste -sd' ' -
+}
+
+cmd_factory_mirror() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-mirror <factory>"
+	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" '{"op":"mirror"}' || exit 1
+	echo "$factory: mirror requested"
+}
+
 main() {
 	local cmd="${1:-}"
 	shift || true
 	case "$cmd" in
 	role-enter) cmd_role_enter "$@" ;;
 	role-worktree) cmd_role_worktree "$@" ;;
-	task-run) cmd_task_run "$@" ;;
 	task-file) cmd_task_file "$@" ;;
-	task-list) cmd_task_list "$@" ;;
-	task-show) cmd_task_show "$@" ;;
-	task-thread) cmd_task_thread "$@" ;;
-	task-answer) cmd_task_answer "$@" ;;
-	factory-sync) cmd_factory_sync "$@" ;;
-	factory-integrate) cmd_factory_integrate "$@" ;;
-	factory-resume) cmd_factory_resume "$@" ;;
-	factory-status) cmd_factory_status "$@" ;;
-	factory-reports) cmd_factory_reports "$@" ;;
 	factory-prepare) cmd_factory_prepare "$@" ;;
+	role-stop) cmd_role_stop "$@" ;;
+	factory-mirror) cmd_factory_mirror "$@" ;;
+	factory-watch) cmd_factory_watch "$@" ;;
+	role-steer) cmd_role_steer "$@" ;;
+	factory-send) cmd_factory_send "$@" ;;
+	factory-roles) cmd_factory_roles "$@" ;;
 	*)
 		usage >&2
 		exit 1

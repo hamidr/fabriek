@@ -22,17 +22,13 @@ let
     cp ${../modules/repo-declaration.sh} $out/repo-declaration.sh
     cp ${../modules/operator-config.sh} $out/operator-config.sh
     cp ${../modules/machine.sh} $out/machine.sh
-    cp ${../modules/task-store.sh} $out/task-store.sh
-    cp ${../modules/workflow-config.sh} $out/workflow-config.sh
-    cp ${../modules/record.sh} $out/record.sh
-    cp ${../modules/caps.sh} $out/caps.sh
     cp ${../modules/signing.sh} $out/signing.sh
-    cp ${../modules/integrate.sh} $out/integrate.sh
     cp ${../modules/role-guidance.sh} $out/role-guidance.sh
     cp ${../modules/machine-spec.sh} $out/machine-spec.sh
     cp ${../modules/machine-plan.sh} $out/machine-plan.sh
     cp ${../modules/forge.sh} $out/forge.sh
     cp ${../modules/bus.sh} $out/bus.sh
+    cp ${../modules/operator.sh} $out/operator.sh
     cp ${../modules/role-guidance.md} $out/role-guidance.md
   '';
 
@@ -62,17 +58,15 @@ let
               ## cannot have (ADR-010).
               git
               acl
-              ## The shared record (ADR-022). Every call to it is retried and
-              ## bounded, which is what coreutils' timeout above is for
-              ## (ADR-024).
-              git-bug
               ## Reading the declaration out of a factory's clone, and shaping
               ## the JSON it comes back as (ADR-020).
               nix
               jq
-              ## Preparing the forge: its API, and its own CLI on the
+              ## Preparing the forge and speaking to the executor: the
+              ## forge's API, the bus, and the forge's own CLI on the
               ## machine's path (guest/board.nix wraps it).
               curl
+              valkey
               "/run/current-system/sw"
             ]
           )
@@ -102,10 +96,7 @@ let
             with pkgs;
             [
               coreutils
-              ## Reporting a role's state to a console that may not be
-              ## running. Both are best effort and neither stops a session.
               jq
-              netcat
               ## The operator's config is TOML and nix parses it, which is one
               ## dependency rather than two: nix is already what reads a
               ## repository's declaration (ADR-020).
@@ -113,6 +104,8 @@ let
               ## A key per factory's machine, made here because cageworks owns
               ## the way into a machine it built (ADR-019).
               openssh
+              ## The TUI (ADR-039 point 3), which factory console execs.
+              (import ../factory { inherit pkgs; }).package
             ]
           )
         }

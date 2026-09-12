@@ -147,6 +147,7 @@ in
     ./guest/proxy.nix
     ./guest/probes.nix
     ./guest/floor.nix
+    ./guest/executor.nix
   ];
 
   config = {

@@ -62,21 +62,42 @@ cageworks_actor_args() {
 		echo "cageworks: role $role has no forge token at $token; run cageworks up" >&2
 		return 1
 	fi
-	local capabilities forge bus
-	capabilities="$(jq -r --arg r "$role" '.roles[$r].provides | join(",")' "$etc/declaration.json")"
+	## The decider runs the machine's own loop, in a directory of its own,
+	## and reads the declaration and the policy rather than a capability.
+	local pidir="$etc/pi" capabilities=""
+	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+		pidir="$etc/pi-decider"
+	else
+		capabilities="$(jq -r --arg r "$role" '.roles[$r].provides | join(",")' "$etc/declaration.json")"
+	fi
+	local forge bus proxy
 	forge="$(jq -r .forgejo "$etc/bridge.json")"
 	bus="$(jq -r .valkey "$etc/bridge.json")"
+	proxy="$(jq -r .proxy "$etc/bridge.json")"
 	printf '%s\n' \
-		"--bind-ro" "$etc/pi:/run/cageworks/pi" \
+		"--bind-ro" "$pidir:/run/cageworks/pi" \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/cageworks/pi" \
 		"--bind-ro" "$password:/run/cageworks/bus-password" \
 		"--bind-ro" "$token:/run/cageworks/forge-token" \
 		"--setenv" "CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password" \
-		"--setenv" "CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token" \
+		"--setenv" "CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token"
+	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+		printf '%s\n' \
+			"--bind-ro" "$etc/declaration.json:/run/cageworks/declaration.json" \
+			"--setenv" "CAGEWORKS_DECLARATION=/run/cageworks/declaration.json"
+		if [ -s "$etc/decider-policy.md" ]; then
+			printf '%s\n' \
+				"--bind-ro" "$etc/decider-policy.md:/run/cageworks/policy.md" \
+				"--setenv" "CAGEWORKS_POLICY=/run/cageworks/policy.md"
+		fi
+	fi
+	printf '%s\n' \
 		"--setenv" "CAGEWORKS_ROLE=$role" \
 		"--setenv" "CAGEWORKS_CAPABILITIES=$capabilities" \
 		"--setenv" "CAGEWORKS_BUS=$bus" \
 		"--setenv" "CAGEWORKS_FORGE=http://$forge/api/v1" \
 		"--setenv" "CAGEWORKS_REPOSITORY=operator/$factory" \
-		"--setenv" "CAGEWORKS_BASE_BRANCH=main"
+		"--setenv" "CAGEWORKS_BASE_BRANCH=main" \
+		"--setenv" "CAGEWORKS_PROXY=$proxy" \
+		"--setenv" "CAGEWORKS_HOME_HOST=$state/homes/$factory-$role"
 }

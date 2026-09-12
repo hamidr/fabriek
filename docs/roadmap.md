@@ -155,12 +155,31 @@ One package, built through the flake, tests in its own runner.
   pull request on Forgejo; token minting; unit watching; decider restart;
   soft limit stops routing; `mirror` as a server-side verb exporting issues
   to `refs/cageworks/record` and pushing with `main`. Exit: the routing
-  scenarios of 0.1 pass as tests, including the liar.
+  scenarios of 0.1 pass as tests, including the liar. Done
+  2026-09-12 on the branch: `factory/src/executor/core.ts` against five
+  interfaces, 20 scenarios including the crash between board write and
+  send, the stall and the liar; adapters for the forge, the bus, sessions
+  and git; `main.ts` as the `cageworks-executor` unit, which publishes the
+  board and the spend to `events:executor` for the relay. The operator
+  writes through it: `task-file`, `role-stop`, `role-steer`,
+  `factory-mirror` and `factory-send` put one entry on the `operator`
+  stream as the executor's bus user, title and body as files. The record's
+  re-import stays open: the export is `issues.json` on
+  `refs/cageworks/record` and nothing reads it back yet.
 - 3.4 Decider: a cage like any other, prompt from the four parts of
   decision 41, read token on Forgejo, typed commands out. Exit: a recorded
   board produces a valid `assign` and an invalid one is refused upstream.
+  Done 2026-09-12 on the branch: `decider/core.ts` renders the four parts
+  (7 scenarios) and gates every tool call through the vocabulary and the
+  declaration; `decider/index.ts` runs it as a pi extension in its own
+  cage, named `decider`, which the declaration may not use; the policy
+  file is `decider.policy` in `cageworks.nix`, baked into the image and
+  bound read-only.
 - 3.5 Relay: `cageworks factory watch <factory>` JSONL over ssh, its shape
-  written down, one contract test on each side.
+  written down, one contract test on each side. Done 2026-09-12 on the
+  branch: one JSON object per line, `stream`, `id`, `fields` as the bus
+  holds them; `relay/fixtures.json` is the contract, read by the relay's
+  test and the TUI's model test alike.
 
 ## Phase 4: the operator's side, on the branch
 
@@ -168,11 +187,22 @@ One package, built through the flake, tests in its own runner.
   `vm status`, `factory mirror`, `factory watch`, `task file`, `role stop`.
   Deleted with their tests: `task-store.sh`, `record.sh`, `caps.sh`,
   `integrate.sh`, `journal.sh`, `factory-clone.sh`, the `role`, `task` and
-  `factory` verbs they served, herdr and `--pane`, `journalQuota`.
+  `factory` verbs they served, herdr and `--pane`, `journalQuota`. Done
+  2026-09-12 on the branch, pulled forward into 3.3 because a dispatch test
+  couples the CLI's verbs to the guest's. `factory-clone.sh` stays: the
+  machine still clones origin and cuts worktrees from it. The CLI gained
+  `role steer`, `factory send` and `factory console`.
 - 4.2 TUI on the operator's host: roles and state, stages as label columns,
   live stream, steer, file, block, retry, stop, mirror, memory view, pull
   requests, budget per role and decider. Exit: every verb the factory offers
-  is reachable from it without the web UI, merge excepted.
+  is reachable from it without the web UI, merge excepted. Done 2026-09-12
+  on the branch for what the relay carries: `tui/model.ts` folds relay
+  lines (pure, tested on the fixture), `tui/view.ts` renders (tested),
+  `tui/main.ts` reads `cageworks factory watch` and writes through the
+  CLI; keys file, steer, stop, retry, block, push and mirror. Not yet on
+  it: a memory view and the pull request list, which are the forge's and
+  not on the bus; the board reaches the TUI as the executor's `board`
+  event. `cageworks factory console <factory>` starts it.
 
 ## Phase 5: parity and merge
 

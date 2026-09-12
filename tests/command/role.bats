@@ -101,7 +101,7 @@ teardown() {
 @test "role without a factory and a role explains itself" {
 	run_cageworks role acme
 	assert_failure
-	assert_output --partial "role [--pane] <factory> <role>"
+	assert_output --partial "role <factory> <role>"
 }
 
 # ADR-032. The machine clones the repository's own remote, so what reaches the

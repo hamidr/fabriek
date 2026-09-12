@@ -39,21 +39,10 @@ teardown() {
 		tr -d "$(printf '\t')" | tr -d ')' | sort -u)"
 	[ -n "$sent" ]
 	for verb in $sent; do
-		# The CLI builds this one from its subcommand, so it is checked below.
-		[ "$verb" = "factory-sub" ] && continue
 		[[ "$dispatched" == *"$verb"* ]] || {
 			echo "the guest does not dispatch: $verb"
 			return 1
 		}
-	done
-}
-
-@test "the four factory verbs the CLI builds by name are all dispatched" {
-	# 'guest "factory-$sub"' is one call site for four verbs, so the names
-	# never appear in the CLI and nothing above can see them.
-	for sub in status sync resume reports; do
-		run grep -qE "^$(printf '\t')factory-$sub\)" "$CAGEWORKS_CONTAINER_BIN"
-		assert_success
 	done
 }
 

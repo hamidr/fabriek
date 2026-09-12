@@ -94,10 +94,19 @@ let
   ## What the machine carries of all this beyond the spec: one profile per
   ## role. The declaration itself rides in the spec and vm-guest.nix writes
   ## it to the machine as a file.
+  ## The decider's policy (ADR-034 point 5): one file the declaration names,
+  ## read out of the pinned repository at build time, so the policy a run used
+  ## is part of the image like the rest of the declaration.
+  policy = spec.declaration.decider.policy or null;
+  policyModule = lib.optionalAttrs (policy != null) {
+    environment.etc."cageworks/decider-policy.md".source = "${project}/${policy}";
+  };
   factoryModule = {
-    environment.etc = lib.mapAttrs' (
-      name: profile: lib.nameValuePair "cageworks/roles/${name}/profile" { source = profile; }
-    ) profiles;
+    environment.etc =
+      lib.mapAttrs' (
+        name: profile: lib.nameValuePair "cageworks/roles/${name}/profile" { source = profile; }
+      ) profiles
+      // (policyModule.environment.etc or { });
   };
 
   machine = import ./vm.nix {

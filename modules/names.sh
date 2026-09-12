@@ -63,3 +63,10 @@ cageworks_header_name_ok() {
 
 ## The subject a role session runs as inside its cage (ADR-028).
 ##
+
+## The one role the machine provides rather than the repository declares
+## (ADR-034 point 1). Its cage, its bus user and its forge account all carry
+## this name, so a repository declaring a role of the same name would collide
+## with it; the declaration's validation refuses that.
+# shellcheck disable=SC2034  # read by the guest program and its modules
+CAGEWORKS_DECIDER=decider

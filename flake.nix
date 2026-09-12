@@ -62,10 +62,7 @@
               bats
               bats.libraries.bats-support
               bats.libraries.bats-assert
-              ## The record is git-bug (ADR-013), and the tests drive it for
-              ## real rather than stubbing it, so it belongs in the shell.
               git
-              git-bug
               ## A machine's key is made with ssh-keygen (ADR-019).
               openssh
               ## The TypeScript package (ADR-034): compiled with tsc and
