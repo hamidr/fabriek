@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 041
+**Next ADR number:** 042
 
 ## PRDs
 
@@ -65,3 +65,4 @@ document, then regenerate.
 | [ADR-038](ADR-038-three-sources-and-no-ledger.md) | A factory is observed from three sources, and nothing writes a ledger | proposed | -- | ADR-033, ADR-036, ADR-037 | the thread is what a role said, the proxy what it spent, the probes what it ran; events go to the bus, unpersisted |  |
 | [ADR-039](ADR-039-the-operators-client-is-a-tui-on-a-relay.md) | The operator's client is a TUI on a relay, and cageworks is the machine | proposed | -- | ADR-019, ADR-034, ADR-035, ADR-036 | a TUI on the operator host reads a JSONL relay and writes through the CLI; the host holds a launcher and no decision |  |
 | [ADR-040](ADR-040-the-declaration-is-built-into-the-image.md) | The declaration is built into the machine's image | proposed | -- | ADR-016, ADR-019, ADR-020, ADR-030 | a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time |  |
+| [ADR-041](ADR-041-a-cage-is-a-nixos-container.md) | A cage is a NixOS declarative container, and nixcage leaves the design | proposed | -- | ADR-018, ADR-019, ADR-037, ADR-040 | with roles known at build time, each cage is a containers.<role> of the machine, and nixcage leaves the flake |  |
