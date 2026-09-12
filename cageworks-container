@@ -213,13 +213,18 @@ cmd_role_enter() {
 	## A supervised run is the role's cage and takes its place; a person
 	## entering while that cage runs joins its network instead, because the
 	## place is taken and a second veth of that name would collide with it.
-	local network
+	## nspawn keeps a directory per machine name under /run/systemd/nspawn
+	## and refuses a second machine of one name, registered or not, so the
+	## hand's cage beside an actor carries a name of its own; it reaches no
+	## veth in that mode, so the twelve-character bound does not apply.
+	local network cage="$role"
 	if [ -n "$signing_role" ]; then
 		local address
 		address="$(cageworks_bridge_address "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
 		network="$(cageworks_bridge_placement "$CAGEWORKS_ETC/bridge.json" "$address")"
 	else
 		network="$(cageworks_cage_network "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+		case "$network" in ns:*) cage="$role-hand" ;; esac
 	fi
 
 	local -a opts=(
@@ -317,9 +322,10 @@ cmd_role_enter() {
 	fi
 
 	## The cage is named after its role alone: nspawn names the cage's veth
-	## after the cage, and the bridge's rules are keyed on that name.
+	## after the cage, and the bridge's rules are keyed on that name. A hand
+	## beside a running actor is the one exception, named above.
 	nixcage-container enter "${opts[@]}" \
-		"$role" "$worktree" "$@"
+		"$cage" "$worktree" "$@"
 }
 
 ## Create or repair a role's worktree and print its path. Separate from

@@ -53,8 +53,10 @@ bridge="cageworks-$F"
 ## filtered to an address, so that a cage without ip answers nothing rather
 ## than the first word of an error.
 addr_of() { in_cage "$1" ip -j -4 addr show scope global | tr -d '\r' | jq -r '.[].addr_info[] | select(.scope == "global") | .local' 2>/dev/null | grep -oE '^[0-9.]+$' | head -1; }
-## The interfaces a cage has, from the kernel and not from a tool.
-interfaces_of() { in_cage "$1" ls -1 /sys/class/net | tr -d '\r' | grep -v '^lo$' | paste -sd, -; }
+## The interfaces a cage has, from the kernel and not from a tool. Read from
+## /proc/net/dev, which is the namespace's own; /sys/class/net in a session
+## that joined a namespace by path is the host's sysfs and lists the host's.
+interfaces_of() { in_cage "$1" cat /proc/net/dev | tr -d '\r' | tail -n +3 | cut -d: -f1 | tr -d ' ' | grep -v '^lo$' | paste -sd, -; }
 ## Tokens the proxy has counted for one source address.
 spent_by() { sshm curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 0'; }
 

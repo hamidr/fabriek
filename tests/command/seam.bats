@@ -256,6 +256,11 @@ EOF
 	run recorded
 	assert_output --partial "--network ns:/proc/4243/ns/net"
 	refute_output --partial "--network cageworks-acme:"
+	# nspawn keeps a directory under /run/systemd/nspawn per machine name
+	# and refuses a second machine of one name, registered or not; found on
+	# a machine ("Mount point ... exists already, refusing"). The hand's
+	# cage carries its own name, which reaches no veth in this mode.
+	assert_output --partial " builder-hand $STATE/worktrees/acme/builder"
 }
 
 @test "a supervised run takes the bridge placement whatever else is running under the role's name" {
