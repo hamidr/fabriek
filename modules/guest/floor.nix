@@ -27,33 +27,46 @@ in
   config = {
     nixcage.containerPackages = [ pkgs.pi-coding-agent ];
 
-    environment.etc."cageworks/pi/extensions/cageworks/index.ts".text = ''
-      // The loop (ADR-035). Built into the machine; nothing here is the
-      // repository's to change.
-      export { default } from "${extension}";
-    '';
+    ## Real files, not /etc's usual symlinks: a session binds the directory
+    ## and a cage has no /etc/static for a symlink to land in.
+    environment.etc."cageworks/pi/extensions/cageworks/index.ts" = {
+      mode = "0444";
+      text = ''
+        // The loop (ADR-035). Built into the machine; nothing here is the
+        // repository's to change.
+        export { default } from "${extension}";
+      '';
+    };
 
     ## The decider's loop (ADR-034 point 1), in a directory of its own so a
     ## role's session never loads it. Same models.json: the decider reaches
     ## the model through the same proxy and is counted on its own address.
-    environment.etc."cageworks/pi-decider/extensions/cageworks/index.ts".text = ''
-      export { default } from "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/decider/index.js";
-    '';
-    environment.etc."cageworks/pi-decider/models.json".source =
-      config.environment.etc."cageworks/pi/models.json".source;
+    environment.etc."cageworks/pi-decider/extensions/cageworks/index.ts" = {
+      mode = "0444";
+      text = ''
+        export { default } from "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/decider/index.js";
+      '';
+    };
+    environment.etc."cageworks/pi-decider/models.json" = {
+      mode = "0444";
+      source = config.environment.etc."cageworks/pi/models.json".source;
+    };
 
     ## The credential is the proxy's to add; the placeholder only makes pi
     ## consider the provider configured. The path is the proxy's per-host
     ## location, so a request to the provider lands at the proxy and leaves
     ## the machine with the header the operator holds.
-    environment.etc."cageworks/pi/models.json".text = builtins.toJSON {
-      providers = lib.mapAttrs' (
-        host: provider:
-        lib.nameValuePair provider {
-          baseUrl = "http://${plan.proxy}/${host}";
-          apiKey = "cageworks";
-        }
-      ) routed;
+    environment.etc."cageworks/pi/models.json" = {
+      mode = "0444";
+      text = builtins.toJSON {
+        providers = lib.mapAttrs' (
+          host: provider:
+          lib.nameValuePair provider {
+            baseUrl = "http://${plan.proxy}/${host}";
+            apiKey = "cageworks";
+          }
+        ) routed;
+      };
     };
   };
 }

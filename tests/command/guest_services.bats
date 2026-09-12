@@ -175,6 +175,16 @@ machine_text() {
 	refute_output --partial 'LogNamespace'
 }
 
+# A cage binds the directory and has no /etc/static of its own, so a symlink
+# there is a file the cage cannot open: the pi directories are real files.
+@test "the loop and models.json reach a cage as files, not as symlinks into an /etc it does not have" {
+	local f
+	for f in pi/extensions/cageworks/index.ts pi/models.json pi-decider/extensions/cageworks/index.ts pi-decider/models.json; do
+		run machine_eval "c.environment.etc.\"cageworks/$f\".mode"
+		assert_output '"0444"'
+	done
+}
+
 @test "the declaration is on the machine as a file, and the machine's options carry it" {
 	run machine_eval 'builtins.attrNames c.cageworks.machine.declaration.roles'
 	assert_output '["builder","reviewer"]'
