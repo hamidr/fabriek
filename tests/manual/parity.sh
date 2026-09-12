@@ -52,7 +52,7 @@ when "the operator asks Forgejo for the factory's repository"
 check "Forgejo answers" 200 "$(sshm "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
 check "the repository operator/$F exists" 200 \
 	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)' $forge$repo" 2>/dev/null)"
-stages="$(jq -r '.workflows.ship.stages[].needs' "$D/spec.json" 2>/dev/null | paste -sd, -)"
+stages="$(jq -r '.declaration.workflows.ship.stages[].needs' "$D/spec.json" 2>/dev/null | paste -sd, -)"
 check "the workflow ship declares design,build,test" "design,build,test" "$stages"
 check "every stage is a label" "build,design,test" \
 	"$(api GET "$repo/labels" | jq -r '[.[].name] | map(select(. == "design" or . == "build" or . == "test")) | sort | join(",")')"
@@ -87,9 +87,11 @@ pr="$(api GET "$repo/pulls?state=open" | jq -r '.[0].number')"
 head_branch="$(api GET "$repo/pulls/$pr" | jq -r '.head.ref')"
 role="$(assignee_of "$issue")"
 check "its branch is in the role's namespace" "$role" "${head_branch%%/*}"
-origin="$(jq -r .repository "$D/spec.json")"
+## The origin is what up filed on the machine, and it is asked from there:
+## a file:// origin of the machine's own is not a path on this host.
+origin="$(sshm cat /var/lib/nixcage/origin 2>/dev/null)"
 check "origin has no branch of that name yet" absent \
-	"$(git ls-remote --heads "$origin" "$head_branch" 2>/dev/null | grep -q . && echo present || echo absent)"
+	"$(sshm git ls-remote --heads "$origin" "$head_branch" 2>/dev/null | grep -q . && echo present || echo absent)"
 
 scenario "The operator merges and mirrors, and the record travels"
 given "the pull request $pr"
@@ -99,14 +101,15 @@ check "the merge is accepted" 200 \
 when "the operator runs cageworks factory mirror"
 bash cageworks factory mirror "$F" >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"
-main_origin="$(git ls-remote "$origin" refs/heads/main 2>/dev/null | cut -f1)"
+main_origin="$(sshm git ls-remote "$origin" refs/heads/main 2>/dev/null | cut -f1)"
 check "origin's main is Forgejo's main" "$main_forge" "$main_origin"
 check "origin carries refs/cageworks/record" present \
-	"$(git ls-remote "$origin" refs/cageworks/record 2>/dev/null | grep -q . && echo present || echo absent)"
+	"$(sshm git ls-remote "$origin" refs/cageworks/record 2>/dev/null | grep -q . && echo present || echo absent)"
 
 scenario "Spend was counted and the soft limit is the executor's"
 given "the spend the proxy counted for this journey"
-total="$(sshm "curl -s http://\$(jq -r .proxy /etc/cageworks/bridge.json)/status" | jq -r '[.[]] | add // 0')"
+proxy="$(sshm cat /etc/cageworks/bridge.json | jq -r .proxy)"
+total="$(sshm "curl -s http://$proxy/status" | jq -r '[.[]] | add // 0')"
 check "the proxy counted tokens" yes "$([ "${total:-0}" -gt 0 ] && echo yes || echo no)"
 when "the operator reads the executor's routing state"
 check "the executor is routing" routing "$(sshm cat /run/cageworks/executor/routing 2>/dev/null)"

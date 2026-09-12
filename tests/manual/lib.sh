@@ -59,6 +59,11 @@ check() {
 	fi
 }
 
+## A Then that cannot be asked here, and says why: a step that needs what the
+## proof was not given (a real credential, say) is named rather than failed,
+## so that the transcript says what was proved and what was not.
+gated() { printf '  GATED %s: %s\n' "$1" "$2"; }
+
 ## A Given and a When, printed so the transcript reads as the scenario. A
 ## proof that stops halfway leaves the last scenario named.
 scenario() { printf '\n%s\n' "$1"; }

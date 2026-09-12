@@ -215,5 +215,11 @@ CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
   restarts.
 - The machine's erofs store image build is flaky on this host's linux
   builder; a retry has always succeeded.
-- `tests/manual/isolation.sh` and `parity.sh` have not yet passed on a
-  machine; see `docs/roadmap.md` 2.4, 2.5 and 5.1.
+- A role has one cage name and one address, and the executor keeps that
+  cage running; `cageworks role <factory> <role>` by hand while the factory
+  is up collides with it on the veth and the address. The proofs stop the
+  executor for their duration. Entering a running role by hand needs a
+  second address per role or a way into the running cage, and neither is
+  decided.
+- `tests/manual/parity.sh` has not yet passed on a machine; see
+  `docs/roadmap.md` 5.1.

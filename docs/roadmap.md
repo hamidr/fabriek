@@ -118,6 +118,15 @@ Two commits in two repositories and a lock bump each (ADR-018).
   decides, and is listed there.
 - 2.4 `tests/manual/isolation.sh` passes: no route off the machine, no
   cage-to-cage, spoofed source dropped, spend on the right address.
+  Done 2026-09-12 on a machine, after seven findings it forced: the loop
+  bound as symlinks into an /etc the cage lacks, the firewall closed on the
+  bridge, rules keyed on `ve-` where nspawn names `vb-`, the decider's
+  credentials left root's, a hand's command replaced by the declared one,
+  an existing account refused as an error, and profiles made of dev
+  outputs. The two Thens that read the proxy's count are gated on a real
+  credential and say so; the proof stops the executor for its duration
+  because a role's cage name and address are taken while the executor
+  runs it (`docs/architecture.md`, gaps).
 - 2.5 `tests/manual/stop-and-start.sh` rerun with Forgejo's data in the
   manifest.
 

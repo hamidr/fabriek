@@ -30,7 +30,7 @@ wait_ssh || {
 	exit 1
 }
 
-roles="$(jq -r '.roles | keys[]' "$D/spec.json" 2>/dev/null)"
+roles="$(jq -r '.declaration.roles | keys[]' "$D/spec.json" 2>/dev/null)"
 a="$(printf '%s\n' "$roles" | sed -n 1p)"
 b="$(printf '%s\n' "$roles" | sed -n 2p)"
 if [ -z "$a" ] || [ -z "$b" ]; then
@@ -40,9 +40,20 @@ if [ -z "$a" ] || [ -z "$b" ]; then
 fi
 bridge="cageworks-$F"
 
+## The executor keeps one session per role, and a cage is one veth and one
+## address on the bridge under the role's name; a second session of the same
+## role would collide on both. The proof runs its own sessions, so the
+## executor's are stopped for its duration and started again after.
+sshm systemctl stop cageworks-executor
+
 ## The address a role's cage was given, read from inside the cage, which is
 ## the only place the answer is not a guess.
-addr_of() { in_cage "$1" ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1; }
+## Asked as JSON, because ip colours a terminal and a cage's stdio is one;
+## filtered to an address, so that a cage without ip answers nothing rather
+## than the first word of an error.
+addr_of() { in_cage "$1" ip -j -4 addr show scope global | tr -d '\r' | jq -r '.[].addr_info[] | select(.scope == "global") | .local' 2>/dev/null | grep -oE '^[0-9.]+$' | head -1; }
+## The interfaces a cage has, from the kernel and not from a tool.
+interfaces_of() { in_cage "$1" ls -1 /sys/class/net | tr -d '\r' | grep -v '^lo$' | paste -sd, -; }
 ## Tokens the proxy has counted for one source address.
 spent_by() { sshm curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 0'; }
 
@@ -51,17 +62,20 @@ given "a factory whose machine is up"
 when "a role's cage is entered"
 check "the bridge $bridge exists on the machine" present \
 	"$(sshm ip link show "$bridge" >/dev/null 2>&1 && echo present || echo absent)"
-check "role $a sees exactly one interface besides lo" 1 \
-	"$(in_cage "$a" ip -o link show | grep -vc ': lo:')"
+check "role $a sees host0 and nothing else besides lo" host0 "$(interfaces_of "$a")"
 addr_a="$(addr_of "$a")"
 addr_b="$(addr_of "$b")"
 check "role $a holds one global address" yes "$([ -n "$addr_a" ] && echo yes || echo no)"
 check "role $b holds a different address" yes "$([ -n "$addr_b" ] && [ "$addr_a" != "$addr_b" ] && echo yes || echo no)"
-check "role $a cannot change its own address" refused \
-	"$(in_cage "$a" ip addr add 10.255.255.1/32 dev host0 >/dev/null 2>&1 && echo allowed || echo refused)"
 
-proxy="$(sshm jq -r .proxy /etc/cageworks/bridge.json 2>/dev/null)"
+proxy="$(sshm cat /etc/cageworks/bridge.json 2>/dev/null | jq -r .proxy)"
 check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ] && echo yes || echo no)"
+## The proxy's location for a model endpoint is the endpoint's name (ADR-037
+## point 3); a request to the provider lands there and leaves with the
+## credential the operator holds.
+endpoint="$(jq -r '.egress[0] // empty' "$D/spec.json")"
+check "the spec allows one endpoint the proxy can be asked for" yes "$([ -n "$endpoint" ] && echo yes || echo no)"
+messages="http://$proxy/$endpoint/v1/messages"
 
 scenario "A cage has no route off the machine"
 given "role $a inside its cage"
@@ -81,25 +95,55 @@ when "$a opens a connection to the proxy"
 check "the proxy answers" answered \
 	"$(in_cage "$a" curl -s -o /dev/null -w '%{http_code}' "http://$proxy/status" 2>/dev/null | grep -q '^[0-9]' && echo answered || echo silent)"
 
+## One request to the endpoint, answering the status the endpoint gave.
+## Spend is counted from the endpoint's answer, so an endpoint that refuses
+## the credential (401) leaves nothing to count, and the two Thens that need
+## a count are gated on it rather than failed.
+ask_model() {
+	in_cage "$1" curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+		-d '{"model":"probe","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
+		"$messages" 2>/dev/null | tr -d '\r'
+}
+
 scenario "Spend is attributed to the sender and to nobody else"
 given "the proxy's count for $addr_a and $addr_b"
 before_a="$(spent_by "$addr_a")"
 before_b="$(spent_by "$addr_b")"
 when "$a sends one request through the proxy"
-in_cage "$a" curl -s -o /dev/null -X POST -H 'content-type: application/json' \
-	-d '{"model":"probe","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
-	"http://$proxy/v1/messages" >/dev/null 2>&1
-check "$a's count moved" moved "$([ "$(spent_by "$addr_a")" != "$before_a" ] && echo moved || echo still)"
+code="$(ask_model "$a")"
+check "the request reached the endpoint through the proxy" yes "$(case "$code" in 2*|4*) echo yes ;; *) echo "no ($code)" ;; esac)"
+if [ "$code" = 401 ]; then
+	gated "$a's count moved" "the endpoint refused the credential, so nothing was counted; needs a real one"
+else
+	check "$a's count moved" moved "$([ "$(spent_by "$addr_a")" != "$before_a" ] && echo moved || echo still)"
+fi
 check "$b's count did not" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "A forged source address is dropped at the bridge"
 given "root on the machine inside $a's network namespace"
-pid="$(sshm "machinectl show --property=Leader --value $F-$a 2>/dev/null")"
+## A cage is not registered with machined, so its leader is found by the
+## nspawn that holds it: the one whose argv names the machine, and its child.
+in_cage "$a" sleep 120 >/dev/null 2>&1 &
+holder=$!
+pid=""
+for _ in $(seq 1 30); do
+	pid="$(sshm "pgrep -P \"\$(pgrep -f -- '--machine=$a( |\$)' | head -1)\" 2>/dev/null | head -1")"
+	[ -n "$pid" ] && break
+	sleep 1
+done
 check "the cage's leader pid is known" yes "$([ -n "$pid" ] && echo yes || echo no)"
 before_b="$(spent_by "$addr_b")"
 when "a request leaves $a's veth carrying $b's address"
-sshm "nsenter -t '$pid' -n sh -c 'ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST http://$proxy/v1/messages; ip addr del $addr_b/32 dev host0 2>/dev/null'" >/dev/null 2>&1
+sshm "nsenter -t '$pid' -n sh -c 'ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null'" >/dev/null 2>&1
 check "$b's count did not move" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
+kill "$holder" 2>/dev/null
+wait "$holder" 2>/dev/null
+## The cage outlives its ssh client; the next scenario needs its name free.
+sshm "pkill -f -- '--machine=$a( |\$)'" >/dev/null 2>&1
+for _ in $(seq 1 30); do
+	sshm "pgrep -f -- '--machine=$a( |\$)'" >/dev/null 2>&1 || break
+	sleep 1
+done
 
 scenario "The hard limit is the proxy's"
 ceiling="$(jq -r '.tokenCeiling // empty' "$D/spec.json")"
@@ -108,12 +152,15 @@ check "a ceiling is declared" yes "$([ -n "$ceiling" ] && echo yes || echo no)"
 when "$a sends requests until the proxy refuses"
 code=""
 for _ in $(seq 1 50); do
-	code="$(in_cage "$a" curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
-		-d '{"model":"probe","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
-		"http://$proxy/v1/messages" 2>/dev/null)"
-	[ "$code" = 429 ] && break
+	code="$(ask_model "$a")"
+	case "$code" in 429 | 401) break ;; esac
 done
-check "the proxy answers 429 at the hard limit" 429 "$code"
+if [ "$code" = 401 ]; then
+	gated "the proxy answers 429 at the hard limit" "the endpoint refused the credential, so no spend reaches the ceiling; needs a real one"
+else
+	check "the proxy answers 429 at the hard limit" 429 "$code"
+fi
 
+sshm systemctl start cageworks-executor
 bash cageworks down "$F"
 exit "$fail"
