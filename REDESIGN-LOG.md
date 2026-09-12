@@ -585,9 +585,9 @@ ADR-016, ADR-017, ADR-019 and ADR-030 stand. ADR-015 stands except point 3,
 which the decider replaces. ADR-020 loses points 3 and 3a to build-time
 evaluation. ADR-029 stands and hardens. ADR-031 becomes literal rather than a
 norm: a tool reaches a cage through the flake, enforced by there being no
-daemon socket. ADR-032's clone-from-origin survives; its `git remote get-url
-origin` off the operator's checkout does not, because the flake input names the
-remote.
+daemon socket. ADR-032's clone-from-origin survives; its
+`git remote get-url origin` off the operator's checkout does not, because the
+flake input names the remote.
 
 PRD-003's structural property returns and two of its criteria change: a bad
 merge is recoverable again (decision 31), and a waiting run does hold
