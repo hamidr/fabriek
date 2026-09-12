@@ -39,10 +39,15 @@ JSON
 printf '%s\n' "\$*" >>"$FORGE/cli-calls"
 case "\$1 \$2 \$3" in
 "admin user list")
+	# A list that fails once, when asked to: the forge's CLI opens the
+	# database beside the running server and can lose that race.
+	if [ -e "$FORGE/list-fails-once" ]; then rm "$FORGE/list-fails-once"; echo "database is locked" >&2; exit 1; fi
 	cat "$FORGE/users" 2>/dev/null
 	;;
 "admin user create")
-	while [ \$# -gt 0 ]; do case "\$1" in --username) echo "\$2" >>"$FORGE/users";; esac; shift; done
+	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
+	if grep -qx "\$u" "$FORGE/users" 2>/dev/null; then echo "Command error: CreateUser: user already exists [name: \$u]" >&2; exit 1; fi
+	echo "\$u" >>"$FORGE/users"
 	;;
 "admin user generate-access-token")
 	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
@@ -152,6 +157,17 @@ teardown() {
 	run_cageworks_container factory-prepare acme
 	assert_success
 	[ "$(cat "$STATE/origin")" = "https://forge.example/acme.git" ]
+}
+
+# Found on a machine: the CLI's user list came back empty once, prepare tried
+# to create an account that existed, and the whole boot failed on it.
+@test "an account the list could not show is confirmed by the create that finds it there" {
+	run_cageworks_container factory-prepare acme
+	assert_success
+	touch "$FORGE/list-fails-once"
+	run_cageworks_container factory-prepare acme
+	assert_success
+	[ "$(grep -c '^builder$' "$FORGE/users")" = 1 ]
 }
 
 @test "the decider gets an account and a token that can only read" {

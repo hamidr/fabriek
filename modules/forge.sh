@@ -33,13 +33,25 @@ cageworks_forge_user_exists() {
 
 ## An account, once. A role's password is random and never kept: nothing logs
 ## in as a role, only its token does.
+##
+## The CLI opens the database beside the running server and can lose that
+## race, so a list that shows nothing is not proof of absence: a create that
+## finds the account there is the confirmation, not an error.
 cageworks_forge_ensure_user() {
 	local who="$1" email="$2"
 	shift 2
 	cageworks_forge_user_exists "$who" && return 0
-	cageworks_forge_admin user create "$@" --username "$who" \
+	local err
+	if err="$(cageworks_forge_admin user create "$@" --username "$who" \
 		--password "$(cageworks_secret)" --email "$email" \
-		--must-change-password=false >/dev/null
+		--must-change-password=false 2>&1 >/dev/null)"; then
+		return 0
+	fi
+	case "$err" in
+	*"user already exists"*) return 0 ;;
+	esac
+	printf '%s\n' "$err" >&2
+	return 1
 }
 
 ## A token, once, with exactly the scopes the caller names, kept as a file.
