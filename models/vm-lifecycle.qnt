@@ -1,6 +1,9 @@
 // The lifecycle of a factory's own machine, as decided in
 // docs/ADR-019-cageworks-owns-a-factory-vm.md and required by phase 2 of
-// docs/PRD-004-a-factory-of-its-own.md.
+// docs/PRD-004-a-factory-of-its-own.md, amended for REDESIGN-LOG.md
+// decision 15 (docs/roadmap.md 0.3): the declaration is built into the image,
+// so every edit to it is a rebuild, and what drains before one is the tasks
+// in flight rather than the roles, which are permanent and lose nothing.
 //
 // cageworks builds and runs one NixOS VM per factory. The states are absent,
 // built, booting, running and stopping, and two sides interleave across them:
@@ -74,9 +77,10 @@ module vmLifecycle {
     holdGuest, holdWitness,
   }
 
-  // The declaration asked for a different machine. Only the resources half of
-  // it can require this; roles and workflows are read at run time and never
-  // reach here (ADR-020).
+  // The declaration changed, and under decision 15 every part of it is in the
+  // image: resources, roles, workflows and devShells alike. This is the
+  // normal path after an edit, not the exception it was when roles and
+  // workflows were read at run time (ADR-020 point 3, withdrawn).
   action rebuild = all {
     vmState == "built",
     builtGen != declGen,
@@ -220,8 +224,10 @@ module vmLifecycle {
   // Nothing is ever up without the storage its state lives on.
   val noMachineWithoutItsDisk: bool = not(up(vmState)) or diskExists
 
-  // A resize is a rebuild, and a rebuild happens to a machine that is not
-  // running. Roles holding worktrees are never rebuilt out from under.
+  // A rebuild happens to a machine that is not running, so a task mid-write
+  // is never rebuilt out from under. What drains before the stop is the
+  // sessions, one per task in flight; a role's dataset, home and key are on
+  // the pool and survive the rebuild untouched (decision 15).
   val resizeNeedsAStoppedMachine: bool = not(builtGenChangedWhileRunning)
 
   // The disk outlives every transition except the one that exists to remove
@@ -248,6 +254,12 @@ module vmLifecycle {
   // declaration can drift ahead of the machine running it. A model where this
   // never violates has no stale state and is not modelling this design.
   val neverStale: bool = not(staleReached)
+
+  // Witness: a stale machine becomes current again, by draining, stopping,
+  // rebuilding and booting. This is decision 15's normal path; if it never
+  // violates, an edited declaration has no way back onto the machine.
+  val neverCurrentAgainAfterStale: bool =
+    not(staleReached and vmState == "running" and appliedGen == declGen)
 
   // Witness: the one way left to end a machine mid-write is the host dying,
   // which is what the pool underneath is for. If this never violates, the
