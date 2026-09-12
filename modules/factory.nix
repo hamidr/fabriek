@@ -71,13 +71,20 @@ let
           else
             null
         );
+      ## stdenv hands a shell its inputs as dev outputs, which is what a
+      ## build links against and not what a cage runs; a profile is made of
+      ## the bin outputs, where ip and curl are. Not lib.getBin: it honours
+      ## an output already chosen, and stdenv has chosen dev.
+      binOf = p: p.bin or p.out or p;
       inputs =
         if shell == null then
           [ ]
         else
-          (shell.buildInputs or [ ])
-          ++ (shell.nativeBuildInputs or [ ])
-          ++ (shell.propagatedBuildInputs or [ ]);
+          map binOf (
+            (shell.buildInputs or [ ])
+            ++ (shell.nativeBuildInputs or [ ])
+            ++ (shell.propagatedBuildInputs or [ ])
+          );
     in
     ## Forced here so that a role naming a shell the flake lacks fails at
     ## evaluation, where the message names the role, and not at the first

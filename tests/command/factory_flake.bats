@@ -85,6 +85,22 @@ factory_eval() {
 	assert_output '"cageworks-role-reviewer"'
 }
 
+# stdenv hands a shell its inputs as dev outputs (headers, curl-config), and
+# a profile made of those has no ip and no curl in it; found on a machine
+# whose every role lacked the tools its shell named. What a cage runs is
+# the bin output.
+@test "a role's profile is made of its tools' bin outputs, not the dev outputs stdenv hands a shell" {
+	declare_flake "devShells.$GUEST.backend = { nativeBuildInputs = [ {
+	    outPath = \"/nix/store/00000000000000000000000000000000-curl-dev\";
+	    outputSpecified = true;
+	    bin = { outPath = \"/nix/store/00000000000000000000000000000000-curl-bin\"; };
+	  } ]; };"
+	run factory_eval '.profiles.builder.paths'
+	assert_success
+	assert_output --partial 'curl-bin'
+	refute_output --partial 'curl-dev'
+}
+
 @test "when a role names a devShell the repository does not define, the build fails naming the role" {
 	declare_flake ''
 	run factory_eval '.profiles.builder.name'
