@@ -129,6 +129,11 @@ machine_text() {
 	run machine_text 'c.systemd.services.cageworks-bus-acl.script'
 	assert_success
 	assert_output --partial 'ACL SETUSER default off'
+	# Off last, or the script's own SETUSERs are refused as unauthenticated;
+	# on a second run it speaks as the executor. Found on a machine.
+	[ "$(grep -n 'SETUSER default off' <<<"$output" | cut -d: -f1)" -gt "$(grep -n 'SETUSER executor' <<<"$output" | cut -d: -f1)" ]
+	assert_output --partial '--user executor --no-auth-warning'
+	refute_output --partial '--pass'
 	assert_output --partial 'resetkeys resetchannels nocommands'
 	assert_output --partial '%R~mailbox:builder'
 	assert_output --partial '%W~findings:builder'

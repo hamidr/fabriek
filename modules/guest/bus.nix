@@ -72,21 +72,36 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ pkgs.coreutils ];
+      path = [
+        pkgs.coreutils
+        pkgs.gnugrep
+      ];
+      ## The default user is turned off last, not first: turned off first it
+      ## refuses the script's own SETUSERs as unauthenticated, which is what
+      ## the first machine's executor found as WRONGPASS. On a second run the
+      ## default is already off, so the script speaks as the executor, whose
+      ## password reaches valkey-cli through its environment and not argv.
       script = ''
         set -eu
         for _ in $(seq 1 30); do
-          ${cli} ping >/dev/null 2>&1 && break
+          ${cli} ping 2>&1 | grep -q "PONG\|NOAUTH" && break
           sleep 1
         done
-        ${cli} ACL SETUSER default off >/dev/null
+        if ${cli} ping 2>&1 | grep -q NOAUTH; then
+          [ -s ${stateDir}/bus/executor ] || { echo "the default user is off and there is no executor password" >&2; exit 1; }
+          export VALKEYCLI_AUTH="$(cat ${stateDir}/bus/executor)"
+          cli() { ${cli} --user executor --no-auth-warning "$@"; }
+        else
+          cli() { ${cli} "$@"; }
+        fi
         ${lib.concatStringsSep "\n" (
           lib.mapAttrsToList (user: rules: ''
             if [ -s ${stateDir}/bus/${user} ]; then
-              ${cli} ACL SETUSER ${user} on ">$(cat ${stateDir}/bus/${user})" ${rules} >/dev/null
+              cli ACL SETUSER ${user} on ">$(cat ${stateDir}/bus/${user})" ${rules} | grep -q OK
             fi
           '') rulesOf
         )}
+        cli ACL SETUSER default off | grep -q OK
       '';
     };
   };
