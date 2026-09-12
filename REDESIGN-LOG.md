@@ -283,7 +283,10 @@ supersessions are noted.
     than the first command that needs it, and devShells can be pre-built into
     the store overlay. Adding a role becomes a rebuild and a restart, so
     ADR-019's "stale" state in `models/vm-lifecycle.qnt` becomes the normal
-    path and roles holding worktrees have to be drained or killed.
+    path. What has to drain before a restart is a task, not a role: a
+    worktree is per task inside the role's permanent dataset (decision 5), so
+    an actor mid-task is stopped and its task retried, and nothing permanent
+    is lost.
 
 16. **Take mechanism: Valkey sorted set, `ZPOPMIN`.** *Superseded by decision
     19.* Noted for one thing it revealed: a sorted set has a score, so priority
@@ -397,8 +400,12 @@ supersessions are noted.
 31. **Code flow: role tokens are issue-scoped, the executor pushes.** Roles
     commit locally to their own branch; the executor pushes to Forgejo, opens
     the pull request, and mirrors merged `main` onward to origin. ADR-009
-    survives in its exact form: a role holds no credential that reaches a
-    repository.
+    survives for what it was written about: a role holds no credential that
+    can push, pull a private repository, or authenticate outside the machine.
+    It does not survive in its exact form, because a role now holds a Forgejo
+    token, which is a credential and reaches the factory's own forge, scoped to
+    issues and comments. The built ADR-009 is `--no-agent` plus a bound signing
+    key; the redesign adds one bounded credential to that.
 
 32. **Transport: everything on the private network, attributed by address.**
     One transport for Forgejo, Valkey and the proxy. Requires the two bridge
@@ -449,7 +456,10 @@ supersessions are noted.
       after the goal.
     - `models/routing.qnt`, `models/factory-structure.als` and
       `models/vm-lifecycle.qnt` green. (`task-claim.qnt`,
-      `egress-authority.als` and `ledger-tap.qnt` are deleted.)
+      `egress-authority.als`, `ledger-tap.qnt` and `factory-lifecycle.qnt`
+      are deleted: the last models the task store and the file-based caps,
+      both of which leave with decisions 30 and 36; what replaces its
+      invariants lives in `routing.qnt`.)
     - A cage has no route off the machine, cannot reach a peer, cannot forge
       its source address, and its spend is attributed to it.
 
@@ -565,17 +575,19 @@ ADR-026 (the console is the loop, and now pt7's refusal to own a client),
 ADR-028 (two subjects), and most of ADR-025 (uid filter, proxy uid,
 resolv.conf, daemon socket) and ADR-027 (the ledger, and the probes' sink).
 
-Amended: ADR-009 survives unchanged in substance, now stated as a role holding
-no credential that reaches a repository. ADR-010 returns to its original scope,
-because the widenings ADR-022 and ADR-023 added (`refs/bugs/` and
-`refs/claims/` writable by every role) are both gone, so the ref partition is
-clean again and `main` is writable by nobody. ADR-016, ADR-017, ADR-019 and
-ADR-030 stand. ADR-015 stands except point 3, which the decider replaces.
-ADR-020 loses points 3 and 3a to build-time evaluation. ADR-029 stands and
-hardens. ADR-031 becomes literal rather than a norm: a tool reaches a cage
-through the flake, enforced by there being no daemon socket. ADR-032's
-clone-from-origin survives; its `git remote get-url origin` off the operator's
-checkout does not, because the flake input names the remote.
+Amended: ADR-009 survives in substance, now stated as a role holding no
+credential that can push, pull or authenticate off the machine; the
+issue-scoped Forgejo token is the one credential it gains (decision 31).
+ADR-010 returns to its original scope, because the widenings ADR-022 and
+ADR-023 added (`refs/bugs/` and `refs/claims/` writable by every role) are both
+gone, so the ref partition is clean again and `main` is writable by nobody.
+ADR-016, ADR-017, ADR-019 and ADR-030 stand. ADR-015 stands except point 3,
+which the decider replaces. ADR-020 loses points 3 and 3a to build-time
+evaluation. ADR-029 stands and hardens. ADR-031 becomes literal rather than a
+norm: a tool reaches a cage through the flake, enforced by there being no
+daemon socket. ADR-032's clone-from-origin survives; its `git remote get-url
+origin` off the operator's checkout does not, because the flake input names the
+remote.
 
 PRD-003's structural property returns and two of its criteria change: a bad
 merge is recoverable again (decision 31), and a waiting run does hold
@@ -586,8 +598,12 @@ deliberately.
 
 Two nixcage interface changes, each two commits in two repositories and a lock
 bump (ADR-018): a private network per cage with a veth into the factory's
-bridge, and suppressing the nix daemon socket bind. Both change the argv a role
-session composes, so `tests/command/seam.bats` is where they show up as a diff.
+bridge, and suppressing the nix daemon socket bind. The socket is bound by
+nixcage's own default and no flag of ours names it today, so the second is a
+new option on `enter` rather than the removal of one. Both change the argv a
+role session composes, so `tests/command/seam.bats` is where they show up as a
+diff. A third change is a removal: `--subject` (ADR-028) leaves the line when
+loop and agent become one uid (decision 9).
 
 Three models before implementation. The routing one must be written so that the
 board write, the send and the ack are separate actions with nothing preventing
