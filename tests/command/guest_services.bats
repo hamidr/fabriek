@@ -1,0 +1,171 @@
+#!/usr/bin/env bats
+# What a factory's machine carries besides cages (ADR-036, ADR-037, ADR-038):
+# the board, the bus, the bridge with its two rules, the counting proxy and
+# the probes. Evaluated through lib.factory against a repository declaring two
+# roles, because the address plan and the rules are derived from the
+# declaration and a machine with no roles would exercise none of it. What
+# the machine does when booted is tests/manual/isolation.sh.
+
+load ../test_helper/common
+
+setup() {
+	setup_temp_dir
+	HOST="$(nix eval --impure --raw --expr 'builtins.currentSystem')"
+	GUEST="${HOST%%-*}-linux"
+	REPO="$TEST_TEMP_DIR/acme"
+	mkdir -p "$REPO"
+	git init -q "$REPO"
+	git -C "$REPO" config user.name factory
+	git -C "$REPO" config user.email factory@invalid
+	cat >"$REPO/flake.nix" <<'NIX'
+{
+  outputs = { self }: {
+    cageworks = {
+      name = "acme";
+      roles.builder = { command = [ "pi" ]; provides = [ "build" ]; };
+      roles.reviewer = { command = [ "pi" ]; provides = [ "review" ]; };
+      workflows.ship.stages = [ { needs = "build"; } { needs = "review"; } ];
+      resources = { memory = "4G"; cores = 2; recordQuota = "3G"; tokens = 500000;
+                    egress = [ "api.anthropic.com" ]; };
+    };
+  };
+}
+NIX
+	git -C "$REPO" add -A
+	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
+	cat >"$TEST_TEMP_DIR/local.json" <<JSON
+{ "factory": "acme", "system": "$GUEST", "hostSystem": "$HOST",
+  "sshPort": 2222, "authorizedKey": "ssh-ed25519 AAAA acme",
+  "caps": { "memory": "16G", "cores": 8, "recordQuota": "8G", "tokens": 1000000,
+            "egress": ["api.anthropic.com"] },
+  "credentials": { "api.anthropic.com": "x-api-key" } }
+JSON
+}
+
+teardown() {
+	teardown_temp_dir
+}
+
+## A Nix expression over the machine's configuration, bound to c, as JSON.
+machine_eval() {
+	nix eval --json --impure --expr "
+	  let c = ((builtins.getFlake \"path:$CAGEWORKS_ROOT\").lib.factory {
+	    project = builtins.getFlake \"git+file://$REPO\";
+	    local = $TEST_TEMP_DIR/local.json;
+	  }).config; in $1" 2> >(grep -v -e 'Nix search path entry' -e "^building '" >&2)
+}
+
+## The same, for a string-valued attribute: the text itself, unescaped.
+machine_text() {
+	machine_eval "$1" | jq -r .
+}
+
+@test "given two roles, the bridge gives the machine one address and each cage its own" {
+	run machine_eval 'c.environment.etc."cageworks/bridge.json".text'
+	assert_success
+	run jq -r '.bridge, .host, .cages.builder, .cages.reviewer, .cages.decider, .proxy, .forgejo, .valkey' <<<"$(jq -r . <<<"$output")"
+	assert_line --index 0 cageworks-acme
+	assert_line --index 1 10.77.0.1
+	assert_line --index 2 10.77.0.10
+	assert_line --index 3 10.77.0.11
+	assert_line --index 4 10.77.0.2
+	assert_line --index 5 10.77.0.1:8118
+	assert_line --index 6 10.77.0.1:3000
+	assert_line --index 7 10.77.0.1:6379
+	run machine_eval '(builtins.head c.networking.interfaces."cageworks-acme".ipv4.addresses).address'
+	assert_output '"10.77.0.1"'
+}
+
+@test "the bridge drops a packet whose source is not its port's address, and drops cage to cage" {
+	run machine_text 'c.networking.nftables.tables.cageworks-cages.content'
+	assert_success
+	assert_output --partial '"ve-builder" . 10.77.0.10'
+	assert_output --partial '"ve-reviewer" . 10.77.0.11'
+	assert_output --partial 'iifname . ip saddr != @cages drop'
+	assert_output --partial 'iifname "ve-*" oifname "ve-*" drop'
+	run machine_eval 'c.networking.nftables.tables.cageworks-cages.family'
+	assert_output '"bridge"'
+}
+
+@test "the machine itself still leaves only as root or as the proxy" {
+	run machine_text 'c.networking.nftables.tables.cageworks-egress.content'
+	assert_success
+	assert_output --partial 'meta skuid 500 accept'
+	assert_output --partial 'policy drop'
+}
+
+@test "the board is Forgejo on the bridge, on a dataset bounded by recordQuota" {
+	run machine_eval 'c.services.forgejo.enable'
+	assert_output true
+	run machine_eval 'c.services.forgejo.settings.server.HTTP_ADDR'
+	assert_output '"10.77.0.1"'
+	run machine_eval 'c.services.forgejo.stateDir'
+	assert_output '"/var/lib/nixcage/forgejo"'
+	run machine_text 'c.systemd.services.cageworks-record.script'
+	assert_output --partial 'storage ensure'
+	assert_output --partial '/var/lib/nixcage/forgejo'
+	assert_output --partial '3072M'
+}
+
+@test "the journal namespace and its ledger are gone" {
+	run machine_eval 'c.systemd.targets.sockets.wants'
+	refute_output --partial 'journald@acme'
+	run machine_eval 'c.systemd.services ? "cageworks-journal"'
+	assert_output false
+}
+
+@test "the bus is Valkey on the bridge with no persistence, and every user is default-deny" {
+	run machine_text 'c.systemd.services.cageworks-bus.serviceConfig.ExecStart'
+	assert_output --partial 'valkey-server'
+	assert_output --partial '--bind 10.77.0.1'
+	assert_output --partial '--save ""'
+	run machine_text 'c.systemd.services.cageworks-bus-acl.script'
+	assert_success
+	assert_output --partial 'ACL SETUSER default off'
+	assert_output --partial 'resetkeys resetchannels nocommands'
+	assert_output --partial '%R~mailbox:builder'
+	assert_output --partial '%W~findings:builder'
+	assert_output --partial '%R~findings:*'
+	assert_output --partial '%W~control:builder'
+	assert_output --partial 'SETUSER decider'
+	assert_output --partial '%W~commands'
+	assert_output --partial 'SETUSER executor'
+	assert_output --partial 'SETUSER probes'
+	assert_output --partial '%W~probes'
+	refute_output --partial 'SETUSER builder on >'
+}
+
+@test "the proxy listens on the bridge, counts tokens per source address, and refuses at the ceiling" {
+	run machine_eval '(builtins.head c.services.nginx.virtualHosts.cageworks-egress.listen).addr'
+	assert_output '"10.77.0.1"'
+	run machine_eval 'map (m: m.name) c.services.nginx.additionalModules'
+	assert_output --partial njs
+	run machine_text 'c.services.nginx.commonHttpConfig'
+	assert_output --partial 'js_shared_dict_zone'
+	assert_output --partial 'js_set $spend_over'
+	run machine_text 'c.services.nginx.virtualHosts.cageworks-egress.extraConfig'
+	assert_output --partial 'set $spend_ceiling 500000;'
+	assert_output --partial 'location = /status'
+	assert_output --partial 'js_body_filter'
+	assert_output --partial 'return 429'
+	run machine_text 'c.environment.etc."cageworks/spend.js".text'
+	assert_output --partial 'output_tokens'
+	assert_output --partial 'input_tokens'
+	assert_output --partial 'remote_addr'
+}
+
+@test "the probes publish to a capped stream on the bus, as the machine and as no role" {
+	run machine_text 'c.systemd.services.cageworks-probes.script'
+	assert_success
+	assert_output --partial 'bpftrace'
+	assert_output --partial 'XADD probes MAXLEN'
+	assert_output --partial '--user probes'
+	refute_output --partial 'LogNamespace'
+}
+
+@test "the declaration is on the machine as a file, and the machine's options carry it" {
+	run machine_eval 'builtins.attrNames c.cageworks.machine.declaration.roles'
+	assert_output '["builder","reviewer"]'
+	run machine_eval '(builtins.fromJSON c.environment.etc."cageworks/declaration.json".text).resources.tokens'
+	assert_output 500000
+}

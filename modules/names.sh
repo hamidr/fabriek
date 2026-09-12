@@ -22,6 +22,15 @@ cageworks_name_ok() {
 	[[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]]
 }
 
+## A role's name is also its cage's name, and nspawn names the cage's veth
+## "ve-<cage>" within the fifteen characters the kernel gives an interface
+## (ADR-037). Twelve is what is left, and a longer name would be silently
+## shortened into one the bridge's rules could not match.
+CAGEWORKS_ROLE_NAME_MAX=12
+cageworks_role_name_ok() {
+	cageworks_name_ok "$1" && [ "${#1}" -le "$CAGEWORKS_ROLE_NAME_MAX" ]
+}
+
 ## A devShell name. Wider than the above because it names an attribute of
 ## someone else's flake and underscores are ordinary there, and checked
 ## separately for exactly that reason: it is the only one of these that is not
@@ -54,14 +63,3 @@ cageworks_header_name_ok() {
 
 ## The subject a role session runs as inside its cage (ADR-028).
 ##
-## A principal is allocated a block of uids: cage root at the base, and one
-## number per subject the machine declares. This is the name of the subject
-## the agent runs as, and the machine's own declaration has to carry the same
-## word, which is what tests/unit/vm_config.bats checks rather than trusts.
-##
-## A function rather than a variable so that sourcing this file twice is not
-## an error and so a test can ask for it the way everything else here is asked
-## for.
-cageworks_agent_subject() {
-	printf '%s\n' agent
-}

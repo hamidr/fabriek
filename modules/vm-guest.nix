@@ -86,15 +86,14 @@ in
       default = 65536;
       description = "Size in MiB of each volume this machine is given.";
     };
-    journalQuota = lib.mkOption {
-      type = lib.types.int;
-      default = 4096;
+    declaration = lib.mkOption {
+      type = lib.types.attrs;
+      default = { };
       description = ''
-        Size in MiB the factory's ledger may reach, as the factory asked and
-        the operator allowed (ADR-027 point 8). A default rather than a
-        required value, because a machine with no bound here would fill the
-        pool and take every worktree with it, and refusing to boot over an
-        unstated number would be a worse answer than a modest one.
+        The factory's declaration, validated and clamped by the build
+        (ADR-040). The bridge's address plan and the bus's users are derived
+        from its roles, and the guest program reads it from
+        /etc/cageworks/declaration.json rather than evaluating anything.
       '';
     };
     sshPort = lib.mkOption {
@@ -127,7 +126,7 @@ in
     egressPort = lib.mkOption {
       type = lib.types.port;
       default = 8118;
-      description = "Where on loopback a role's agent finds the proxy.";
+      description = "Where on the bridge a role's agent finds the proxy.";
     };
     egress = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -141,7 +140,18 @@ in
     };
   };
 
+  imports = [
+    ./guest/bridge.nix
+    ./guest/board.nix
+    ./guest/bus.nix
+    ./guest/proxy.nix
+    ./guest/probes.nix
+  ];
+
   config = {
+    ## The declaration, on the machine as a file (ADR-040).
+    environment.etc."cageworks/declaration.json".text = builtins.toJSON cfg.declaration;
+
     ## The VM owns its store. The closure ships read-only and builds land in a
     ## persistent overlay, so nothing of the host's store is shared in and two
     ## factories cannot see each other's through it.
@@ -240,90 +250,6 @@ in
     };
     users.users.root.openssh.authorizedKeys.keys = [ cfg.authorizedKey ];
 
-    ## A journal of this factory's own, and not a share of the machine's
-    ## (ADR-027 point 6). One journal for every role would let a role that
-    ## floods it evict every other role's entries under SystemMaxUse, which
-    ## would make suppressing evidence a matter of writing enough of it.
-    ##
-    ## The units are the ones systemd ships: nixpkgs already carries
-    ## systemd-journald@.socket and systemd-journald@.service in
-    ## additionalUpstreamSystemUnits, so instantiating one is a Wants= rather
-    ## than a unit of ours, and the instance stays upstream's.
-    ##
-    ## The socket is what a role session binds (ADR-027 point 5). It is
-    ## socket-activated, listens with PassCredentials=yes and SocketMode=0666,
-    ## and journald stamps _UID off SO_PEERCRED, which is what makes an entry's
-    ## identity something a role cannot write rather than something it is
-    ## trusted about.
-    systemd.targets.sockets.wants = [ "systemd-journald@${cfg.factory}.socket" ];
-
-    ## What that namespace keeps and how much of it (ADR-027 points 6 and 8).
-    ##
-    ## Persistent, because microvm.nix gives this guest a tmpfs root and a
-    ## ledger that ends at the next stop is not one anything can be checked
-    ## against. SystemMaxUse is set below the dataset's own bound so that
-    ## journald rotates before the quota refuses a write: a full dataset is a
-    ## ledger that stops, and an evicting one is a ledger that says so.
-    environment.etc."systemd/journald@${cfg.factory}.conf".text = ''
-      [Journal]
-      Storage=persistent
-      SystemMaxUse=${toString (cfg.journalQuota * 9 / 10)}M
-    '';
-
-    ## Where it keeps it. A sibling of worktrees/ under the state directory, so
-    ## no role's name can reach it, and asked for with the storage primitive
-    ## rather than with zfs: the primitive already takes a bound, and whether
-    ## the path becomes a dataset is nixcage's to decide (ADR-017, ADR-018).
-    ##
-    ## Mounted over /var/log/journal rather than pointed at by configuration,
-    ## because journald decides where a namespace's files go and the only thing
-    ## that reliably moves them is the directory underneath.
-    ## The namespace cannot be ordered before this. It listens at
-    ## sockets.target and the pool is imported at multi-user, so requiring the
-    ## storage first is an ordering cycle: systemd finds it, breaks it by
-    ## dropping sockets.target, and the factory boots with no journal at all.
-    ## That is what happened the first time this ran on a machine.
-    ##
-    ## So the namespace starts on the tmpfs root, writes to memory for the few
-    ## seconds before the pool is up, and is restarted onto the directory once
-    ## it is. Nothing writes to it in that window: no role session exists until
-    ## a person or the supervisor starts one.
-    systemd.services.cageworks-journal = {
-      description = "The storage this factory's ledger lives on";
-      wantedBy = [ "multi-user.target" ];
-      requires = [ "cageworks-storage.service" ];
-      after = [ "cageworks-storage.service" ];
-      before = [ "cageworks-probes.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      ## The machine's own profile, for nixcage-container and systemctl.
-      ## nixcage's host module puts the primitive there and asking for it by
-      ## name is the whole of the interface (ADR-018).
-      path = [
-        pkgs.coreutils
-        pkgs.util-linux
-        "/run/current-system/sw"
-      ];
-      script = ''
-        set -eu
-        nixcage-container storage ensure \
-          ${stateDir}/journal 0 ${toString cfg.journalQuota}M >/dev/null
-        ## journald writes as root and reads as the systemd-journal group,
-        ## which is what journalctl outside the namespace goes through.
-        chgrp systemd-journal ${stateDir}/journal
-        chmod 2755 ${stateDir}/journal
-        install -d -m 2755 -o root -g systemd-journal /var/log/journal
-        mountpoint -q /var/log/journal ||
-          mount --bind ${stateDir}/journal /var/log/journal
-        ## It opened a volatile store under /run before this ran. Restarting it
-        ## is what makes it find the directory, and Storage=persistent is what
-        ## makes it use it.
-        systemctl restart systemd-journald@${cfg.factory}.service
-      '';
-    };
-
     systemd.services.cageworks-storage = {
       description = "Import or create the pool this factory's state lives on";
       wantedBy = [ "multi-user.target" ];
@@ -416,72 +342,6 @@ in
     ## shadows this one rather than competing with it: nix develop prepends.
     nixcage.containerPackages = [ pkgs.pi-coding-agent ];
 
-    ## The subjects a role's cage holds besides cage root (ADR-028). One, and
-    ## it is what runs the agent: a supervisor and the program it supervises
-    ## under one uid are one principal, and nothing the supervisor records
-    ## about the supervised program is then worth more than that program's
-    ## cooperation.
-    ##
-    ## Declared here rather than later because a block is fixed when it is
-    ## allocated: a role that gets a uid before this exists can never be given
-    ## a subject in place, only replaced.
-    nixcage.principalSubjects = [ "agent" ];
-
-    ## What the kernel says a role did (ADR-027 point 9).
-    ##
-    ## A probe in the machine's init namespace sees every process in every cage
-    ## of this factory, attributed by the uid nixcage allocated, because cages
-    ## share this kernel: the same fact ADR-025's uid filter rests on.
-    ##
-    ## Three probes and no more. Not openat, which is orders of magnitude more
-    ## traffic for a question nobody has asked. The connection probe reports
-    ## who opened one and not where to: where a request went is the proxy's
-    ## account, and keeping the two separate is the whole of point 1.
-    ##
-    ## Observing only. CONFIG_BPF_LSM is available and is not used, and nothing
-    ## here sends a signal or overrides a return: denying a role an exec is the
-    ## shape of a cage, and a cage is nixcage's (ADR-018).
-    environment.etc."cageworks/probes.bt".text = ''
-      /* The kernel's account of this factory, in its own journal namespace.
-       * Filtered here rather than downstream: a predicate compiles into the
-       * program, so an event the machine does not want never leaves the
-       * kernel. uid 0 is the machine itself; no role is ever root, because
-       * --private-users maps a cage onto one allocated uid. */
-      tracepoint:sched:sched_process_exec / uid != 0 /
-      {
-        printf("exec uid=%d pid=%d comm=%s\n", uid, pid, comm);
-      }
-
-      tracepoint:sched:sched_process_exit / uid != 0 /
-      {
-        printf("exit uid=%d pid=%d comm=%s\n", uid, pid, comm);
-      }
-
-      kprobe:tcp_connect / uid != 0 /
-      {
-        printf("connect uid=%d pid=%d comm=%s\n", uid, pid, comm);
-      }
-    '';
-
-    systemd.services.cageworks-probes = {
-      description = "What the kernel says this factory ran";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "cageworks-journal.service" ];
-      serviceConfig = {
-        ## Its stdout is the ledger's third source, so it goes to the same
-        ## journal a role writes to and the proxy logs into. LogNamespace also
-        ## pulls in that namespace's socket units, which is one fewer ordering
-        ## to state (systemd.exec(5)).
-        LogNamespace = cfg.factory;
-        ## -q so the only lines on this stream are events, and -f text so a
-        ## later default cannot turn the ledger into something else. Both read
-        ## off bpftrace(8) at 0.26.1.
-        ExecStart = "${lib.getExe pkgs.bpftrace} -q -f text /etc/cageworks/probes.bt";
-        Restart = "on-failure";
-        RestartSec = 5;
-      };
-    };
-
     ## The machine's own way of being handed a secret. Present only where
     ## there is somewhere to reach, which is the same condition the proxy has.
     ## The supervisor reads a factory's declaration by evaluating the flake it
@@ -500,14 +360,13 @@ in
     ## naming it here costs nothing and means an operator looking at a factory,
     ## or a proof making an origin on it, has the tool the machine's whole job
     ## is about.
-    environment.systemPackages =
-      [
-        pkgs.git
-        ## The guest program itself. Every role-, task- and factory- verb the
-        ## CLI sends runs here, so this is what "the factory moves in" means.
-        pkgs.cageworks-container
-      ]
-      ++ lib.optionals (cfg.egress != [ ]) [ egressCredential ];
+    environment.systemPackages = [
+      pkgs.git
+      ## The guest program itself. Every role-, task- and factory- verb the
+      ## CLI sends runs here, so this is what "the factory moves in" means.
+      pkgs.cageworks-container
+    ]
+    ++ lib.optionals (cfg.egress != [ ]) [ egressCredential ];
 
     ## Who the proxy is (ADR-025 point 2). It exists here rather than beside
     ## the service because the firewall below is written in terms of it: the
@@ -545,8 +404,7 @@ in
     ## it resolves in the asking process, so a query is that uid's packet and
     ## the rules below decide it exactly as they decide any other. Measured on a
     ## machine: root and the proxy resolve, a role's uid does not.
-    environment.etc."resolv.conf".source =
-      lib.mkForce "/run/systemd/resolve/resolv.conf";
+    environment.etc."resolv.conf".source = lib.mkForce "/run/systemd/resolve/resolv.conf";
 
     ## The machine drops egress and names the exceptions (ADR-025 point 3).
     ##
@@ -555,11 +413,9 @@ in
     ## a list of addresses that moved. Which hosts may be reached is the
     ## proxy's to enforce, since the proxy is the thing that resolves them.
     ##
-    ## A role's session runs under its allocated uid on this machine's own
-    ## network stack, because nixcage passes no --private-network and maps the
-    ## session onto that uid. So a role needs no rule: it is denied by there
-    ## being no rule for it, which is the only kind of denial that stays true
-    ## when a role is added.
+    ## A role has no place in this chain at all: its cage is on the bridge
+    ## with one veth and no route (ADR-037), so this chain is about the
+    ## machine's own processes, of which root and the proxy may leave.
     networking.nftables = {
       enable = true;
       tables.cageworks-egress = {
@@ -568,10 +424,10 @@ in
           chain output {
             type filter hook output priority filter; policy drop;
 
-            ## The proxy is on this machine, so a role reaching it never
-            ## leaves. This is also what keeps the machine able to talk to
-            ## itself at all.
+            ## The machine talking to itself, and to its cages over the
+            ## bridge, never leaves.
             oifname "lo" accept
+            oifname "cageworks-*" accept
 
             ## The far side of a connection something above was allowed to
             ## open.
@@ -598,91 +454,6 @@ in
       };
     };
 
-    ## The proxy (ADR-025 point 2). A cage holds no credential, so it cannot
-    ## speak TLS to the model itself and have the request authenticated: it
-    ## speaks plain HTTP to this, on loopback, and this speaks TLS onward with
-    ## the credential added.
-    ##
-    ## One listener and one location per endpoint rather than a port each. A
-    ## port each would be a number to allocate, record and keep stable across
-    ## a change to the allowlist, and a path is none of those.
-    ##
-    ## The upstream is a literal host, so nginx resolves it when it starts. A
-    ## variable would make it resolve per request and would also stop nginx
-    ## rewriting the location away, which is the part worth having. What that
-    ## costs is a restart when an address moves.
-    services.nginx = lib.mkIf (cfg.egress != [ ]) {
-      enable = true;
-      user = "cageworks-egress";
-      group = "cageworks-egress";
-      recommendedProxySettings = true;
-
-      ## What a request cost, and nothing about what it carried (ADR-027 point
-      ## 10). Every field here is the proxy's own account or the upstream's
-      ## answer: the request line, the status on both sides, the timings, the
-      ## byte counts, and what the upstream said about its own rate limits.
-      ##
-      ## No $http_ and no $sent_http_. A request header is where this factory's
-      ## credential is, and a log format naming one would put it in a log,
-      ## which is the thing ADR-025 exists to prevent. $request_body is absent
-      ## for the same reason one step further in.
-      ##
-      ## A header the upstream did not send renders as "-", so the format is
-      ## the same width whichever endpoint answered.
-      ##
-      ## commonHttpConfig and not appendHttpConfig: nginx resolves a log format
-      ## in parse order, and appendHttpConfig lands after the server blocks, so
-      ## the vhost below referenced a name defined later and nginx refused the
-      ## whole configuration. commonHttpConfig is emitted before them.
-      commonHttpConfig = ''
-        log_format cageworks_egress
-          '$request $status $upstream_status '
-          'req=$request_length resp=$body_bytes_sent '
-          'time=$request_time upstream=$upstream_response_time '
-          'retry_after=$upstream_http_retry_after '
-          'ratelimit_requests=$upstream_http_anthropic_ratelimit_requests_remaining '
-          'ratelimit_tokens=$upstream_http_anthropic_ratelimit_tokens_remaining';
-      '';
-
-      virtualHosts."cageworks-egress" = {
-        listen = [
-          {
-            addr = "127.0.0.1";
-            port = cfg.egressPort;
-          }
-        ];
-        extraConfig = ''
-          ## To the factory's own journal rather than to a file: the root here
-          ## is a tmpfs, so a file is a log that ends at the next stop. The
-          ## namespaced dev-log socket is the same one the roles write to, so
-          ## the proxy's account and a role's land in one place and can be read
-          ## against each other (ADR-027 points 6 and 10).
-          ## The tag is cageworks_egress and not cageworks-egress: nginx allows
-          ## only alphanumerics and underscore there, and refuses the whole
-          ## configuration over it, so the proxy does not start at all. A test
-          ## asserting the string was in the file passed while that was true.
-          access_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks_egress,nohostname cageworks_egress;
-          error_log syslog:server=unix:/run/systemd/journal.${cfg.factory}/dev-log,tag=cageworks_egress,nohostname;
-        ''
-        + lib.concatMapStrings (host: ''
-          location /${host}/ {
-            proxy_pass https://${host}/;
-            proxy_set_header Host ${host};
-            ## Without this nginx offers no SNI to the upstream, which answers
-            ## a TLS handshake_failure and the caller sees a 502 with nothing
-            ## in it to explain the refusal. recommendedProxySettings does not
-            ## set it, and neither the packet filter nor the credential can be
-            ## reached far enough to matter while it is off.
-            proxy_ssl_server_name on;
-            ## The credential, written at run time and never in the store. It
-            ## is always written, empty when nobody holds one, because nginx
-            ## refuses to start on an include it cannot read.
-            include /run/cageworks-egress/${host}.conf;
-          }
-        '') cfg.egress;
-      };
-    };
-
     ## What the include above reads, made before nginx opens it. The secret
     ## comes off the machine's own state directory, which the operator writes
     ## and no cage can read.
@@ -704,14 +475,12 @@ in
           conf=/run/cageworks-egress/${host}.conf
           secret=${stateDir}/egress/${host}
           : >"$conf"
-          ${
-            lib.optionalString (cfg.egressHeaders ? ${host}) ''
-              if [ -s "$secret" ]; then
-                printf 'proxy_set_header %s "%s";\n' \
-                  ${lib.escapeShellArg cfg.egressHeaders.${host}} "$(cat "$secret")" >"$conf"
-              fi
-            ''
-          }
+          ${lib.optionalString (cfg.egressHeaders ? ${host}) ''
+            if [ -s "$secret" ]; then
+              printf 'proxy_set_header %s "%s";\n' \
+                ${lib.escapeShellArg cfg.egressHeaders.${host}} "$(cat "$secret")" >"$conf"
+            fi
+          ''}
           chown cageworks-egress:cageworks-egress "$conf"
           chmod 0400 "$conf"
         '') cfg.egress}

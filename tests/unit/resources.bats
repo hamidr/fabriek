@@ -12,7 +12,7 @@ setup() {
 	source "$CAGEWORKS_ROOT/modules/resources.sh"
 	CAPS="$TEST_TEMP_DIR/caps.json"
 	cat >"$CAPS" <<'JSON'
-{ "memory": "16G", "cores": 8, "roleQuota": "50G", "journalQuota": "8G", "concurrency": 4 }
+{ "memory": "16G", "cores": 8, "roleQuota": "50G", "recordQuota": "8G", "concurrency": 4 }
 JSON
 }
 
@@ -138,7 +138,7 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run cageworks_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","journalQuota","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
+	assert_output '["memory","cores","roleQuota","recordQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
 }
 
 # Egress is a permission rather than a size, and it is in the same table so
@@ -206,13 +206,13 @@ JSON
 # worktree with it, so what a ledger may cost is declared and capped the way
 # every other bound here is rather than being a number in a module.
 @test "a factory that wants more ledger than the host allows gets the host's" {
-	run clamped '{ "journalQuota": "64G" }'
+	run clamped '{ "recordQuota": "64G" }'
 	assert_success
-	assert_output --partial '"journalQuota":"8G"'
+	assert_output --partial '"recordQuota":"8G"'
 }
 
 @test "a factory that asks for less ledger than it may have keeps what it asked" {
-	run clamped '{ "journalQuota": "2G" }'
+	run clamped '{ "recordQuota": "2G" }'
 	assert_success
-	assert_output --partial '"journalQuota":"2G"'
+	assert_output --partial '"recordQuota":"2G"'
 }

@@ -40,19 +40,19 @@ cageworks_machine_spec() {
 
 	## Memory is declared the way a person writes it and a hypervisor counts
 	## it in MiB, so it is converted here rather than anywhere a comparison
-	## happens. The ledger's bound likewise (ADR-027 point 8): a machine told
-	## nothing falls back to its own bound rather than to none.
-	local mem="" journal="" declared
+	## happens. The record's bound likewise (ADR-036): a machine told nothing
+	## falls back to its own bound rather than to none.
+	local mem="" record="" declared
 	declared="$(printf '%s' "$declaration" | jq -r '.resources.memory // empty')"
 	[ -z "$declared" ] || mem="$(cageworks_size_mib "$declared")" || return 1
-	declared="$(printf '%s' "$declaration" | jq -r '.resources.journalQuota // empty')"
-	[ -z "$declared" ] || journal="$(cageworks_size_mib "$declared")" || return 1
+	declared="$(printf '%s' "$declaration" | jq -r '.resources.recordQuota // empty')"
+	[ -z "$declared" ] || record="$(cageworks_size_mib "$declared")" || return 1
 
 	printf '%s' "$declaration" | jq -c \
 		--slurpfile local "$local_file" \
 		--rawfile notes "$notes" \
 		--arg mem "$mem" \
-		--arg journal "$journal" '
+		--arg record "$record" '
 		. as $d
 		| $local[0] as $l
 		| { factory: $l.factory, system: $l.system, hostSystem: $l.hostSystem,
@@ -61,7 +61,8 @@ cageworks_machine_spec() {
 		    notes: ($notes | split("\n") | map(select(. != ""))) }
 		+ (if $d.resources.cores then { cpus: $d.resources.cores } else {} end)
 		+ (if $mem == "" then {} else { mem: ($mem | tonumber) } end)
-		+ (if $journal == "" then {} else { journalQuota: ($journal | tonumber) } end)
+		+ (if $record == "" then {} else { recordQuota: ($record | tonumber) } end)
+		+ (if $d.resources.tokens then { tokenCeiling: $d.resources.tokens } else {} end)
 		+ (if $d.resources.egress then
 		     { egress: $d.resources.egress
 		     , egressHeaders:

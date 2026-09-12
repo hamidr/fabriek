@@ -46,14 +46,19 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/repo-declaration.sh"
 # shellcheck source=modules/role-guidance.sh
 . "$CAGEWORKS_LIB/role-guidance.sh"
-# shellcheck source=modules/journal.sh
-. "$CAGEWORKS_LIB/journal.sh"
+# shellcheck source=modules/machine-plan.sh
+. "$CAGEWORKS_LIB/machine-plan.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
 # dataset for a path the pool already covers, so a state root of our own would
 # buy a tidier name and cost every factory its datasets (ADR-018).
 STATE_DIR="${CAGEWORKS_STATE:-/var/lib/nixcage}"
+
+# What the machine's build put on it: the bridge plan and each role's profile
+# (ADR-040). Overridable so the suite can put a machine's facts in a scratch
+# directory.
+CAGEWORKS_ETC="${CAGEWORKS_ETC:-/etc/cageworks}"
 
 # The tasks of every declared factory, kept beside the clones they are worked
 # in rather than in any repository.
@@ -197,45 +202,47 @@ cmd_role_enter() {
 	## ours to promise.
 	##
 	## Two numbers, and they are not interchangeable. The base is the block the
-	## cage maps; the agent's is the one inside it the session runs as, and it
-	## is the one every host file the session touches has to belong to, because
-	## ownership is not shifted on the way in (ADR-028).
-	local uid agent_uid
+	## cage maps, and loop and agent run as it (ADR-035): one principal, one
+	## number, and every host file the session touches belongs to it, because
+	## ownership is not shifted on the way in.
+	local uid
 	uid="$(nixcage-container uid "$role")" ||
 		die "could not get a uid for role $role"
-	agent_uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
-		die "could not get a uid for the agent of role $role"
 
 	## The clone carries the declaration (ADR-020), so it has to exist before
 	## anything can be read out of it and the worktree is prepared first.
 	## --repository is needed the first time only: after that the clone records
 	## where it was cloned from, which is what a clone is.
-	local repo worktree declared_cmd declared_shell
+	local repo worktree declared_cmd
 	repo="${repository:-$(factory_repository "$factory")}"
 	[ -n "$repo" ] || exit 1
 	worktree="$(cmd_role_worktree "$factory" "$role" "$repo")" || exit 1
 
 	declared_cmd="$(cageworks_factory_role_command \
 		"$(factory_declaration "$factory")" "$role")" || exit 1
-	declared_shell="$(cageworks_factory_role_shell \
-		"$(factory_declaration "$factory")" "$role")" || exit 1
 
-	## The base of the block the cage maps, and the subject inside it the
-	## session runs as. Two different numbers: nixcage adds the subject's
-	## offset to the base itself, so passing the subject's own number here
-	## would map a block starting one past this role's (ADR-028).
+	## Where on the factory's bridge this cage is (ADR-037). The plan is the
+	## machine's, written by its build from the same declaration the rules
+	## were generated from; a role the plan does not place would have no
+	## address, and a machine without a plan has no bridge to put it on.
+	local address
+	address="$(cageworks_bridge_address "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+
 	local -a opts=(
 		--uid "$uid"
 		--user "$role"
-		--subject "$(cageworks_agent_subject)"
 		--home "$STATE_DIR/homes/$factory-$role"
+		--network "$(cageworks_bridge_placement "$CAGEWORKS_ETC/bridge.json" "$address")"
+		--no-nix-daemon
 	)
 
-	## A role's toolchain comes from its declaration for the same reason its
-	## command does: what a specialist has to hand is a property of the
-	## factory, not of whoever started the session.
-	if [ -n "$declared_shell" ]; then
-		opts+=(--shell "$declared_shell")
+	## A role's toolchain is the profile the build realised from its devShell
+	## (ADR-040), handed in on the front of PATH because a cage has no daemon
+	## to enter a devShell with. A role whose build realised none enters with
+	## the floor alone (ADR-030).
+	local profile
+	if profile="$(cageworks_role_profile "$CAGEWORKS_ETC" "$role")"; then
+		opts+=(--setenv "NIXCAGE_PATH_PREFIX=$profile/bin")
 	fi
 
 	if [ -n "$auth_sock" ]; then
@@ -247,16 +254,6 @@ cmd_role_enter() {
 		## a socket, because an absence is not a decision.
 		opts+=(--no-agent)
 	fi
-
-	## Every session can reach the journal its factory writes, because the
-	## ledger is what a role did and a role that is not recorded is one
-	## nothing can be checked against (ADR-027 point 5). The socket is a bind
-	## and nothing more, which is why this needs nothing new from nixcage.
-	local journal_line
-	while IFS= read -r journal_line; do
-		[ -n "$journal_line" ] || continue
-		opts+=("$journal_line")
-	done < <(cageworks_journal_args "$factory")
 
 	## A role is told the rules it cannot infer from error messages: what it
 	## may write, and that the packed-refs permission error on every ref
@@ -283,7 +280,7 @@ cmd_role_enter() {
 	## role commits as itself.
 	if [ -n "$signing_role" ]; then
 		local key signers gitconfig line
-		key="$(cageworks_signing_ensure "$STATE_DIR" "$signing_role" "$agent_uid")" ||
+		key="$(cageworks_signing_ensure "$STATE_DIR" "$signing_role" "$uid")" ||
 			die "could not prepare a signing key for $signing_role"
 		signers="$(cageworks_signing_signers "$STATE_DIR")"
 		gitconfig="$(cageworks_signing_gitconfig_path "$STATE_DIR" "$signing_role")" || exit 1
@@ -307,8 +304,10 @@ cmd_role_enter() {
 		set -- "${declared[@]}"
 	fi
 
+	## The cage is named after its role alone: nspawn names the cage's veth
+	## after the cage, and the bridge's rules are keyed on that name.
 	nixcage-container enter "${opts[@]}" \
-		"$factory-$role" "$worktree" "$@"
+		"$role" "$worktree" "$@"
 }
 
 ## Create or repair a role's worktree and print its path. Separate from
@@ -329,8 +328,8 @@ cmd_role_worktree() {
 	## The agent's number rather than the block's base: this uid is only ever
 	## an owner, and what opens the repository is the agent (ADR-028).
 	local uid
-	uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
-		die "could not get a uid for the agent of role $role"
+	uid="$(nixcage-container uid "$role")" ||
+		die "could not get a uid for role $role"
 
 	## How much a role may hold is the factory's to say; whether that can be
 	## enforced at all is the filesystem's, and nixcage answers for it.
@@ -669,8 +668,8 @@ cmd_task_run() {
 	## Declared here rather than inside the brief below: a { } group is not a
 	## scope, so an assignment made there would outlive this function.
 	local uid run_dir finish own_guidance seen fresh
-	uid="$(nixcage-container uid "$role" "$(cageworks_agent_subject)")" ||
-		die "could not get a uid for the agent of role $role"
+	uid="$(nixcage-container uid "$role")" ||
+		die "could not get a uid for role $role"
 	run_dir="$STATE_DIR/runs/$factory/$id"
 	rm -rf "$run_dir"
 	mkdir -p "$run_dir"

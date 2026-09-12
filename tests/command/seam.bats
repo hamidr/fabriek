@@ -19,10 +19,15 @@
 #   the role guidance was bound read-only and named in the environment
 #                                                -> --bind-ro and --setenv
 #
-# One flag is newer than the split. The journal socket a role writes its
-# ledger to is not in a cage's own /run until it is asked for (ADR-027 point
-# 5), and asking for it is a --bind like any other, which is the whole reason
-# that decision needs nothing new from nixcage.
+# Three things changed with ADR-037 and ADR-040, and each is a flag here. A
+# cage is on the factory's bridge at the address the machine's plan gives its
+# role, and has no nix daemon (--network, --no-nix-daemon); its toolchain is
+# the profile the build realised, handed in on the front of PATH
+# (NIXCAGE_PATH_PREFIX) rather than a devShell entered inside (--shell is
+# gone); and the session runs as the block's base uid, because loop and agent
+# are one process under one uid (ADR-035) and --subject is gone with ADR-028.
+# The journal bind is gone with the ledger (ADR-038). The cage is named after
+# its role alone, because nspawn names its veth after the cage.
 #
 # The in-cage paths move from /run/nixcage and /etc/nixcage to /run/cageworks
 # and /etc/cageworks because nixcage refuses a bind over its own /etc.
@@ -49,10 +54,10 @@ setup() {
 #!/usr/bin/env bash
 case "\$1" in
 uid)
-	# A principal is allocated a block: the base with no subject, and the
-	# subject's own number with one. cageworks must ask for the right one in
-	# each place, so the stub answers with different numbers.
-	if [ -n "\$3" ]; then echo 60001; else echo 60000; fi
+	# A principal's number. A subject is never asked for any more (ADR-035),
+	# so asking for one is answered the way a machine with none would.
+	if [ -n "\$3" ]; then echo "no such subject: \$3" >&2; exit 1; fi
+	echo 60000
 	;;
 storage)
 	printf '%s\n' "\$*" >>"$STORAGE_CALLS"
@@ -72,6 +77,23 @@ EOF
 	chmod +x "$STUB_DIR/nixcage-container" "$STUB_DIR/chown" "$STUB_DIR/setfacl"
 
 	declare_factory
+	declare_machine
+}
+
+## What the machine's build put on it (ADR-040): the bridge plan the session
+## takes its address from, and the profile its toolchain is.
+declare_machine() {
+	export CAGEWORKS_ETC="$TEST_TEMP_DIR/etc"
+	mkdir -p "$CAGEWORKS_ETC/roles/builder" "$TEST_TEMP_DIR/store/role-builder/bin"
+	ln -s "$TEST_TEMP_DIR/store/role-builder" "$CAGEWORKS_ETC/roles/builder/profile"
+	# The session is handed the resolved store path, which on a host that
+	# symlinks /tmp is not the path the link was written with.
+	PROFILE="$(readlink -f "$TEST_TEMP_DIR/store/role-builder")"
+	cat >"$CAGEWORKS_ETC/bridge.json" <<'JSON'
+{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24,
+  "cages": { "builder": "10.77.0.10", "decider": "10.77.0.2" },
+  "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
+JSON
 }
 
 teardown() {
@@ -117,7 +139,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --subject agent --home $STATE/homes/acme-builder --shell backend --no-agent --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/cageworks/task --setenv CAGEWORKS_TASK=/run/cageworks/task --bind-ro $STATE/keys/builder:/run/cageworks/signing-key --bind-ro $STATE/keys/allowed_signers:/run/cageworks/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -125,7 +147,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --subject agent --home $STATE/homes/acme-builder --shell backend --auth-sock /tmp/agent.sock --bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network cageworks-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock --bind-ro $CAGEWORKS_LIB/role-guidance.md:/etc/cageworks/role-guidance.md --setenv CAGEWORKS_ROLE_GUIDANCE=/etc/cageworks/role-guidance.md builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "the uid comes from nixcage rather than from a store cageworks keeps" {
@@ -163,45 +185,40 @@ recorded() {
 	assert_output --partial "mutually exclusive"
 }
 
-@test "a role session can reach the journal it writes its ledger to" {
+@test "given no bridge plan on the machine, a session is refused rather than started off the bridge" {
+	rm "$CAGEWORKS_ETC/bridge.json"
 	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
-	assert_success
-
-	# The socket is namespaced by factory outside and unnamespaced inside,
-	# because journald's client code opens one path and the machine keeps a
-	# separate journal per factory (ADR-027 points 5 and 6).
-	run recorded
-	assert_output --partial "--bind /run/systemd/journal.acme/socket:/run/systemd/journal/socket"
+	assert_failure
+	assert_output --partial "bridge"
+	[ ! -f "$CALLS" ]
 }
 
-@test "no session is handed another factory's journal" {
+@test "a role the plan does not place gets no session, because it would have no address" {
+	cat >"$CAGEWORKS_ETC/bridge.json" <<'JSON'
+{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24, "cages": { "decider": "10.77.0.2" } }
+JSON
+	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_failure
+	assert_output --partial "builder"
+	[ ! -f "$CALLS" ]
+}
+
+@test "a role whose build realised no profile enters with the floor alone" {
+	rm "$CAGEWORKS_ETC/roles/builder/profile"
 	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 	run recorded
-	refute_output --partial "journal.builder"
-	refute_output --partial "/run/systemd/journal/socket:/run/systemd/journal.acme/socket"
+	refute_output --partial "NIXCAGE_PATH_PREFIX"
+	assert_output --partial "--no-nix-daemon --auth-sock"
 }
 
-# A principal now holds a block, and the two numbers in it are not
-# interchangeable: --uid names the base the cage maps, and --subject picks the
-# number inside it the session runs as. Asking for the agent's number and
-# passing it as --uid would map a block starting one past this role's.
-@test "the cage maps the block and the session runs as the agent in it" {
-	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
-	assert_success
-
-	run recorded
-	assert_output --partial "--uid 60000 --user builder --subject agent"
-	refute_output --partial "--uid 60001"
-}
 
 # --private-users-ownership=off means a host file has to already carry the uid
 # the session runs as, and libgit2 refuses a repository owned by anyone else.
-# The tree therefore belongs to the agent and not to the block's base.
-@test "the worktree is owned by the subject that opens it" {
+# Loop and agent are one uid now (ADR-035), and it is the principal's own.
+@test "the worktree is owned by the uid that opens it" {
 	run_cageworks_container role-worktree acme builder "$REPO"
 	assert_success
 	run cat "$STORAGE_CALLS"
-	assert_output --partial "ensure $STATE/worktrees/acme/builder 60001"
-	refute_output --partial "60000"
+	assert_output --partial "ensure $STATE/worktrees/acme/builder 60000"
 }

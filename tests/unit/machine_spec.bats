@@ -19,7 +19,7 @@ setup() {
 { "name": "acme",
   "roles": { "builder": { "command": ["claude"], "provides": ["build"], "shell": "backend" } },
   "workflows": { "ship": { "stages": [ { "needs": "build" } ] } },
-  "resources": { "memory": "4G", "cores": 12, "journalQuota": "2G",
+  "resources": { "memory": "4G", "cores": 12, "recordQuota": "2G",
                  "egress": ["api.anthropic.com", "api.openai.com"] } }
 JSON
 	cat >"$LOCAL" <<'JSON'
@@ -47,7 +47,7 @@ spec() { cageworks_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 }
 
 @test "when the factory asks for more than the operator allows, the spec carries the ceiling, in MiB" {
-	run jq -r '.cpus, .mem, .journalQuota' <<<"$(spec)"
+	run jq -r '.cpus, .mem, .recordQuota' <<<"$(spec)"
 	assert_line --index 0 8
 	assert_line --index 1 4096
 	assert_line --index 2 2048
@@ -81,8 +81,8 @@ spec() { cageworks_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 }
 
 @test "a machine told nothing about memory or the ledger gets no number, and keeps its own defaults" {
-	jq 'del(.resources.memory, .resources.journalQuota)' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
-	run jq -c '[has("mem"), has("journalQuota")]' <<<"$(spec)"
+	jq 'del(.resources.memory, .resources.recordQuota)' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
+	run jq -c '[has("mem"), has("recordQuota")]' <<<"$(spec)"
 	assert_output '[false,false]'
 }
 

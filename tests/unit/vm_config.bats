@@ -225,12 +225,6 @@ egress_proxy_conf() {
       + (builtins.head m.config.services.nginx.virtualHosts."cageworks-egress".listen).addr'
 }
 
-@test "the proxy answers on loopback and nowhere else, since a cage is on this machine" {
-	run egress_proxy_conf
-	assert_success
-	assert_output --partial "127.0.0.1"
-}
-
 @test "each endpoint the factory may reach is a place on the proxy" {
 	run egress_proxy_conf
 	assert_success
@@ -284,38 +278,6 @@ egress_proxy_conf() {
 	assert_output "does not run"
 }
 
-## The units a machine pulls into sockets.target, one per line.
-socket_wants() {
-	local factory="${1:-acme}"
-	nix eval --raw --impure --expr '
-    let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
-      m = flake.lib.machine {
-        system = "aarch64-linux";
-        factory = "'"$factory"'";
-        sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
-      };
-    in builtins.concatStringsSep "\n" m.config.systemd.targets.sockets.wants
-  ' 2>/dev/null
-}
-
-# ADR-027 point 6. One journal for the machine would let a role that floods it
-# evict every other role's entries under SystemMaxUse, which would make
-# suppressing evidence a matter of writing enough of it.
-@test "a factory's machine keeps a journal of its own, named after the factory" {
-	run socket_wants acme
-	assert_success
-	assert_line "systemd-journald@acme.socket"
-}
-
-@test "no factory's machine listens on another factory's journal" {
-	run socket_wants other
-	assert_success
-	assert_line "systemd-journald@other.socket"
-	refute_line "systemd-journald@acme.socket"
-}
-
 ## The names of the commands a machine puts on its own PATH.
 machine_commands() {
 	local factory="${1:-acme}" egress="${2:-[ \"api.anthropic.com\" ]}"
@@ -349,79 +311,23 @@ machine_commands() {
 	refute_line "cageworks-egress-credential"
 }
 
-## The script one of the machine's own units runs, and its journald settings.
-journal_facts() {
-	local factory="${1:-acme}" quota="${2:-4096}"
-	nix eval --raw --impure --expr '
-    let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
-      m = flake.lib.machine {
-        system = "aarch64-linux";
-        factory = "'"$factory"'";
-        sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
-        journalQuota = '"$quota"';
-      };
-      c = m.config;
-    in builtins.concatStringsSep "\n" [
-      c.systemd.services.cageworks-journal.script
-      c.environment.etc."systemd/journald@'"$factory"'.conf".text
-      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.before)
-      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.after)
-      (builtins.concatStringsSep " " c.systemd.services.cageworks-journal.path)
-    ]' 2>/dev/null
-}
-
 # ADR-027 point 8. Unbounded, the ledger fills the pool and takes every
 # worktree with it, which is why the quota is not optional here.
-@test "the ledger is asked for through the primitive, bounded, and never with zfs" {
-	run journal_facts acme 2048
-	assert_success
-	assert_output --partial "nixcage-container storage ensure"
-	assert_output --partial "/var/lib/nixcage/journal 0 2048M"
-	refute_output --partial "zfs create"
-	refute_output --partial "zfs set"
-}
 
 # A sibling of worktrees/ under the state directory, so no role's name reaches
 # it and no role's quota is what bounds it.
-@test "the ledger is not somewhere a role's name can reach" {
-	run journal_facts acme
-	assert_success
-	refute_output --partial "/var/lib/nixcage/worktrees"
-}
 
 # microvm.nix gives this guest a tmpfs root, so a ledger that is not put
 # somewhere on purpose ends at the next stop.
-@test "the ledger survives a stop, and journald rotates before the quota bites" {
-	run journal_facts acme 2048
-	assert_success
-	assert_output --partial "Storage=persistent"
-	# Nine tenths of the dataset's bound: a full dataset is a ledger that
-	# stops, and an evicting one is a ledger that says so.
-	assert_output --partial "SystemMaxUse=1843M"
-}
 
 # The namespace listens at sockets.target and the pool is imported at
 # multi-user, so ordering it after the storage is a cycle systemd breaks by
 # dropping sockets.target, and the factory boots with no journal at all. It is
 # restarted onto the directory instead, which is why this asserts a restart and
 # not an ordering.
-@test "the namespace is moved onto the pool by a restart, not by an ordering" {
-	run journal_facts acme
-	assert_success
-	assert_output --partial "cageworks-storage.service"
-	assert_output --partial "systemctl restart systemd-journald@acme.service"
-	refute_line --partial "systemd-journald@acme.socket"
-}
 
 # nixcage's host module puts the primitive on the machine's own profile, and a
 # unit with an explicit path gets only that path.
-@test "the unit can reach the primitive it is written in terms of" {
-	run journal_facts acme
-	assert_success
-	assert_output --partial "/run/current-system/sw"
-}
 
 ## What the proxy is configured to write about a request, and where.
 proxy_log() {
@@ -474,21 +380,6 @@ proxy_log() {
 	assert_output --partial '$upstream_status'
 }
 
-# A file on a tmpfs root is a log that ends at the next stop, so the proxy
-# writes into the factory's own journal like everything else here.
-@test "the proxy writes to the factory's journal and not to a file" {
-	run proxy_log
-	assert_success
-	assert_output --partial "syslog:server=unix:/run/systemd/journal.acme/dev-log"
-	# Underscore, not hyphen: nginx allows only alphanumerics and underscore
-	# in a syslog tag and rejects the entire configuration over it. This
-	# asserted the hyphenated spelling and passed while the proxy would not
-	# start; only tests/manual/egress.sh, on a machine, caught it.
-	assert_output --partial "tag=cageworks_egress"
-	refute_output --partial "tag=cageworks-egress"
-	refute_output --partial "/var/log/nginx"
-}
-
 ## The probe unit: what it runs, where it logs, and what it is allowed to do.
 probe_facts() {
 	local factory="${1:-acme}"
@@ -504,8 +395,7 @@ probe_facts() {
       c = m.config;
       u = c.systemd.services.cageworks-probes;
     in builtins.concatStringsSep "\n" [
-      (builtins.toString u.serviceConfig.ExecStart)
-      (u.serviceConfig.LogNamespace or "")
+      u.script
       (builtins.readFile c.environment.etc."cageworks/probes.bt".source)
     ]' 2>/dev/null
 }
@@ -549,13 +439,6 @@ probe_facts() {
 
 # The kernel's account goes into the same journal as the role's own, so the
 # two can be read against each other without either being told about the other.
-@test "the kernel's account lands in the factory's journal, attributed by uid" {
-	run probe_facts acme
-	assert_success
-	assert_output --partial "bpftrace"
-	assert_output --partial "acme"
-	assert_output --partial "uid=%d"
-}
 
 ## The uid range nixcage allocates a principal from, and the proxy's own uid.
 uid_range() {
@@ -588,32 +471,6 @@ uid_range() {
 	# ADR-025 puts the proxy far below any principal range, so that a role
 	# sharing its uid would be a role that may leave the machine.
 	[ "$base" -gt "$proxy" ]
-}
-
-## The subjects the machine declares its cages have.
-machine_subjects() {
-	nix eval --raw --impure --expr '
-    let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
-      m = flake.lib.machine {
-        system = "aarch64-linux";
-        factory = "acme";
-        sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
-      };
-    in builtins.concatStringsSep " " m.config.nixcage.principalSubjects
-  ' 2>/dev/null
-}
-
-# ADR-028. The machine declares the subject and the guest program names it, in
-# two languages that cannot share a constant. This is the only thing standing
-# between them and a drift where a session asks to run as a subject the cage
-# does not have.
-@test "the machine declares the subject the guest program asks to run as" {
-	source "$CAGEWORKS_ROOT/modules/names.sh"
-	run machine_subjects
-	assert_success
-	assert_output "$(cageworks_agent_subject)"
 }
 
 ## What /etc/resolv.conf points a process at.

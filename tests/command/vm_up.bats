@@ -105,7 +105,7 @@ declare_repository() {
       resources = {
         memory = "4G";
         cores = 2;
-        journalQuota = "2G";
+        recordQuota = "2G";
         egress = [ "api.anthropic.com" "api.openai.com" ];
       };
     };

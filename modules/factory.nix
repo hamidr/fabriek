@@ -91,13 +91,11 @@ let
     );
   profiles = builtins.mapAttrs profileOf (spec.declaration.roles or { });
 
-  ## What the machine carries of all this: the clamped declaration, read by
-  ## the guest program instead of evaluated, and one profile per role.
+  ## What the machine carries of all this beyond the spec: one profile per
+  ## role. The declaration itself rides in the spec and vm-guest.nix writes
+  ## it to the machine as a file.
   factoryModule = {
-    environment.etc = {
-      "cageworks/declaration.json".text = builtins.toJSON spec.declaration;
-    }
-    // lib.mapAttrs' (
+    environment.etc = lib.mapAttrs' (
       name: profile: lib.nameValuePair "cageworks/roles/${name}/profile" { source = profile; }
     ) profiles;
   };

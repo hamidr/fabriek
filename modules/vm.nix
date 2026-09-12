@@ -53,7 +53,6 @@ nixpkgs.lib.nixosSystem {
         "system"
         "hostSystem"
         "workspaceRoots"
-        "declaration"
         "notes"
         "modules"
       ];

@@ -43,7 +43,8 @@ operator caps.
 **4. Two limits.** At the soft limit the executor stops routing new work and
 running turns finish. At a hard limit above it the proxy refuses, so a
 runaway cannot outspend the cap with one long turn. This is the only hard
-cost control.
+cost control. The count lives in the proxy's memory and starts at zero when
+it does: the ceiling bounds a runaway and keeps no account.
 
 **5. Two nixcage interface changes,** each two commits in two repositories
 and a lock bump (ADR-018): an `enter` option naming the bridge and the
@@ -53,8 +54,11 @@ up in `tests/command/seam.bats` as a diff.
 
 ## Consequences
 
-ADR-025's uid filter, proxy uid, `resolv.conf` arrangement and
-`models/egress-authority.als` are deleted. `tests/manual/egress.sh` is
+ADR-025's chain stays for the machine's own processes, of which root and
+the proxy may leave, since the executor pushes to origin and the proxy
+reaches the model; what leaves it is a role's place in it, because a cage is
+on the bridge with no route at all. `models/egress-authority.als` is
+deleted with the claim it modelled. `tests/manual/egress.sh` is
 replaced by `tests/manual/isolation.sh`, which has to check both bridge
 rules and not only egress. A repository qualifies for a factory by being
 hermetic: a build that reaches the network does not run in a cage. An agent

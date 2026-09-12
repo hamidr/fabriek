@@ -135,6 +135,17 @@ validate_with() {
 	assert_failure
 }
 
+@test "a role name longer than an interface can carry is refused, naming the role" {
+	# A role is its cage's name, and nspawn names the cage's veth after it
+	# within the kernel's fifteen characters (ADR-037). Twelve is what is left.
+	run validate_with '{name, roles: {"a-role-of-thirteen": .roles.backend}}'
+	assert_failure
+	assert_output --partial "a-role-of-thirteen"
+	assert_output --partial "12"
+	run validate_with '{name, roles: {"twelve-chars": .roles.backend}}'
+	assert_success
+}
+
 @test "a devShell name that could reach somebody else's flake is refused" {
 	run validate_with '.roles.backend.shell = "github:evil/flake#sh"'
 	assert_failure

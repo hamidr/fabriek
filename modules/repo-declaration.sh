@@ -108,8 +108,10 @@ cageworks_declaration_program() {
           then ["resources: memory must be a size"] else [] end),
          (if ((.roleQuota? // "1G") | type) != "string"
           then ["resources: roleQuota must be a size"] else [] end),
-         (if ((.journalQuota? // "1G") | type) != "string"
-          then ["resources: journalQuota must be a size"] else [] end),
+         (if ((.recordQuota? // "1G") | type) != "string"
+          then ["resources: recordQuota must be a size"] else [] end),
+         (if ((.tokens? // 1) | type) != "number"
+          then ["resources: tokens must be a number"] else [] end),
          (if (.egress? // null) == null then []
           elif (.egress | type) != "array"
           then ["resources: egress must be a list of endpoints"]
@@ -153,6 +155,10 @@ cageworks_declaration_check_names() {
 		endpoint)
 			cageworks_host_ok "$value" && continue
 			echo "cageworks: $where: egress is not a host: $value" >&2
+			;;
+		role)
+			cageworks_role_name_ok "$value" && continue
+			echo "cageworks: $where: a role name is at most $CAGEWORKS_ROLE_NAME_MAX characters of a usable name: $value" >&2
 			;;
 		*)
 			cageworks_name_ok "$value" && continue

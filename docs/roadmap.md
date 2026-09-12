@@ -95,7 +95,18 @@ Two commits in two repositories and a lock bump each (ADR-018).
   persistence and ACL users set at boot from per-role secrets; the bridge
   with the two rules; the proxy on the bridge address counting tokens per
   source address against the soft and hard limits; probes publishing to the
-  `probes` stream.
+  `probes` stream. Done 2026-09-12 on the branch, one module per service
+  under `modules/guest/`, evaluated by `tests/command/guest_services.bats`.
+  Decided here: the `probes` stream is capped at 10000 entries; the proxy's
+  metadata log stays in the machine's journald, on the default namespace;
+  the proxy counts with njs in nginx's memory, so a restart is a spend
+  nobody remembers, accepted because the ceiling bounds a runaway rather
+  than keeping an account; the cage is named after its role and a role name
+  is at most twelve characters, because nspawn names the veth after the
+  cage. The session line changed with it: `--network`, `--no-nix-daemon`
+  and the profile on `NIXCAGE_PATH_PREFIX` in, `--subject`, `--shell` and
+  the journal bind out; `seam.bats` asserts the new line. The machine has
+  not booted with any of this: the erofs builder failure of 0.6 stands.
 - 2.3 `cageworks up` idempotent for Forgejo accounts, `read` collaborators,
   `write:issue` tokens, memory issues opened as each role, labels for every
   stage, and ACL users. Second `up` changes nothing.

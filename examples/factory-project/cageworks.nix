@@ -85,9 +85,12 @@
     memory = "8G";
     cores = 4;
     roleQuota = "20G";
-    ## What this factory's ledger may cost (ADR-027 point 8). Unbounded it
-    ## would fill the pool and take every worktree above with it.
-    journalQuota = "4G";
+    ## What this factory's record may cost (ADR-036). Unbounded it would
+    ## fill the pool and take every worktree above with it.
+    recordQuota = "4G";
+    ## Tokens, input and output, the factory may spend before the proxy
+    ## refuses (ADR-037). The operator's ceiling caps it like the rest.
+    tokens = 2000000;
     concurrency = 3;
     taskAttempts = 3;
     runTimeoutSeconds = 3600;
