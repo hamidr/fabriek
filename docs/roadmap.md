@@ -128,7 +128,10 @@ Two commits in two repositories and a lock bump each (ADR-018).
   because a role's cage name and address are taken while the executor
   runs it (`docs/architecture.md`, gaps).
 - 2.5 `tests/manual/stop-and-start.sh` rerun with Forgejo's data in the
-  manifest.
+  manifest. Done 2026-09-12: an issue opened through the forge before the
+  first stop was on the board after each of ten stop and start cycles,
+  alongside the 300-file manifest; down 5 to 26 seconds, up 28 to 245
+  seconds on this host's linux builder.
 
 ## Phase 3: the TypeScript package, on the branch
 
