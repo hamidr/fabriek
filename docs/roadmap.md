@@ -119,7 +119,8 @@ One package, built through the flake, tests in its own runner.
 - 5.2 Models green; `task-claim.qnt`, `egress-authority.als`,
   `ledger-tap.qnt` and `factory-lifecycle.qnt` deleted.
 - 5.3 `docs/architecture.md` rewritten from the branch; `CLAUDE.md` follows.
-- 5.4 Branch merged to `main`. This file deleted, its content in `docs/`.
+- 5.4 Branch merged to `main`. `REDESIGN-LOG.md` deleted, its content in
+  `docs/`; this file stays and points at PRD-006.
 
 ## Where the log's open items land (REDESIGN-LOG.md section 6)
 
