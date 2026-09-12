@@ -221,5 +221,7 @@ CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
   executor for their duration. Entering a running role by hand needs a
   second address per role or a way into the running cage, and neither is
   decided.
-- `tests/manual/parity.sh` has not yet passed on a machine; see
-  `docs/roadmap.md` 5.1.
+- `tests/manual/parity.sh` passes up to the first assignment and is gated
+  there on a credential the endpoint accepts; see `docs/roadmap.md` 5.1.
+- Which model a session starts on is the machine's choice, a table in
+  `modules/guest/floor.nix`; a declaration cannot name one.

@@ -221,6 +221,13 @@ One package, built through the flake, tests in its own runner.
 - 5.1 `tests/manual/parity.sh` passes on a real machine: goal filed, assigned
   by the decider, worked, tested by the testing capability, pull request
   opened, mirrored, no command typed after the goal.
+  Run 2026-09-12 as far as a credential allows: the board, the executor,
+  the decider's cage, and a goal filed from the operator's host reaching
+  the board with its first stage's label all pass; assignment and
+  everything after are gated on a credential the endpoint accepts, and the
+  proof says so and stops. The proof reads the machine as built: the forge
+  on the bridge, the decider as a session the executor starts, the stages
+  from the spec, the issue by its title, routing off the relay.
 - 5.2 `factory-structure.als` and `vm-lifecycle.qnt` green or deleted with
   a reason; `task-claim.qnt`, `egress-authority.als`, `ledger-tap.qnt` and
   `factory-lifecycle.qnt` deleted. Done 2026-09-12: `vm-lifecycle.qnt`
