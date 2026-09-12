@@ -391,11 +391,13 @@ supersessions are noted.
     a factory down destroys the account of why the code looks as it does unless
     something mirrors it.
 
-    What it buys beyond a board: project columns, so ADR-015's stages map onto
-    real columns; per-role accounts, so the authorization matrix is the
-    service's job; pull requests and review beside the work; and a web UI over
-    the forwarded port that is a better operator view than anything we would
-    have built.
+    What it buys beyond a board: per-role accounts, so the authorization
+    matrix is the service's job; pull requests and review beside the work; and
+    a web UI over the forwarded port that is a better operator view than
+    anything we would have built. *Amended 2026-09-12:* project columns were
+    listed here too, but Forgejo 16 has no repository projects API
+    (decision 52), so a stage is a label the executor sets, and the UI's
+    column view, if wanted, is a project the operator keeps by hand.
 
 31. **Code flow: role tokens are issue-scoped, the executor pushes.** Roles
     commit locally to their own branch; the executor pushes to Forgejo, opens
@@ -567,6 +569,39 @@ supersessions are noted.
     than repaired: an operator confirmation on `stop` and `block` would make
     the operator the loop again, which is ADR-026's problem returning.
 
+52. **Forgejo permissions, measured.** Forgejo 16.0.4 in docker, one
+    repository, two role users added as collaborators with `read`, each
+    holding a token scoped `write:issue`. Every claim the design makes about
+    a role's token was probed over the API:
+
+    | Role token can | Status |
+    | --- | --- |
+    | open an issue | 201 |
+    | edit the body of an issue it opened | 201 |
+    | comment on an issue the operator opened | 201 |
+    | edit and delete its own comment | 200, 204 |
+    | close and reopen an issue it opened | 201 |
+    | edit or delete a peer's issue body or comment | 403 |
+    | edit, close or assign on the operator's issue | 403 |
+    | add a label, even to its own issue | 403 |
+    | comment with a `read:issue` token | 403 |
+    | write repository contents with `write:repository` | 403 |
+
+    The operator's account, with `write`, labels freely (200) and a push to
+    `refs/cageworks/record` is accepted. `GET /repos/{o}/{r}/projects` is 404:
+    there is no projects API, so decision 30's columns are not something the
+    executor can move.
+
+    What this settles: decision 43's memory issue works as designed, since
+    only the poster edits it; section 1's rule that a blocked actor comments
+    and the executor labels is required, not optional; a role's effective
+    rights are the collaborator permission and not the token scope, so
+    `write:issue` on a `read` collaborator is the shape to keep; and a stage
+    is a label. Comment edits keep `updated_at` at second resolution, so the
+    audit of a revised comment is Forgejo's content history and not the
+    timestamp. Script: a throwaway in the session scratchpad, twenty probes,
+    rerunnable against any image tag.
+
 ## 3. What this replaces in `docs/`
 
 Fully reversed or deleted: ADR-013 (no shared database), ADR-022 (the task is a
@@ -647,24 +682,18 @@ send; every `assigning` row resolves after reconciliation.
 
 ## 6. Still open
 
-The first session's seven questions are closed by decisions 39 to 50. What
-they opened:
+The first session's seven questions are closed by decisions 39 to 50, and
+the Forgejo questions by decision 52. What remains:
 
 - The relay's exact JSONL shape, and where its contract test lives.
-- Whether Forgejo's issue scope on a role token really limits body edits to
-  the poster's own issues; decision 43 depends on it and it is asserted, not
-  measured.
 - The export format under `refs/cageworks/record`, and whether a mirrored
   record is imported back on `cageworks up` of a fresh machine.
 - The `probes` stream's cap, and whether the proxy's metadata log joins the bus
   the same way or stays in journald.
-- Whether a role token with Issues Read may add a label; section 1 assumes
-  not and routes labels through the executor. Same spike as decision 43's
-  question.
 - Re-announcing `ready` after a Valkey restart: the bus is unpersisted, so
   the extension must reconnect and re-announce, and the executor must treat a
   silent actor as unknown until it does.
 - `cageworks up` after a rebuild (decision 15) must be idempotent for Forgejo
   accounts and tokens, memory issues and Valkey ACL users.
-- Whether origin accepts a push to `refs/cageworks/record`; some forges reject
-  ref namespaces outside `heads` and `tags`.
+- Whether origin accepts a push to `refs/cageworks/record`; Forgejo does
+  (decision 52), other forges are unmeasured.
