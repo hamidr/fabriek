@@ -25,6 +25,11 @@
         "cageworks-bus-acl.service"
         "forgejo.service"
       ];
+      ## Not before cageworks up has prepared the factory (accounts, tokens,
+      ## passwords owned by their cages): a session started earlier fails or
+      ## is deaf. Prepare writes the mark last and restarts this unit on it;
+      ## on every later boot the mark is already there.
+      unitConfig.ConditionPathExists = "/var/lib/nixcage/prepared";
       path = [
         pkgs.git
         pkgs.cageworks-container

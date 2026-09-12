@@ -116,6 +116,19 @@ teardown() {
 	assert_output --partial "restart cageworks-bus-acl"
 }
 
+# The executor starts every session, and a session started before its
+# credentials are the role's is one that fails or is deaf. Found on a first
+# boot: the decider logged EACCES on its token until prepare had chowned it.
+@test "prepare marks the machine prepared after the last credential is handed over, and starts the executor on it" {
+	run_cageworks_container factory-prepare acme
+	assert_success
+	[ -f "$STATE/prepared" ]
+	run cat "$FORGE/systemctl-calls"
+	assert_output --partial "restart cageworks-executor"
+	# the mark is the last thing written: after the decider's chown
+	[ "$(tail -1 "$FORGE/chown-calls")" = "60192 $STATE/bus/decider $STATE/forge/decider-token" ]
+}
+
 @test "prepare makes the operator's account and token once, and the repository once" {
 	run_cageworks_container factory-prepare acme
 	assert_success

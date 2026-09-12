@@ -431,6 +431,13 @@ cmd_factory_prepare() {
 	cageworks_forge_ensure_token "$STATE_DIR" "$CAGEWORKS_DECIDER" read:issue ||
 		die "could not mint the decider's token"
 	cage_owns_credentials "$CAGEWORKS_DECIDER"
+
+	## The executor starts every session, and a session started before its
+	## credentials are the cage's is one that fails or is deaf, so the
+	## executor's unit waits for this mark and is started on it. Written
+	## last, and by rename, so that a mark seen is a machine prepared.
+	: >"$STATE_DIR/prepared.new" && mv "$STATE_DIR/prepared.new" "$STATE_DIR/prepared"
+	systemctl restart cageworks-executor.service
 	echo "$factory: prepared"
 }
 

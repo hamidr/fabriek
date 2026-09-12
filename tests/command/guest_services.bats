@@ -213,6 +213,11 @@ machine_text() {
 	done
 }
 
+@test "the executor does not start until the machine has been prepared, and is restarted when it is" {
+	run machine_eval 'c.systemd.services.cageworks-executor.unitConfig.ConditionPathExists'
+	assert_output '"/var/lib/nixcage/prepared"'
+}
+
 @test "the declaration is on the machine as a file, and the machine's options carry it" {
 	run machine_eval 'builtins.attrNames c.cageworks.machine.declaration.roles'
 	assert_output '["builder","reviewer"]'
