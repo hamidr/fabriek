@@ -87,7 +87,7 @@ EOF
 	# them to it, which the suite cannot do for real.
 	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
-case "\$2" in builder) echo 60000 ;; reviewer) echo 60064 ;; tester) echo 60128 ;; *) exit 1 ;; esac
+case "\$2" in builder) echo 60000 ;; reviewer) echo 60064 ;; tester) echo 60128 ;; decider) echo 60192 ;; *) exit 1 ;; esac
 EOF
 	cat >"$STUB_DIR/chown" <<EOF
 #!/usr/bin/env bash
@@ -160,6 +160,15 @@ teardown() {
 	run grep -c "generate-access-token --username decider .*--scopes read:issue" "$FORGE/cli-calls"
 	assert_output 1
 	[ "$(cat "$STATE/forge/decider-token")" = "token-for-decider" ]
+}
+
+# The decider is a cage like a role's, and its files are bound the same way;
+# found on a machine whose decider logged EACCES on its token every turn.
+@test "the decider's bus password and forge token belong to the decider's uid" {
+	run_cageworks_container factory-prepare acme
+	assert_success
+	run cat "$FORGE/chown-calls"
+	assert_output --partial "60192 $STATE/bus/decider $STATE/forge/decider-token"
 }
 
 @test "a label exists for every stage's capability, plus blocked and memory" {
