@@ -261,6 +261,23 @@ JSON
 	refute_output --partial "CAGEWORKS_POLICY"
 }
 
+# ADR-040: the executor starts every session and names no origin; the one
+# cageworks up filed is used until the clone exists and records its own.
+@test "a session started without an origin takes the one up filed on the machine" {
+	echo "file://$REPO" >"$STATE/origin"
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_cageworks_container role-enter --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
+	assert_success
+	run recorded
+	assert_output --partial " builder $STATE/worktrees/acme/builder agent --print"
+}
+
+@test "a session with no origin anywhere is refused and told to run up" {
+	run_cageworks_container role-enter --signing-key builder acme builder
+	assert_failure
+	assert_output --partial "cageworks up"
+}
+
 @test "a role whose build realised no profile enters with the floor alone" {
 	rm "$CAGEWORKS_ETC/roles/builder/profile"
 	run_cageworks_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder

@@ -145,6 +145,15 @@ teardown() {
 	[ "$(stat -c %a "$STATE/forge/builder-token")" = 400 ]
 }
 
+@test "given the repository's origin, prepare files it on the machine for every session the executor starts" {
+	run_cageworks_container factory-prepare acme https://forge.example/acme.git
+	assert_success
+	[ "$(cat "$STATE/origin")" = "https://forge.example/acme.git" ]
+	run_cageworks_container factory-prepare acme
+	assert_success
+	[ "$(cat "$STATE/origin")" = "https://forge.example/acme.git" ]
+}
+
 @test "the decider gets an account and a token that can only read" {
 	run_cageworks_container factory-prepare acme
 	assert_success

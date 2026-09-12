@@ -167,14 +167,10 @@ cmd_role() {
   ## The guest needs it the first time only, since after that its clone records
   ## where it was cloned from.
   local repository=()
-  local path origin
-  if path="$(cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory" 2>/dev/null)"; then
-    if origin="$(git -C "$path" remote get-url origin 2>/dev/null)" && [[ -n "$origin" ]]; then
-      repository=(--repository "$origin")
-    else
-      log_err "$factory's repository at $path has no origin, and a machine cannot clone a path on this host"
-      exit 1
-    fi
+  local origin
+  if cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory" >/dev/null 2>&1; then
+    origin="$(factory_origin "$factory")" || exit 1
+    repository=(--repository "$origin")
   fi
 
   local args
@@ -214,6 +210,22 @@ guest_system() {
 ## What one factory's machine is, as the spec modules/vm.nix takes. Built from
 ## the declaration the repository committed, clamped by this host's ceilings,
 ## plus the way in that belongs to this factory alone.
+## Where this factory's repository is, as a remote the machine can reach
+## (ADR-032). The register names a checkout on this host, which the machine
+## cannot open; the origin of that checkout is what it clones. Read here
+## rather than declared a second time, because two places naming one remote
+## are two places that can disagree.
+factory_origin() {
+  local factory="$1" path origin
+  path="$(cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory")" || return 1
+  if origin="$(git -C "$path" remote get-url origin 2>/dev/null)" && [[ -n "$origin" ]]; then
+    printf '%s\n' "$origin"
+  else
+    log_err "$factory's repository at $path has no origin, and a machine cannot clone a path on this host"
+    return 1
+  fi
+}
+
 ## The flake one factory's machine is built from (ADR-040). Written every
 ## time, because it is ours and nothing in it is the operator's to keep; the
 ## lock beside it is theirs and is only made on the first build or moved on
@@ -342,7 +354,7 @@ cmd_up() {
   ## What the machine needs to have before a factory can run on it, made
   ## once and confirmed on every up (ADR-036). On the machine, because that
   ## is where the forge and the bus are.
-  guest factory-prepare "$factory" || {
+  guest factory-prepare "$factory" "$(factory_origin "$factory")" || {
     log_err "could not prepare the factory on $factory's machine"
     exit 1
   }

@@ -81,11 +81,19 @@ factory_limit() {
 
 ## Where a factory's clone came from. Nothing declares this: a clone records
 ## where it was cloned from, which is what a clone is.
+## Where a factory's repository is. The clone records it once it exists;
+## before that, the origin cageworks up filed on the machine (ADR-032, ADR-040):
+## the executor starts every session, and a session needs no origin on argv.
 factory_repository() {
 	local factory="$1" clone
 	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || return 1
-	[ -d "$clone" ] || die "$factory has no clone yet"
-	git -C "$clone" remote get-url origin
+	if [ -d "$clone" ]; then
+		git -C "$clone" remote get-url origin
+	elif [ -s "$STATE_DIR/origin" ]; then
+		cat "$STATE_DIR/origin"
+	else
+		die "$factory has no clone yet, and no origin was filed; run cageworks up"
+	fi
 }
 
 die() {
@@ -100,7 +108,7 @@ usage: cageworks-container
              [--repository <path>] <factory> <role> [cmd...]
   role-worktree <factory> <role> <repo>
   task-file <factory> <workflow> <title> [body]
-  factory-prepare <factory>
+  factory-prepare <factory> [origin]
   role-stop <factory> <role>
   factory-mirror <factory>
   factory-watch <factory> [--from <id>]
@@ -312,7 +320,9 @@ cmd_role_enter() {
 ## and ACLs, and the operator's may not have one (ADR-011).
 cmd_role_worktree() {
 	local factory="$1" role="$2" repo="$3"
-	[ -d "$repo" ] || die "repository not found: $repo"
+	## A remote is what a machine clones (ADR-032); a path is what a proof
+	## puts on the machine itself. Only a path can be checked before git is.
+	[[ "$repo" == *://* ]] || [ -d "$repo" ] || die "repository not found: $repo"
 
 	local clone
 	clone="$(cageworks_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" ||
@@ -361,11 +371,17 @@ cmd_role_worktree() {
 ## a label per stage plus blocked and memory, and each role's memory issue.
 ## Everything reads the declaration the build put on the machine.
 cmd_factory_prepare() {
-	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-prepare <factory>"
+	local factory="${1:-}" origin="${2:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-prepare <factory> [origin]"
 	cageworks_name_ok "$factory" || die "invalid factory name: $factory"
 	local declaration="$CAGEWORKS_ETC/declaration.json"
 	[ -f "$declaration" ] || die "this machine carries no declaration at $declaration"
+
+	## The repository's origin, filed for every session the executor starts
+	## (ADR-032). Written by rename so a reader never sees half a URL.
+	if [ -n "$origin" ]; then
+		printf '%s\n' "$origin" >"$STATE_DIR/origin.new" && mv "$STATE_DIR/origin.new" "$STATE_DIR/origin"
+	fi
 
 	local user
 	while IFS= read -r user; do
