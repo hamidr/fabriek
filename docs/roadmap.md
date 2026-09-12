@@ -211,7 +211,14 @@ One package, built through the flake, tests in its own runner.
   opened, mirrored, no command typed after the goal.
 - 5.2 `factory-structure.als` and `vm-lifecycle.qnt` green or deleted with
   a reason; `task-claim.qnt`, `egress-authority.als`, `ledger-tap.qnt` and
-  `factory-lifecycle.qnt` deleted.
+  `factory-lifecycle.qnt` deleted. Done 2026-09-12: `vm-lifecycle.qnt`
+  stays and is green; the other five are deleted. `factory-structure.als`
+  modelled the shared ref spaces, the claim and the ledger, all gone, and
+  what it would have said about the new design is said by scenarios
+  instead (the Method section): the executor's on the board rows and the
+  capability checks, `seam.bats` on the ref partition and the session,
+  `guest_services.bats` on the bridge rules and the bus ACLs,
+  `prepare.bats` on the tokens and the memory issues.
 - 5.3 `docs/architecture.md` rewritten from the branch; `CLAUDE.md` follows.
 - 5.4 Branch merged to `main`. `REDESIGN-LOG.md` deleted, its content in
   `docs/`; this file stays and points at PRD-006.
