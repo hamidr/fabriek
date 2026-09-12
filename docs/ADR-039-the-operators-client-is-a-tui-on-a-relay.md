@@ -1,7 +1,7 @@
 ---
 id: ADR-039
 title: The operator's client is a TUI on a relay, and cageworks is the machine
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: a TUI on the operator host reads a JSONL relay and writes through the CLI; the host holds a launcher and no decision

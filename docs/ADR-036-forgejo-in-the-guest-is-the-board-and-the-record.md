@@ -1,7 +1,7 @@
 ---
 id: ADR-036
 title: Forgejo in the guest is the board, the record and the forge
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: issues are tasks, stages are labels, per-role accounts are the authorization matrix; the operator merges and mirrors

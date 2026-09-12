@@ -1,7 +1,7 @@
 ---
 id: PRD-006
 title: A factory that runs itself, and an operator who watches from one place
-status: proposed
+status: implementing
 date: 2026-09-12
 status_date: 2026-09-12
 summary: a filed goal is assigned, worked, tested and opened as a pull request with nothing typed after it, trusting no cage
@@ -9,7 +9,7 @@ depends_on: [PRD-004]
 supersedes: [PRD-005]
 superseded_by: []
 phases_total: 6
-phases_done: 0
+phases_done: 5
 ---
 
 ## Problem

@@ -1,7 +1,7 @@
 ---
 id: ADR-038
 title: A factory is observed from three sources, and nothing writes a ledger
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: the thread is what a role said, the proxy what it spent, the probes what it ran; events go to the bus, unpersisted

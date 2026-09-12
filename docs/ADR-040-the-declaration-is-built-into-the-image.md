@@ -1,7 +1,7 @@
 ---
 id: ADR-040
 title: The declaration is built into the machine's image
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time

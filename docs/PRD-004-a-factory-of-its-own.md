@@ -3,13 +3,13 @@ id: PRD-004
 title: A factory brings its own machine and declares itself
 status: implementing
 date: 2026-09-06
-status_date: 2026-09-10
+status_date: 2026-09-12
 summary: a factory is declared in the repository it works and runs in a VM cageworks builds for it on either platform
 depends_on: [PRD-003]
 supersedes: []
 superseded_by: []
 phases_total: 5
-phases_done: 3
+phases_done: 4
 ---
 
 ## Problem
@@ -302,6 +302,11 @@ deleted before the thing replacing it exists.
    allows, the machine is built to the result, and changing it takes effect
    without losing the disk. Sequenced after phase 3 because what to size for is
    only visible once roles are working in it.
+
+   Done, by ADR-040: the clamp runs inside the image build
+   (`modules/machine-spec.sh`), `cageworks up` prints what it changed, and
+   `tests/manual/stop-and-start.sh` ran ten rebuild-and-boot cycles on
+   2026-09-12 with the pool intact (docs/roadmap.md 2.5).
 5. **First contact.** Running cageworks without installing it, an example
    repository carrying a real declaration, and the documents rewritten to
    describe what the thing now is. The phase that makes goal 4 true for somebody

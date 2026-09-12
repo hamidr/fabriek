@@ -1,9 +1,9 @@
 ---
 id: ADR-032
 title: A factory clones the repository's origin, and the operator's checkout leaves the design
-status: proposed
+status: accepted
 date: 2026-09-10
-status_date: 2026-09-10
+status_date: 2026-09-12
 summary: two clients of one remote need nothing joining them, so the machine clones origin and the supervisor pushes there
 depends_on: [ADR-009, ADR-011, ADR-019, ADR-025]
 supersedes: []

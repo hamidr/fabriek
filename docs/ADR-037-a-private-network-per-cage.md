@@ -1,7 +1,7 @@
 ---
 id: ADR-037
 title: A private network per cage, attributed by address, with the budget at the proxy
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: each cage has one veth on a per-factory bridge; two bridge rules make attribution proof and the proxy holds the cap

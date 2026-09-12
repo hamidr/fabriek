@@ -1,7 +1,7 @@
 ---
 id: ADR-035
 title: The loop is a pi extension, and loop and agent share a uid
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: the actor loop is a pi extension shipped with the machine; it shares the agent uid so the budget stays at the proxy

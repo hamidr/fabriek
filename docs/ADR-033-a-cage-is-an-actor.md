@@ -1,7 +1,7 @@
 ---
 id: ADR-033
 title: A cage is an actor, and the executor is the one sender of work
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: actors announce ready on a bus and are sent work by one uncaged sender, so mutual exclusion is a property of the sender

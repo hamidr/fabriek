@@ -1,7 +1,7 @@
 ---
 id: ADR-034
 title: The supervisor splits into a caged decider and an uncaged executor
-status: proposed
+status: accepted
 date: 2026-09-12
 status_date: 2026-09-12
 summary: a caged model judges what happens next and asks; an uncaged executor validates each verb and acts
