@@ -1,13 +1,13 @@
 ---
 id: ADR-024
 title: A take is a claim and a revalidation, and no git-bug call is trusted bare
-status: accepted
+status: superseded
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-12
 summary: winning the claim ref is not taking a task, and git-bug's lock and search index both fail under concurrent agents
 depends_on: [ADR-021, ADR-022]
 supersedes: [ADR-023]
-superseded_by: []
+superseded_by: [ADR-033]
 ---
 
 ## Context

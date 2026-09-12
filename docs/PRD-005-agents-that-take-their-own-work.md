@@ -1,13 +1,13 @@
 ---
 id: PRD-005
 title: Agents that take their own work from the record
-status: proposed
+status: superseded
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-12
 summary: agents poll the record, take work by leased claim and run until stopped; the dispatching supervisor is not built
 depends_on: [PRD-004]
 supersedes: [PRD-002]
-superseded_by: []
+superseded_by: [PRD-006]
 phases_total: 5
 phases_done: 0
 ---

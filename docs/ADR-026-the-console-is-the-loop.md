@@ -1,13 +1,13 @@
 ---
 id: ADR-026
 title: The operator's console is the loop, not a terminal
-status: proposed
+status: superseded
 date: 2026-09-07
-status_date: 2026-09-07
+status_date: 2026-09-12
 summary: the loop owns the agent stdio and relays a role-owned socket the operator watches and steers, so nothing detaches
 depends_on: [ADR-021, ADR-024, ADR-025]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-039]
 ---
 
 ## Context

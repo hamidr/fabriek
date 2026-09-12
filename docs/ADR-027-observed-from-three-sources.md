@@ -1,13 +1,13 @@
 ---
 id: ADR-027
 title: A factory is observed from three sources, and a role owns none of them
-status: accepted
+status: superseded
 date: 2026-09-07
-status_date: 2026-09-07
+status_date: 2026-09-12
 summary: three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel
 depends_on: [ADR-018, ADR-019, ADR-025, ADR-026]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-038]
 ---
 
 ## Context

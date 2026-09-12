@@ -4,11 +4,11 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-10
+**Generated:** 2026-09-12
 
-**Next PRD number:** 006
+**Next PRD number:** 007
 
-**Next ADR number:** 033
+**Next ADR number:** 041
 
 ## PRDs
 
@@ -18,7 +18,8 @@ document, then regenerate.
 | [PRD-002](PRD-002-autonomous-workflow-supervisor.md) | A supervisor that runs declared workflows across cages | superseded | 0/5 | PRD-001 | declared workflows dispatch caged agent runs under gates and caps, so runs start without a human |  |
 | [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implemented | 8/8 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
 | [PRD-004](PRD-004-a-factory-of-its-own.md) | A factory brings its own machine and declares itself | implementing | 3/5 | PRD-003 | a factory is declared in the repository it works and runs in a VM cageworks builds for it on either platform |  |
-| [PRD-005](PRD-005-agents-that-take-their-own-work.md) | Agents that take their own work from the record | proposed | 0/5 | PRD-004 | agents poll the record, take work by leased claim and run until stopped; the dispatching supervisor is not built |  |
+| [PRD-005](PRD-005-agents-that-take-their-own-work.md) | Agents that take their own work from the record | superseded | 0/5 | PRD-004 | agents poll the record, take work by leased claim and run until stopped; the dispatching supervisor is not built |  |
+| [PRD-006](PRD-006-a-factory-that-runs-itself.md) | A factory that runs itself, and an operator who watches from one place | proposed | 0/6 | PRD-004 | a filed goal is assigned, worked, tested and opened as a pull request with nothing typed after it, trusting no cage |  |
 
 ## ADRs
 
@@ -34,7 +35,7 @@ document, then regenerate.
 | [ADR-008](ADR-008-session-git-identity-and-signing.md) | Sessions commit under a declared identity and sign through the forwarded ssh-agent | implemented | -- | ADR-007 | sessions get a declared git identity and sign through the forwarded ssh-agent, holding no key of their own |  |
 | [ADR-009](ADR-009-unattended-run-signing-key.md) | Unattended runs sign with a per-role cage key, not the forwarded agent | superseded | -- | ADR-008 | a supervisor-started run gets a per-role signing key in the cage and no forwarded agent, so it cannot reach a remote |  |
 | [ADR-010](ADR-010-role-cage-identity.md) | A factory role cage runs under its own uid, name, and signing key | implemented | -- | ADR-004, ADR-007, ADR-009 | factory role cages get an allocated uid and a named user, own their worktree, and write only their own refs |  |
-| [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | implemented | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
+| [ADR-011](ADR-011-factory-repository-placement.md) | A factory works a clone on nixcage's own storage, synced with the operator's checkout | superseded | -- | ADR-010 | a factory works a clone on nixcage storage that the supervisor syncs with the operator's checkout |  |
 | [ADR-012](ADR-012-sqlite-for-mutable-state.md) | A factory's mutable state lives in SQLite; the declaration stays files | withdrawn | -- | ADR-011 | tasks, runs and uid allocations move into SQLite, while the Nix-rendered declaration stays a directory tree |  |
 | [ADR-013](ADR-013-git-bug-as-the-factory-record.md) | The factory's shared record is git-bug, carried in the repository it works | superseded | -- | ADR-011, ADR-014 | issues and comments live in git-bug under refs/bugs, so roles collaborate through git rather than a shared database |  |
 | [ADR-014](ADR-014-one-file-per-task.md) | A task's mutable fields live in one file, written by rename | superseded | -- | ADR-011 | every mutable field of a task is written together in one file, so a change cannot half-happen without a database |  |
@@ -44,15 +45,23 @@ document, then regenerate.
 | [ADR-018](ADR-018-cageworks-depends-on-nixcage.md) | The factory becomes cageworks, a separate project that depends on nixcage | superseded | -- | ADR-002, ADR-004, ADR-010, ADR-017 | the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives |  |
 | [ADR-019](ADR-019-cageworks-owns-a-factory-vm.md) | cageworks builds and runs one NixOS VM per factory, on every platform | accepted | -- | ADR-010, ADR-011, ADR-017 | cageworks owns a per-factory microVM on Linux and macOS alike, with nixcage caging roles inside it |  |
 | [ADR-020](ADR-020-a-factory-declares-itself.md) | A factory declares itself in the repository it works | accepted | -- | ADR-015, ADR-016, ADR-019 | roles and workflows move into the worked repository's flake output; the operator keeps only caps and a register |  |
-| [ADR-021](ADR-021-the-agent-is-a-loop.md) | A role's agent is a loop that takes its own work | accepted | -- | ADR-009, ADR-010, ADR-016 | each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch |  |
-| [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | accepted | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
+| [ADR-021](ADR-021-the-agent-is-a-loop.md) | A role's agent is a loop that takes its own work | superseded | -- | ADR-009, ADR-010, ADR-016 | each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch |  |
+| [ADR-022](ADR-022-the-task-is-a-git-bug-issue.md) | The task is a git-bug issue and nothing else | superseded | -- | ADR-011, ADR-021 | tasks move into git-bug with their state as labels, every role writes the record itself, and the file store is deleted |  |
 | [ADR-023](ADR-023-a-leased-claim-takes-a-task.md) | A task is taken by a leased claim on a ref | superseded | -- | ADR-010, ADR-021, ADR-022 | capable agents race to create a claim ref, git's ref lock decides the winner, and the claim is a lease that expires |  |
-| [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and no git-bug call is trusted bare | accepted | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug's lock and search index both fail under concurrent agents |  |
-| [ADR-025](ADR-025-the-machine-holds-the-model-credential.md) | The machine holds the model credential and injects it at egress | accepted | -- | ADR-019, ADR-021 | the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else |  |
-| [ADR-026](ADR-026-the-console-is-the-loop.md) | The operator's console is the loop, not a terminal | proposed | -- | ADR-021, ADR-024, ADR-025 | the loop owns the agent stdio and relays a role-owned socket the operator watches and steers, so nothing detaches |  |
-| [ADR-027](ADR-027-observed-from-three-sources.md) | A factory is observed from three sources, and a role owns none of them | accepted | -- | ADR-018, ADR-019, ADR-025, ADR-026 | three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel |  |
-| [ADR-028](ADR-028-a-cage-holds-two-subjects.md) | A role's cage holds two subjects, and the loop is not one of them | accepted | -- | ADR-018, ADR-025, ADR-026, ADR-027 | the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite |  |
+| [ADR-024](ADR-024-a-take-is-a-claim-and-a-revalidation.md) | A take is a claim and a revalidation, and no git-bug call is trusted bare | superseded | -- | ADR-021, ADR-022 | winning the claim ref is not taking a task, and git-bug's lock and search index both fail under concurrent agents |  |
+| [ADR-025](ADR-025-the-machine-holds-the-model-credential.md) | The machine holds the model credential and injects it at egress | superseded | -- | ADR-019, ADR-021 | the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else |  |
+| [ADR-026](ADR-026-the-console-is-the-loop.md) | The operator's console is the loop, not a terminal | superseded | -- | ADR-021, ADR-024, ADR-025 | the loop owns the agent stdio and relays a role-owned socket the operator watches and steers, so nothing detaches |  |
+| [ADR-027](ADR-027-observed-from-three-sources.md) | A factory is observed from three sources, and a role owns none of them | superseded | -- | ADR-018, ADR-019, ADR-025, ADR-026 | three independent sources record what a factory does: the loop's tap, the egress proxy and the guest kernel |  |
+| [ADR-028](ADR-028-a-cage-holds-two-subjects.md) | A role's cage holds two subjects, and the loop is not one of them | superseded | -- | ADR-018, ADR-025, ADR-026, ADR-027 | the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite |  |
 | [ADR-029](ADR-029-pi-is-the-agent.md) | pi is the agent a role runs, because it is the one we can change | proposed | -- | ADR-021, ADR-024, ADR-026, ADR-027 | the choice is the licence and not the protocol, since the console and the ledger are built on records the agent defines |  |
 | [ADR-030](ADR-030-a-cage-carries-a-floor.md) | A cage carries a floor, whatever the repository it works declares | accepted | -- | ADR-016, ADR-018, ADR-020, ADR-029 | the agent and the tools it needs are the machine to guarantee, not the repository the factory happens to work |  |
 | [ADR-031](ADR-031-a-tool-is-asked-for.md) | An agent asks for a tool and does not install one | proposed | -- | ADR-013, ADR-015, ADR-016, ADR-025, ADR-030 | a tool reaches a cage through the flake a role enters, so wanting one is work for a role rather than a command |  |
 | [ADR-032](ADR-032-the-factory-clones-its-own-origin.md) | A factory clones the repository's origin, and the operator's checkout leaves the design | proposed | -- | ADR-009, ADR-011, ADR-019, ADR-025 | two clients of one remote need nothing joining them, so the machine clones origin and the supervisor pushes there |  |
+| [ADR-033](ADR-033-a-cage-is-an-actor.md) | A cage is an actor, and the executor is the one sender of work | proposed | -- | ADR-015, ADR-018, ADR-019 | actors announce ready on a bus and are sent work by one uncaged sender, so mutual exclusion is a property of the sender |  |
+| [ADR-034](ADR-034-a-caged-decider-and-an-uncaged-executor.md) | The supervisor splits into a caged decider and an uncaged executor | proposed | -- | ADR-015, ADR-030, ADR-033 | a caged model judges what happens next and asks; an uncaged executor validates each verb and acts |  |
+| [ADR-035](ADR-035-the-loop-is-a-pi-extension.md) | The loop is a pi extension, and loop and agent share a uid | proposed | -- | ADR-029, ADR-030, ADR-033 | the actor loop is a pi extension shipped with the machine; it shares the agent uid so the budget stays at the proxy |  |
+| [ADR-036](ADR-036-forgejo-in-the-guest-is-the-board-and-the-record.md) | Forgejo in the guest is the board, the record and the forge | proposed | -- | ADR-009, ADR-010, ADR-015, ADR-032, ADR-033 | issues are tasks, stages are labels, per-role accounts are the authorization matrix; the operator merges and mirrors |  |
+| [ADR-037](ADR-037-a-private-network-per-cage.md) | A private network per cage, attributed by address, with the budget at the proxy | proposed | -- | ADR-018, ADR-019, ADR-033 | each cage has one veth on a per-factory bridge; two bridge rules make attribution proof and the proxy holds the cap |  |
+| [ADR-038](ADR-038-three-sources-and-no-ledger.md) | A factory is observed from three sources, and nothing writes a ledger | proposed | -- | ADR-033, ADR-036, ADR-037 | the thread is what a role said, the proxy what it spent, the probes what it ran; events go to the bus, unpersisted |  |
+| [ADR-039](ADR-039-the-operators-client-is-a-tui-on-a-relay.md) | The operator's client is a TUI on a relay, and cageworks is the machine | proposed | -- | ADR-019, ADR-034, ADR-035, ADR-036 | a TUI on the operator host reads a JSONL relay and writes through the CLI; the host holds a launcher and no decision |  |
+| [ADR-040](ADR-040-the-declaration-is-built-into-the-image.md) | The declaration is built into the machine's image | proposed | -- | ADR-016, ADR-019, ADR-020, ADR-030 | a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time |  |

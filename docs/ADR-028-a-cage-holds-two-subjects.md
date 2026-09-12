@@ -1,13 +1,13 @@
 ---
 id: ADR-028
 title: A role's cage holds two subjects, and the loop is not one of them
-status: accepted
+status: superseded
 date: 2026-09-08
-status_date: 2026-09-08
+status_date: 2026-09-12
 summary: the loop enters as cage root and starts the agent as a subject, so what it records is not the agent's to rewrite
 depends_on: [ADR-018, ADR-025, ADR-026, ADR-027]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-035]
 ---
 
 ## Context

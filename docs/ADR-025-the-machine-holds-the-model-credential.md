@@ -1,13 +1,13 @@
 ---
 id: ADR-025
 title: The machine holds the model credential and injects it at egress
-status: accepted
+status: superseded
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-12
 summary: the model credential lives on the factory's machine and is injected at egress; a cage reaches it and nothing else
 depends_on: [ADR-019, ADR-021]
 supersedes: [ADR-009]
-superseded_by: []
+superseded_by: [ADR-037]
 ---
 
 ## Context

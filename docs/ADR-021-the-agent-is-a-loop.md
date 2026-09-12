@@ -1,13 +1,13 @@
 ---
 id: ADR-021
 title: A role's agent is a loop that takes its own work
-status: accepted
+status: superseded
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-12
 summary: each role runs a long-lived agent that polls the record and takes its own work, bounded by its queue not by dispatch
 depends_on: [ADR-009, ADR-010, ADR-016]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-035]
 ---
 
 ## Context

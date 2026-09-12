@@ -1,5 +1,11 @@
 # Redesign decision log
 
+**Superseded by `docs/` as of 2026-09-12.** ADR-033 through ADR-040 and
+PRD-006 carry every decision below, and `docs/roadmap.md` carries the
+phases. This file stays until docs/roadmap.md phase 5.4 deletes it, as the
+reasoning behind those documents; where it and an ADR disagree, the ADR is
+current.
+
 A brainstorming session on 2026-09-10 and 2026-09-11 re-derived cageworks from
 its assumptions, and a second session on 2026-09-11 closed the questions the
 first left open (decisions 39 to 50). A soundness review on 2026-09-12 amended

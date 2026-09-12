@@ -1,9 +1,9 @@
 # Roadmap
 
 The steps from the design that runs today (`docs/architecture.md`) to the one
-`REDESIGN-LOG.md` agreed. Decision numbers refer to that log until phase 0.5
-moves them into ADRs; after that the ADR is the reference and this file is
-updated to name it.
+ADR-033 through ADR-040 and PRD-006 decide. Decision numbers below refer to
+`REDESIGN-LOG.md`, which those documents supersede and which keeps the
+reasoning until phase 5.4.
 
 No docmeta frontmatter on purpose: this is a plan, not a decision, and
 `docmeta-tracker` should not index it. PRD-006 (phase 0.5) will carry these
@@ -41,12 +41,16 @@ and 38, section 4).
   (bridge rules, spend attribution), 2.3 (tokens, memory issues, labels) and
   3.3 (board rows, capability checks).
 - 0.3 `models/vm-lifecycle.qnt` amended: rebuild is the normal path, drain is
-  per task. Exit: green.
-- 0.4 Decision 48 amended to the TUI scope decision 53 implies.
+  per task. Exit: green. Done 2026-09-12: `allInvariants` ok, three
+  witnesses violate as they must.
+- 0.4 Decision 48 amended to the TUI scope decision 53 implies. Done
+  2026-09-12.
 - 0.5 ADRs and a PRD, through `adr-write` and `prd-new`: one ADR per
   reversal in section 3, amendments to the ADRs that stand, PRD-006 carrying
   this roadmap as its phases. `docmeta-tracker docs` regenerated. Exit: this
-  file is redundant and says so at its top.
+  file is redundant and says so at its top. Done 2026-09-12: ADR-033 to
+  ADR-040, PRD-006; ADR-011, 021, 022, 024, 025, 026, 027, 028 and PRD-005
+  superseded.
 - 0.6 `tests/manual/parity.sh` written as a script that fails: the journey
   of decision 38 as steps with a check each, and `tests/manual/isolation.sh`
   with the two bridge rules and spend attribution. Exit: both run and fail
