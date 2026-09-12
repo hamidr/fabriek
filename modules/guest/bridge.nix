@@ -64,6 +64,13 @@ in
         prefixLength = plan.prefix;
       }
     ];
+    ## An empty bridge has no carrier, and networkd withholds an address from
+    ## a link without one; every cage is a port that comes and goes, so the
+    ## address has to be there before the first port is. Found on a machine
+    ## whose services all failed to bind. The sysctl is the same fact from
+    ## the services' side: they may bind the address before it is up.
+    systemd.network.networks."40-${bridge}".networkConfig.ConfigureWithoutCarrier = true;
+    boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind" = 1;
 
     ## The plan, for the executor that starts sessions and the proofs that
     ## check them. One copy, and the rules below are generated from the same

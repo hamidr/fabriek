@@ -74,6 +74,10 @@ machine_text() {
 	assert_line --index 7 10.77.0.1:6379
 	run machine_eval '(builtins.head c.networking.interfaces."cageworks-acme".ipv4.addresses).address'
 	assert_output '"10.77.0.1"'
+	# An empty bridge has no carrier, and a port comes and goes with every
+	# cage, so the address must not wait for one.
+	run machine_eval 'c.systemd.network.networks."40-cageworks-acme".networkConfig.ConfigureWithoutCarrier'
+	assert_output true
 }
 
 @test "the bridge drops a packet whose source is not its port's address, and drops cage to cage" {
