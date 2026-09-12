@@ -11,11 +11,16 @@
 ## second drops cage to cage. Both are in the bridge family, because traffic
 ## between two ports of one bridge never reaches the inet hooks.
 ##
-## The veth's host end is named "ve-<cage>" by nspawn, and a cage is named
-## after its role (names.sh bounds a role to what fits). The set below is
-## keyed on that name and the address the executor hands the session, which
-## is the same plan this file writes to /etc/cageworks/bridge.json for the
-## executor to read.
+## The veth's host end is named "vb-<cage>" by nspawn when the cage is put
+## on a bridge (a veth on no bridge would be "ve-<cage>"), and a cage is
+## named after its role (names.sh bounds a role to what fits). The set below
+## is keyed on that name and the address the executor hands the session,
+## which is the same plan this file writes to /etc/cageworks/bridge.json for
+## the executor to read.
+##
+## The machine's own firewall is the third party here: it drops a new
+## connection on an interface it was not told about, so the bridge is named
+## to it with exactly the three ports a cage may reach.
 {
   config,
   lib,
@@ -39,7 +44,7 @@ let
     valkey = "${host}:${toString cfg.valkeyPort}";
   };
   members = lib.concatStringsSep ", " (
-    lib.mapAttrsToList (name: addr: ''"ve-${name}" . ${addr}'') cages
+    lib.mapAttrsToList (name: addr: ''"vb-${name}" . ${addr}'') cages
   );
 in
 {
@@ -77,6 +82,12 @@ in
     ## attributes, so the two cannot disagree.
     environment.etc."cageworks/bridge.json".text = builtins.toJSON plan;
 
+    networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
+      cfg.forgejoPort
+      cfg.valkeyPort
+      cfg.egressPort
+    ];
+
     networking.nftables.tables.cageworks-cages = {
       family = "bridge";
       content = ''
@@ -91,9 +102,9 @@ in
           ## Rule 1: a cage speaks only as itself. Anything else on a cage's
           ## port is dropped before it is seen, IPv6 and ARP included, so an
           ## address cannot be claimed by the party it would bill.
-          iifname "ve-*" ether type ip6 drop
-          iifname "ve-*" ether type arp iifname . arp saddr ip != @cages drop
-          iifname "ve-*" ether type ip iifname . ip saddr != @cages drop
+          iifname "vb-*" ether type ip6 drop
+          iifname "vb-*" ether type arp iifname . arp saddr ip != @cages drop
+          iifname "vb-*" ether type ip iifname . ip saddr != @cages drop
         }
 
         chain forward {
@@ -102,7 +113,7 @@ in
           ## Rule 2: a cage reaches the machine and never a peer. Findings go
           ## over the bus and work through the executor (ADR-033), so there
           ## is nothing for two cages to say to each other directly.
-          iifname "ve-*" oifname "ve-*" drop
+          iifname "vb-*" oifname "vb-*" drop
         }
       '';
     };

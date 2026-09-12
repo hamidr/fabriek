@@ -83,12 +83,24 @@ machine_text() {
 @test "the bridge drops a packet whose source is not its port's address, and drops cage to cage" {
 	run machine_text 'c.networking.nftables.tables.cageworks-cages.content'
 	assert_success
-	assert_output --partial '"ve-builder" . 10.77.0.10'
-	assert_output --partial '"ve-reviewer" . 10.77.0.11'
-	assert_output --partial 'iifname . ip saddr != @cages drop'
-	assert_output --partial 'iifname "ve-*" oifname "ve-*" drop'
+	# nspawn names a bridged veth's host end vb-<cage>, not ve-<cage>; a rule
+	# keyed on the wrong prefix matches nothing and drops nothing.
+	assert_output --partial '"vb-builder" . 10.77.0.10'
+	assert_output --partial '"vb-reviewer" . 10.77.0.11'
+	assert_output --partial 'iifname "vb-*" ether type ip iifname . ip saddr != @cages drop'
+	assert_output --partial 'iifname "vb-*" oifname "vb-*" drop'
+	refute_output --partial 've-'
 	run machine_eval 'c.networking.nftables.tables.cageworks-cages.family'
 	assert_output '"bridge"'
+}
+
+# The machine's own firewall drops a new connection on any interface it was
+# not told about; found on a machine where every cage's connect timed out.
+@test "the machine admits a cage to the bus, the board and the proxy on the bridge, and to nothing else" {
+	run machine_eval 'c.networking.firewall.interfaces."cageworks-acme".allowedTCPPorts'
+	assert_output '[3000,6379,8118]'
+	run machine_eval 'c.networking.firewall.interfaces."cageworks-acme".allowedUDPPorts'
+	assert_output '[]'
 }
 
 @test "the machine itself still leaves only as root or as the proxy" {
