@@ -62,6 +62,11 @@ printf '%s\n' "\$*" >>"$SSH_CALLS"
 if printf '%s' "\$*" | grep -q 'cageworks-egress-credential'; then
 	cat >>"$TEST_TEMP_DIR/ssh-stdin"
 fi
+# A guest verb arrives NUL-separated on stdin for xargs; kept as words.
+if printf '%s' "\$*" | grep -q 'xargs -0 cageworks-container'; then
+	tr '\0' ' ' >>"$TEST_TEMP_DIR/guest-verbs"
+	echo >>"$TEST_TEMP_DIR/guest-verbs"
+fi
 [ -f "$TEST_TEMP_DIR/refuse-shutdown" ] && exit 1
 # Only a shutdown stops the machine. Every other command is one run on a
 # machine that stays up.
@@ -218,6 +223,18 @@ EOF
 	assert_success
 	run grep -c "^flake update project --flake path:$CAGEWORKS_MACHINES/acme/machine$" "$NIX_CALLS"
 	assert_output 1
+}
+
+@test "once the machine answers and holds its credential, up prepares the factory on it" {
+	run_cageworks up acme
+	assert_success
+	run cat "$TEST_TEMP_DIR/guest-verbs"
+	assert_output --partial "factory-prepare acme"
+	# After the credential, because the forge and the bus are up by then and
+	# a prepare that ran first would be a prepare against nothing.
+	run bash -c "grep -n 'cageworks-egress-credential\|xargs -0 cageworks-container' '$SSH_CALLS' | head -2"
+	assert_line --index 0 --partial "egress-credential"
+	assert_line --index 1 --partial "xargs -0 cageworks-container"
 }
 
 @test "every up points the cageworks input at the cageworks that is running" {

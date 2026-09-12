@@ -109,7 +109,13 @@ Two commits in two repositories and a lock bump each (ADR-018).
   not booted with any of this: the erofs builder failure of 0.6 stands.
 - 2.3 `cageworks up` idempotent for Forgejo accounts, `read` collaborators,
   `write:issue` tokens, memory issues opened as each role, labels for every
-  stage, and ACL users. Second `up` changes nothing.
+  stage, and ACL users. Second `up` changes nothing. Done 2026-09-12 on the
+  branch: `cageworks-container factory-prepare`, run by `up` once the
+  machine holds its credential, with `modules/forge.sh` and `modules/bus.sh`
+  behind it and `tests/command/prepare.bats` driving a stubbed forge twice.
+  A stage's label is its capability's name. The record's re-import from
+  `refs/cageworks/record` is not here: it needs the export format 3.3
+  decides, and is listed there.
 - 2.4 `tests/manual/isolation.sh` passes: no route off the machine, no
   cage-to-cage, spoofed source dropped, spend on the right address.
 - 2.5 `tests/manual/stop-and-start.sh` rerun with Forgejo's data in the

@@ -457,6 +457,13 @@ cmd_up() {
   echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
   give_credentials "$factory" "$(cat "$dir/spec.json")" || exit 1
+  ## What the machine needs to have before a factory can run on it, made
+  ## once and confirmed on every up (ADR-036). On the machine, because that
+  ## is where the forge and the bus are.
+  guest factory-prepare "$factory" || {
+    log_err "could not prepare the factory on $factory's machine"
+    exit 1
+  }
   log_ok "$factory is running"
 }
 

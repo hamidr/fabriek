@@ -48,6 +48,10 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/role-guidance.sh"
 # shellcheck source=modules/machine-plan.sh
 . "$CAGEWORKS_LIB/machine-plan.sh"
+# shellcheck source=modules/forge.sh
+. "$CAGEWORKS_LIB/forge.sh"
+# shellcheck source=modules/bus.sh
+. "$CAGEWORKS_LIB/bus.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
@@ -767,6 +771,65 @@ cmd_task_run() {
 	fi
 }
 
+## What a machine needs to have before a factory can run on it, made once
+## and confirmed on every up (ADR-036, roadmap 2.3): bus passwords and the
+## ACL, the operator's account and token, the repository, an account and a
+## read-only-repository token per role, a read-only token for the decider,
+## a label per stage plus blocked and memory, and each role's memory issue.
+## Everything reads the declaration the build put on the machine.
+cmd_factory_prepare() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-prepare <factory>"
+	cageworks_name_ok "$factory" || die "invalid factory name: $factory"
+	local declaration="$CAGEWORKS_ETC/declaration.json"
+	[ -f "$declaration" ] || die "this machine carries no declaration at $declaration"
+
+	local user
+	while IFS= read -r user; do
+		cageworks_bus_ensure_password "$STATE_DIR" "$user" ||
+			die "could not make a bus password for $user"
+	done < <(cageworks_bus_users "$declaration")
+	systemctl restart cageworks-bus-acl.service
+
+	local base owner="operator"
+	base="http://$(jq -r .forgejo "$CAGEWORKS_ETC/bridge.json")/api/v1"
+	cageworks_forge_ensure_user operator "operator@$factory.invalid" --admin ||
+		die "could not make the operator's account"
+	cageworks_forge_ensure_token "$STATE_DIR" operator all ||
+		die "could not mint the operator's token"
+	local operator
+	operator="$(cageworks_forge_token_path "$STATE_DIR" operator)"
+	cageworks_forge_ensure_repository "$base" "$operator" "$owner" "$factory" ||
+		die "could not make the repository $owner/$factory"
+
+	local label
+	while IFS= read -r label; do
+		[ -n "$label" ] || continue
+		cageworks_forge_ensure_label "$base" "$operator" "$owner" "$factory" "$label" ||
+			die "could not make the label $label"
+	done < <(jq -r '[.workflows[].stages[].needs] + ["blocked", "memory"] | unique | .[]' "$declaration")
+
+	local role
+	while IFS= read -r role; do
+		cageworks_forge_ensure_user "$role" "$role@$factory.invalid" ||
+			die "could not make an account for role $role"
+		cageworks_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$role" ||
+			die "could not give role $role read on the repository"
+		cageworks_forge_ensure_token "$STATE_DIR" "$role" write:issue ||
+			die "could not mint a token for role $role"
+		cageworks_forge_ensure_memory "$base" "$operator" 			"$(cageworks_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
+			die "could not open the memory issue for role $role"
+	done < <(jq -r '.roles | keys[]' "$declaration")
+
+	cageworks_forge_ensure_user decider "decider@$factory.invalid" ||
+		die "could not make the decider's account"
+	cageworks_forge_ensure_reader "$base" "$operator" "$owner" "$factory" decider ||
+		die "could not give the decider read on the repository"
+	cageworks_forge_ensure_token "$STATE_DIR" decider read:issue ||
+		die "could not mint the decider's token"
+	echo "$factory: prepared"
+}
+
 main() {
 	local cmd="${1:-}"
 	shift || true
@@ -784,6 +847,7 @@ main() {
 	factory-resume) cmd_factory_resume "$@" ;;
 	factory-status) cmd_factory_status "$@" ;;
 	factory-reports) cmd_factory_reports "$@" ;;
+	factory-prepare) cmd_factory_prepare "$@" ;;
 	*)
 		usage >&2
 		exit 1

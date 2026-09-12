@@ -14,9 +14,9 @@
 ##   tests/manual/parity.sh
 ##
 ## What the machine must offer for these to pass, and where each is decided:
-## Forgejo on the machine with an operator token at /etc/cageworks/operator-
-## token (2.2, 2.3); a repository named after the factory whose labels are
-## the workflow's stages (2.3); the executor and decider as units (3.3, 3.4);
+## Forgejo on the machine with an operator token under the state directory
+## (2.3); a repository operator/<factory> whose labels are the workflow's
+## stages (2.3); the executor and decider as units (3.3, 3.4);
 ## cageworks task file printing the issue number it opened (4.1);
 ## cageworks factory mirror pushing main and refs/cageworks/record (3.3).
 set -uo pipefail
@@ -35,10 +35,10 @@ forge="http://localhost:3000/api/v1"
 # shellcheck disable=SC2016  # the token expands on the machine, not here
 api() {
 	local method="$1" path="$2" body="${3:-}"
-	sshm "curl -s -X '$method' -H 'Authorization: token \$(cat /etc/cageworks/operator-token)' \
+	sshm "curl -s -X '$method' -H 'Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)' \
 		-H 'Content-Type: application/json' ${body:+-d '$body'} '$forge$path'"
 }
-repo="/repos/$F/$F"
+repo="/repos/operator/$F"
 # shellcheck disable=SC2329  # invoked through eventually
 labels_of() { api GET "$repo/issues/$1" | jq -r '[.labels[].name] | sort | join(",")'; }
 # shellcheck disable=SC2329  # invoked through eventually
@@ -50,8 +50,8 @@ scenario "The board is on the machine"
 given "a factory whose machine is up"
 when "the operator asks Forgejo for the factory's repository"
 check "Forgejo answers" 200 "$(sshm "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
-check "the repository $F/$F exists" 200 \
-	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: token \$(cat /etc/cageworks/operator-token)' $forge$repo" 2>/dev/null)"
+check "the repository operator/$F exists" 200 \
+	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)' $forge$repo" 2>/dev/null)"
 stages="$(jq -r '.workflows.ship.stages[].needs' "$D/spec.json" 2>/dev/null | paste -sd, -)"
 check "the workflow ship declares design,build,test" "design,build,test" "$stages"
 check "every stage is a label" "build,design,test" \
@@ -95,7 +95,7 @@ scenario "The operator merges and mirrors, and the record travels"
 given "the pull request $pr"
 when "the operator merges it in Forgejo"
 check "the merge is accepted" 200 \
-	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: token \$(cat /etc/cageworks/operator-token)' -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
+	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)' -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
 when "the operator runs cageworks factory mirror"
 bash cageworks factory mirror "$F" >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"

@@ -33,6 +33,19 @@ in
   };
 
   config = {
+    ## The forge's CLI, as the guest program runs it: as the forge's own user
+    ## and against its configuration, which is how an account is made when
+    ## registration is off and how a token is minted without a login.
+    environment.systemPackages = [
+      (pkgs.writeShellScriptBin "forgejo" ''
+        exec ${pkgs.util-linux}/bin/runuser -u forgejo -- \
+          env FORGEJO_WORK_DIR=${stateDir}/forgejo GITEA_WORK_DIR=${stateDir}/forgejo \
+          ${lib.getExe config.services.forgejo.package} \
+          --config ${config.services.forgejo.customDir}/conf/app.ini "$@"
+      '')
+      pkgs.curl
+    ];
+
     services.forgejo = {
       enable = true;
       stateDir = "${stateDir}/forgejo";
