@@ -541,11 +541,17 @@ supersessions are noted.
     lives on. Forgejo's memory comes out of `memory` and gets no line of its
     own. Decision 36's deletion of `journalQuota` becomes a rename.
 
-48. **The operator's client is a TUI of ours.** This reverses ADR-026 pt7. One
-    view: roles and their state, board columns, the live event stream, a
-    steer box. Roles, columns and memories are already Forgejo's UI, so the
-    TUI owes only what Forgejo cannot show: what is happening right now, and
-    a way to speak into it.
+48. **The operator's client is a TUI of ours.** This reverses ADR-026 pt7.
+    *Amended 2026-09-12 for decision 53:* as first decided the TUI owed only
+    what Forgejo's UI could not show, the live stream and a steer box, and
+    the web UI carried the rest. Decision 53 makes the TUI the one face, so
+    it owes every operation the factory offers: roles and their state, the
+    board by stage label, the live event stream per role, steer and abort,
+    file, block, retry, stop, mirror, each role's memory issue, the open
+    pull requests, and spend per role and for the decider against the
+    ceiling. Forgejo's web UI stays reachable and is required for the merge
+    click alone (decision 45). Every write goes through the executor, so
+    nothing the TUI does is unrecorded.
 
 49. **The TUI runs on the operator's host.** It reads a JSONL relay of the bus
     over the machine's ssh port and writes through the `cageworks` CLI, so
