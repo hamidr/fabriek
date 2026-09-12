@@ -29,7 +29,10 @@ let
     cp ${../modules/signing.sh} $out/signing.sh
     cp ${../modules/integrate.sh} $out/integrate.sh
     cp ${../modules/role-guidance.sh} $out/role-guidance.sh
-    cp ${../modules/journal.sh} $out/journal.sh
+    cp ${../modules/machine-spec.sh} $out/machine-spec.sh
+    cp ${../modules/machine-plan.sh} $out/machine-plan.sh
+    cp ${../modules/forge.sh} $out/forge.sh
+    cp ${../modules/bus.sh} $out/bus.sh
     cp ${../modules/role-guidance.md} $out/role-guidance.md
   '';
 
@@ -67,6 +70,10 @@ let
               ## the JSON it comes back as (ADR-020).
               nix
               jq
+              ## Preparing the forge: its API, and its own CLI on the
+              ## machine's path (guest/board.nix wraps it).
+              curl
+              "/run/current-system/sw"
             ]
           )
         }
