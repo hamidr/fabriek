@@ -54,6 +54,22 @@ test("given a streamed response, when it ends, then output is the last cumulativ
   assert.equal(ngx.shared.spend.get("10.77.0.10"), 45);
 });
 
+test("given a stream whose chunk boundary falls inside the output figure, when it ends, then the whole figure is counted", () => {
+  globalThis.ngx.shared.spend = dict();
+  const whole = streamed.join("");
+  const cut = whole.indexOf('"output_tokens":15}') + '"output_tokens":1'.length;
+  respond("10.77.0.10", "c", [whole.slice(0, cut), whole.slice(cut)]);
+  assert.equal(ngx.shared.spend.get("10.77.0.10"), 45);
+});
+
+test("given a stream whose chunk boundary falls inside the key, when it ends, then the figure after it is still counted", () => {
+  globalThis.ngx.shared.spend = dict();
+  const whole = streamed.join("");
+  const cut = whole.lastIndexOf('"output_tokens"') + 5;
+  respond("10.77.0.10", "d", [whole.slice(0, cut), whole.slice(cut)]);
+  assert.equal(ngx.shared.spend.get("10.77.0.10"), 45);
+});
+
 test("given text the model wrote that mentions output_tokens, when the stream ends, then only the usage figure is counted", () => {
   globalThis.ngx.shared.spend = dict();
   const chatty = streamed.slice();
