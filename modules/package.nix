@@ -29,6 +29,7 @@ let
     cp ${../modules/forge.sh} $out/forge.sh
     cp ${../modules/bus.sh} $out/bus.sh
     cp ${../modules/operator.sh} $out/operator.sh
+    cp ${../modules/probes.sh} $out/probes.sh
     cp ${../modules/role-guidance.md} $out/role-guidance.md
   '';
 

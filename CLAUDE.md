@@ -76,7 +76,8 @@ A change to what a role session is shows up there as a diff.
   `machine-plan.sh` reads the plan and the profiles the build put on the
   machine and composes the actor's part of a session; `forge.sh` and
   `bus.sh` prepare the forge and the bus once and confirm them after;
-  `operator.sh` writes the operator stream; `role-worktree.sh`, `signing.sh`,
+  `operator.sh` writes the operator stream; `probes.sh` writes the kernel's
+  lines to the bus with the role each uid belongs to; `role-worktree.sh`, `signing.sh`,
   `factory-clone.sh`, `factory-config.sh` are a role's worktree, key, clone
   and command; `repo-declaration.sh`, `schema.sh`, `resources.sh`, `sizes.sh`,
   `operator-config.sh` are the declaration's and the operator's schemas and

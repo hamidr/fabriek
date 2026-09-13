@@ -97,7 +97,9 @@ The guest (`modules/vm-guest.nix` and `modules/guest/`):
 - `proxy.nix`: nginx with njs on the bridge, injecting the credential per
   allowed host, counting tokens per source address in memory, answering
   `/status`, refusing with 429 at `tokenCeiling` (ADR-037).
-- `probes.nix`: bpftrace exec, exit and connect events to a capped `probes`
+- `probes.nix`: bpftrace exec, exit and connect events, through
+  `cageworks-container probes-publish` (`modules/probes.sh`), which names
+  the role each uid belongs to by the uid primitive, to a capped `probes`
   stream, written as a user that can write nothing else (ADR-038).
 - `floor.nix`: pi on every cage, the extension and the decider's loop under
   `/etc/cageworks/pi` and `/etc/cageworks/pi-decider` with a `models.json`

@@ -44,6 +44,8 @@ CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
 . "$CAGEWORKS_LIB/bus.sh"
 # shellcheck source=modules/operator.sh
 . "$CAGEWORKS_LIB/operator.sh"
+# shellcheck source=modules/probes.sh
+. "$CAGEWORKS_LIB/probes.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
@@ -115,6 +117,7 @@ usage: cageworks-container
   role-steer <factory> <role> <text>
   factory-send <factory> <json>
   factory-roles <factory>
+  probes-publish <factory>
 USAGE
 }
 
@@ -552,6 +555,14 @@ cmd_factory_roles() {
 	jq -r '.roles | keys[]' "$(factory_declaration "$factory")" | paste -sd' ' -
 }
 
+## The kernel's lines, from bpftrace on stdin, onto the bus with the role
+## each uid belongs to (ADR-038 point 3).
+cmd_probes_publish() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container probes-publish <factory>"
+	cageworks_probes_publish "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(factory_declaration "$factory")"
+}
+
 cmd_factory_mirror() {
 	local factory="${1:-}"
 	[ -n "$factory" ] || die "usage: cageworks-container factory-mirror <factory>"
@@ -570,6 +581,7 @@ main() {
 	role-stop) cmd_role_stop "$@" ;;
 	factory-mirror) cmd_factory_mirror "$@" ;;
 	factory-watch) cmd_factory_watch "$@" ;;
+	probes-publish) cmd_probes_publish "$@" ;;
 	role-steer) cmd_role_steer "$@" ;;
 	factory-send) cmd_factory_send "$@" ;;
 	factory-roles) cmd_factory_roles "$@" ;;

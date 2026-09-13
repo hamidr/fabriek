@@ -178,12 +178,11 @@ machine_text() {
 	assert_output --partial 'remote_addr'
 }
 
-@test "the probes publish to a capped stream on the bus, as the machine and as no role" {
+@test "the probes go through the guest program, which names the role each uid belongs to" {
 	run machine_text 'c.systemd.services.cageworks-probes.script'
 	assert_success
 	assert_output --partial 'bpftrace'
-	assert_output --partial 'XADD probes MAXLEN'
-	assert_output --partial '--user probes'
+	assert_output --partial '| cageworks-container probes-publish acme'
 	refute_output --partial 'LogNamespace'
 }
 

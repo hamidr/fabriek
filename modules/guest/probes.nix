@@ -7,8 +7,10 @@
 ##
 ## Each line goes to the bus as one entry on a capped stream, written by a
 ## user that can write that stream and nothing else, so the third source stays
-## independent of every role. Nothing persists it: the operator watches it
-## live, and a machine with no bus password yet logs to its own journal.
+## independent of every role; the guest program does the writing, naming the
+## role each uid belongs to (modules/probes.sh). Nothing persists it: the
+## operator watches it live, and a machine with no bus password yet logs to
+## its own journal.
 {
   config,
   pkgs,
@@ -16,9 +18,6 @@
 }:
 let
   cfg = config.cageworks.machine;
-  stateDir = "/var/lib/nixcage";
-  plan = builtins.fromJSON config.environment.etc."cageworks/bridge.json".text;
-  cap = 10000;
 in
 {
   config = {
@@ -55,21 +54,12 @@ in
         pkgs.coreutils
         pkgs.bpftrace
         pkgs.valkey
+        pkgs.cageworks-container
+        "/run/current-system/sw"
       ];
       script = ''
         set -u
-        pass=${stateDir}/bus/probes
-        bpftrace -q -f text /etc/cageworks/probes.bt | while IFS= read -r line; do
-          uid="''${line#* uid=}"
-          uid="''${uid%% *}"
-          if [ -s "$pass" ]; then
-            valkey-cli -h ${plan.host} -p ${toString cfg.valkeyPort} \
-              --user probes --pass "$(cat "$pass")" --no-auth-warning \
-              XADD probes MAXLEN '~' ${toString cap} '*' uid "$uid" event "$line" >/dev/null
-          else
-            echo "$line"
-          fi
-        done
+        bpftrace -q -f text /etc/cageworks/probes.bt | cageworks-container probes-publish ${cfg.factory}
       '';
     };
   };
