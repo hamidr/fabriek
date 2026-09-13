@@ -47,16 +47,14 @@
           ## would resolve package names against a nixpkgs this flake does not
           ## pin.
           ##
-          ## The agent is here until it is not. ADR-030 makes a cage carry it
-          ## whatever this file says, so that a repository forgetting it cannot
-          ## produce a role that fails to start -- but that is a decision and
-          ## not yet a behaviour, so until the machine carries one this is
-          ## where pi comes from. Naming a build of it here stays allowed
-          ## afterwards, and shadows the machine's.
+          ## The agent is not here. Every cage carries pi as its floor whatever
+          ## this file says (ADR-030), so a repository cannot produce a role
+          ## that fails to start by forgetting it. Naming a build of pi here
+          ## stays allowed: a role's profile sits on the front of PATH, so it
+          ## shadows the machine's.
           common = with pkgs; [
             jq
             ripgrep
-            pi-coding-agent
           ];
 
           ## A role's own tools, on top of what every role gets.
