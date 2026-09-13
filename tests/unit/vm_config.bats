@@ -20,12 +20,12 @@ machine_facts() {
 	local factory="${1:-acme}"
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "'"$factory"'";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-'"$factory"'";
       };
       c = m.config;
       pool = builtins.elemAt (builtins.filter (v: v.mountPoint == null) c.microvm.volumes) 0;
@@ -53,30 +53,30 @@ field() {
 	[ -n "$facts" ]
 
 	# Named after the factory, so two machines are never confused for one.
-	[ "$(field "$facts" 1)" = "cageworks-acme" ]
+	[ "$(field "$facts" 1)" = "fabriek-acme" ]
 	# The pool carries the factory's name too, so a disk attached to the wrong
 	# machine refuses to import rather than being adopted.
-	[ "$(field "$facts" 3)" = "cageworks-acme/state" ]
+	[ "$(field "$facts" 3)" = "fabriek-acme/state" ]
 	# Found by serial, because a drive letter moves when the volume list does
 	# and the pool would then be created on top of the store.
-	[ "$(field "$facts" 4)" = "cageworks-pool" ]
+	[ "$(field "$facts" 4)" = "fabriek-pool" ]
 	# The store and the pool, and nothing of the host's shared in.
 	[ "$(field "$facts" 5)" = "2" ]
-	# The port cageworks was told to reach it on.
+	# The port fabriek was told to reach it on.
 	[ "$(field "$facts" 6)" = "22100" ]
 }
 
-# ADR-019 point 4: cageworks owns the way in because it owns the VM, and it is
+# ADR-019 point 4: fabriek owns the way in because it owns the VM, and it is
 # one key per factory with nothing else accepted.
 @test "one key reaches a machine, and a password reaches none" {
 	local facts
 	facts="$(machine_facts acme)"
-	[ "$(field "$facts" 7)" = "ssh-ed25519 AAAAtest cageworks-acme" ]
+	[ "$(field "$facts" 7)" = "ssh-ed25519 AAAAtest fabriek-acme" ]
 	[ "$(field "$facts" 9)" = "keys-only" ]
 }
 
 # A machine that generates host keys every boot is a different machine every
-# boot, and cageworks pins what it connected to. Found by stopping and starting
+# boot, and fabriek pins what it connected to. Found by stopping and starting
 # one ten times, which failed on the second.
 @test "a machine keeps its identity across a stop, because its keys persist" {
 	local facts
@@ -120,15 +120,15 @@ field() {
 egress_ruleset() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" ];
       };
-    in m.config.networking.nftables.tables.cageworks-egress.content'
+    in m.config.networking.nftables.tables.fabriek-egress.content'
 }
 
 @test "a machine drops egress by default, so a uid nobody allowed reaches nothing" {
@@ -145,7 +145,7 @@ egress_ruleset() {
 	run egress_ruleset
 	assert_success
 	assert_output --partial "meta skuid 500 accept"
-	refute_output --partial 'skuid "cageworks-egress"'
+	refute_output --partial 'skuid "fabriek-egress"'
 }
 
 @test "a role reaches the proxy, which is on the machine, so loopback stays open" {
@@ -163,32 +163,32 @@ egress_ruleset() {
 @test "the machine has a user for the proxy to be, separate from root and from every role" {
 	run nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" ];
       };
-      u = m.config.users.users.cageworks-egress;
+      u = m.config.users.users.fabriek-egress;
     in "${u.group}:${toString u.isSystemUser}"'
 	assert_success
-	assert_output "cageworks-egress:1"
+	assert_output "fabriek-egress:1"
 }
 
 @test "what a factory may reach is carried onto its machine as declared" {
 	run nix eval --json --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" "api.openai.com" ];
       };
-    in m.config.cageworks.machine.egress'
+    in m.config.fabriek.machine.egress'
 	assert_success
 	assert_output '["api.anthropic.com","api.openai.com"]'
 }
@@ -196,14 +196,14 @@ egress_ruleset() {
 @test "a factory allowed nothing gets a machine that reaches nothing, not one that reaches everything" {
 	run nix eval --json --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
-    in m.config.cageworks.machine.egress'
+    in m.config.fabriek.machine.egress'
 	assert_success
 	assert_output '[]'
 }
@@ -212,17 +212,17 @@ egress_ruleset() {
 egress_proxy_conf() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" "example.invalid" ];
         egressHeaders = { "api.anthropic.com" = "x-api-key"; };
       };
-    in m.config.services.nginx.virtualHosts."cageworks-egress".extraConfig
-      + (builtins.head m.config.services.nginx.virtualHosts."cageworks-egress".listen).addr'
+    in m.config.services.nginx.virtualHosts."fabriek-egress".extraConfig
+      + (builtins.head m.config.services.nginx.virtualHosts."fabriek-egress".listen).addr'
 }
 
 @test "each endpoint the factory may reach is a place on the proxy" {
@@ -244,34 +244,34 @@ egress_proxy_conf() {
 	run egress_proxy_conf
 	assert_success
 	assert_output --partial "include"
-	assert_output --partial "/run/cageworks-egress"
+	assert_output --partial "/run/fabriek-egress"
 }
 
 @test "the proxy is the uid the firewall lets out, and not root" {
 	run nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" ];
       };
     in m.config.services.nginx.user'
 	assert_success
-	assert_output "cageworks-egress"
+	assert_output "fabriek-egress"
 }
 
 @test "a factory allowed nothing runs no proxy, because there is nothing for it to reach" {
 	run nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
     in if m.config.services.nginx.enable then "runs" else "does not run"'
 	assert_success
@@ -283,12 +283,12 @@ machine_commands() {
 	local factory="${1:-acme}" egress="${2:-[ \"api.anthropic.com\" ]}"
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "'"$factory"'";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-'"$factory"'";
         egress = '"$egress"';
       };
     in builtins.concatStringsSep "\n"
@@ -302,13 +302,13 @@ machine_commands() {
 @test "a machine that may reach somewhere knows how to be handed the credential" {
 	run machine_commands acme
 	assert_success
-	assert_line "cageworks-egress-credential"
+	assert_line "fabriek-egress-credential"
 }
 
 @test "a machine that may reach nowhere is handed nothing to hold" {
 	run machine_commands acme '[ ]'
 	assert_success
-	refute_line "cageworks-egress-credential"
+	refute_line "fabriek-egress-credential"
 }
 
 # ADR-027 point 8. Unbounded, the ledger fills the pool and takes every
@@ -334,17 +334,17 @@ proxy_log() {
 	local factory="${1:-acme}"
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "'"$factory"'";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-'"$factory"'";
         egress = [ "api.anthropic.com" ];
       };
       c = m.config;
     in c.services.nginx.commonHttpConfig
-       + c.services.nginx.virtualHosts."cageworks-egress".extraConfig
+       + c.services.nginx.virtualHosts."fabriek-egress".extraConfig
   ' 2>/dev/null
 }
 
@@ -385,18 +385,18 @@ probe_facts() {
 	local factory="${1:-acme}"
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "'"$factory"'";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-'"$factory"'";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-'"$factory"'";
       };
       c = m.config;
-      u = c.systemd.services.cageworks-probes;
+      u = c.systemd.services.fabriek-probes;
     in builtins.concatStringsSep "\n" [
       u.script
-      (builtins.readFile c.environment.etc."cageworks/probes.bt".source)
+      (builtins.readFile c.environment.etc."fabriek/probes.bt".source)
     ]' 2>/dev/null
 }
 
@@ -444,16 +444,16 @@ probe_facts() {
 uid_range() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
       c = m.config;
       r = c.nixcage.principalUidRange;
-    in "${toString r.base} ${toString r.size} ${toString c.users.users.cageworks-egress.uid}"
+    in "${toString r.base} ${toString r.size} ${toString c.users.users.fabriek-egress.uid}"
   ' 2>/dev/null
 }
 
@@ -477,12 +477,12 @@ uid_range() {
 resolver_source() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" ];
       };
     in toString m.config.environment.etc."resolv.conf".source
@@ -509,12 +509,12 @@ resolver_source() {
 machine_ipv6() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
         egress = [ "api.anthropic.com" ];
       };
     in if m.config.networking.enableIPv6 then "enabled" else "disabled"
@@ -539,12 +539,12 @@ machine_ipv6() {
 machine_container_packages() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
     in builtins.concatStringsSep " "
       (map (p: p.name or "?") m.config.nixcage.containerPackages)
@@ -569,12 +569,12 @@ machine_container_packages() {
 	assert_success
 	run nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
     in builtins.concatStringsSep " "
       (map (p: p.pname or p.name or "?") m.config.environment.systemPackages)
@@ -586,34 +586,34 @@ machine_container_packages() {
 # PRD-004 phase 3 is called "the factory moves in", and this is what moving in
 # means: the machine program that holds every role-, task- and factory- verb has
 # to be on the machine those verbs run on. Without it the CLI reaches a machine
-# that answers "cageworks-container: command not found" to everything.
+# that answers "fabriek-container: command not found" to everything.
 @test "the machine carries the machine program the CLI talks to" {
 	run nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
     in builtins.concatStringsSep " "
       (map (p: p.pname or p.name or "?") m.config.environment.systemPackages)
   '
 	assert_success
-	assert_output --partial "cageworks-container"
+	assert_output --partial "fabriek-container"
 }
 
 ## The nix settings the machine is built with.
 machine_nix_features() {
 	nix eval --raw --impure --expr '
     let
-      flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');
+      flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
       m = flake.lib.machine {
         system = "aarch64-linux";
         factory = "acme";
         sshPort = 22100;
-        authorizedKey = "ssh-ed25519 AAAAtest cageworks-acme";
+        authorizedKey = "ssh-ed25519 AAAAtest fabriek-acme";
       };
     in builtins.concatStringsSep " "
       (m.config.nix.settings.experimental-features or [ ])

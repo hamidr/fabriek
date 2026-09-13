@@ -39,7 +39,7 @@ Valkey rather than Redis for the licence reason ADR-029 already made.
 
 **3. A Valkey ACL user per role,** default-deny (`resetkeys resetchannels
 nocommands`, then the stream verbs it needs), its password made per role at
-`cageworks up` and set at boot, so rotation is a restart and no bus secret
+`fabriek up` and set at boot, so rotation is a restart and no bus secret
 exists at rest. A findings stream is writable by the role it is named for
 alone, so attribution is the ACL's rather than the message's.
 
@@ -94,7 +94,7 @@ and expects every one refused.
 Implemented 2026-09-13: the executor scenarios above are in
 `factory/src/executor/core.test.ts` (the crash between board write and
 send, the stall, the liar), and `tests/system/journey.sh` asks a real
-Valkey, with the ACL `cageworks-container bus-acl` applied, `ACL DRYRUN`
+Valkey, with the ACL `fabriek-container bus-acl` applied, `ACL DRYRUN`
 for every user against `EVAL`, `CONFIG`, `ACL` and `SCAN` and sees each
 refused, a role refused another's control stream and the decider refused
 a mailbox. The journey also found the executor reading the bus from "$"

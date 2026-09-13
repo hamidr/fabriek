@@ -1,6 +1,6 @@
 # Architecture, as built
 
-What cageworks is on the `redesign` branch as of 2026-09-12, read from the
+What fabriek is on the `redesign` branch as of 2026-09-12, read from the
 code rather than from the decisions. Where an ADR's status and the code
 disagree, this file says what the code does and names the ADR. The decisions
 are ADR-033 through ADR-040 and PRD-006; `docs/roadmap.md` says what of them
@@ -18,7 +18,7 @@ a permanent uid, a permanent home and dataset, a signing key, a forge
 account with an issue-scoped token, a bus user (ADR-010, ADR-009, ADR-036,
 ADR-033). The repository declares its own factory (ADR-020, ADR-040), the
 operator keeps one file saying what a factory may cost on this host, and
-cageworks builds one virtual machine per factory to run it in (ADR-019).
+fabriek builds one virtual machine per factory to run it in (ADR-019).
 
 Nothing a cage does is trusted. A machine-provided decider judges, an uncaged
 executor acts, the forge on the machine is the board and the record, the bus
@@ -49,13 +49,13 @@ argv NUL-framed through `xargs -0`.
 
 ## Two programs and one package
 
-**`cageworks`** (bash) is the launcher on the operator's host: `up`, `down`,
+**`fabriek`** (bash) is the launcher on the operator's host: `up`, `down`,
 `vm status`, `role <factory> <role>` to enter by hand, `role stop`, `role
 steer`, `task file`, `factory mirror`, `factory watch`, `factory send`,
 `factory console`, `factory board`. Every verb but the machine's own goes to
 the machine over ssh.
 
-**`cageworks-container`** (bash) is the machine program: `role-enter`,
+**`fabriek-container`** (bash) is the machine program: `role-enter`,
 `role-worktree`, `factory-prepare`, and the operator's interventions
 `task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
 `factory-watch`, `factory-roles`. It composes sessions and writes the
@@ -69,11 +69,11 @@ runs its 97 scenarios.
 
 ## The machine
 
-`cageworks up <factory>` writes a flake under the machine's directory whose
-inputs are this cageworks and the worked repository, pinned by rev in a lock
+`fabriek up <factory>` writes a flake under the machine's directory whose
+inputs are this fabriek and the worked repository, pinned by rev in a lock
 that `--update` moves, plus `local.json` with the port, the key, both
 systems, the operator's ceilings and which header carries which endpoint's
-credential (`machine_flake` in `cageworks`). `lib.factory`
+credential (`machine_flake` in `fabriek`). `lib.factory`
 (`modules/factory.nix`) validates and clamps the declaration inside a
 derivation by the same shell modules the CLI uses (`modules/machine-spec.sh`),
 realises each role's devShell inputs into a profile, bakes the decider's
@@ -83,33 +83,33 @@ is printed by `up`.
 
 The machine (`modules/machine/default.nix` and `modules/machine/`):
 
-- `bridge.nix`: `cageworks-<factory>` at 10.77.0.1/24, configured without
+- `bridge.nix`: `fabriek-<factory>` at 10.77.0.1/24, configured without
   carrier; the decider at .2, roles at .10 onward in declaration order;
-  `/etc/cageworks/bridge.json` is the plan. A bridge-family nftables table
+  `/etc/fabriek/bridge.json` is the plan. A bridge-family nftables table
   drops a packet whose source is not its port's address, drops IPv6 and ARP
   claims, and drops cage to cage (ADR-037).
 - `board.nix`: Forgejo on the bridge, on a dataset bounded by `recordQuota`,
   its tmpfiles rules re-run after the mount; a `forgejo` wrapper for the
   machine program (ADR-036).
-- `bus.nix`: Valkey on the bridge, no persistence; `cageworks-bus-acl`
-  runs `cageworks-container bus-acl`, whose rules (`modules/bus.sh`) make
+- `bus.nix`: Valkey on the bridge, no persistence; `fabriek-bus-acl`
+  runs `fabriek-container bus-acl`, whose rules (`modules/bus.sh`) make
   default-deny users from password files under the state directory, read
   and write patterns kept apart per role (ADR-033).
 - `proxy.nix`: nginx with njs on the bridge, injecting the credential per
   allowed host, counting tokens per source address in memory, answering
   `/status`, refusing with 429 at `tokenCeiling` (ADR-037).
 - `probes.nix`: bpftrace exec, exit and connect events, through
-  `cageworks-container probes-publish` (`modules/probes.sh`), which names
+  `fabriek-container probes-publish` (`modules/probes.sh`), which names
   the role each uid belongs to by the uid primitive, to a capped `probes`
   stream, written as a user that can write nothing else (ADR-038).
 - `floor.nix`: pi on every cage, the extension and the decider's loop under
-  `/etc/cageworks/pi` and `/etc/cageworks/pi-decider` with a `models.json`
+  `/etc/fabriek/pi` and `/etc/fabriek/pi-decider` with a `models.json`
   pointing pi at the proxy (ADR-030, ADR-035).
-- `executor.nix`: the `cageworks-executor` unit, as root, restarted always.
+- `executor.nix`: the `fabriek-executor` unit, as root, restarted always.
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
 root and the proxy may leave. The clamped declaration is at
-`/etc/cageworks/declaration.json`; the machine program reads it there and
+`/etc/fabriek/declaration.json`; the machine program reads it there and
 evaluates nothing.
 
 ## Prepare
@@ -136,7 +136,7 @@ that holds it, so a hand beside an actor takes no second veth),
 hand) or `--no-agent` (supervised), the guidance bind, the task bind if
 given, the signing binds, and for a supervised run the actor's part: pi's
 directory bound at `PI_CODING_AGENT_DIR`, the bus password and forge token
-bound read-only, and the `CAGEWORKS_*` environment naming the role, its
+bound read-only, and the `FABRIEK_*` environment naming the role, its
 capabilities, the bus, the forge, the repository and the proxy. The cage is
 named after the role, because nspawn names its veth after the cage, and a
 role name is at most twelve characters. The decider's session is the same
@@ -177,8 +177,8 @@ program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend, named by role from the
 plan, to `events:executor`.
 `mirror` fetches `main` from the forge, writes the issues as
-`refs/cageworks/record`, and pushes both to origin. `factory-prepare` reads
-it back on a machine whose board is empty (`cageworks_forge_restore_record`):
+`refs/fabriek/record`, and pushes both to origin. `factory-prepare` reads
+it back on a machine whose board is empty (`fabriek_forge_restore_record`):
 each issue opened again in number order with its labels and state, memory
 issues excepted, a label the declaration lost named and dropped. The export
 carries no comments, so neither does the restored board.
@@ -195,7 +195,7 @@ thirty seconds and whenever an actor says something.
 ## The operator
 
 The relay (`factory/src/relay/`) prints every stream as JSON lines,
-`relay/fixtures.json` being the contract; `cageworks factory watch` carries
+`relay/fixtures.json` being the contract; `fabriek factory watch` carries
 it over ssh. When the bus goes away the relay waits, connects again and
 reads on from the last id it printed (`relay/tail.ts`). The TUI
 (`factory/src/tui/`) folds those lines into one state, renders roles,
@@ -205,7 +205,7 @@ what the bus still holds is replayed and the board, which reaches the TUI
 only as the executor's periodic event, is on screen at open. A watch that
 ends is started again after a pause and the picture begins over
 (`tui/watch.ts`). Merging is a click in
-Forgejo's UI; nothing merges by verb. `cageworks factory board` tunnels a
+Forgejo's UI; nothing merges by verb. `fabriek factory board` tunnels a
 local port to that UI over the factory's own ssh and prints the URL with
 a password the machine set fresh on the operator's account
 (`factory-board`), since the account was made with one nothing kept.
@@ -221,19 +221,19 @@ a password the machine set fresh on the operator's account
 ## Tests
 
 ```
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/       # 310 scenarios, minutes
 nix build .#factory                                  # 125 scenarios
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
 nix develop --command tests/system/journey.sh        # the factory on this host
-CAGEWORKS_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine
-CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
+FABRIEK_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine
+FABRIEK_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
 ```
 
 `tests/system/journey.sh` runs the factory as a system with no cage and no
 model: Valkey and a forge on localhost, `factory-prepare` and `bus-acl` on
-them, the executor with `CAGEWORKS_SESSION_COMMAND` naming a session that
-runs `cageworks-fake-actor` or `cageworks-fake-decider` where a cage would
+them, the executor with `FABRIEK_SESSION_COMMAND` naming a session that
+runs `fabriek-fake-actor` or `fabriek-fake-decider` where a cage would
 run pi. The scripted actor is the extension's own actor, bus and board
 (`extension/bind.ts`) driven by a script; the scripted decider is the
 decider's own binding (`decider/bind.ts`) judged by `fake-decider/policy.ts`.

@@ -15,13 +15,13 @@ export interface SessionsOptions {
 
 /**
  * The program a session is started with: the machine program, unless
- * CAGEWORKS_SESSION_COMMAND names another, which is how a harness runs the
+ * FABRIEK_SESSION_COMMAND names another, which is how a harness runs the
  * factory on a host with scripted actors in place of cages. The line after
  * the program is the same either way.
  */
 export function sessionCommand(env: Record<string, string | undefined>): string[] {
-  const words = (env["CAGEWORKS_SESSION_COMMAND"] ?? "").split(/\s+/).filter(Boolean);
-  return words.length ? words : ["cageworks-container"];
+  const words = (env["FABRIEK_SESSION_COMMAND"] ?? "").split(/\s+/).filter(Boolean);
+  return words.length ? words : ["fabriek-container"];
 }
 
 export class RoleSessions implements Sessions {
@@ -37,11 +37,11 @@ export class RoleSessions implements Sessions {
 
   private spawnOnce(role: string): void {
     if (!this.wanted.has(role) || this.children.has(role)) return;
-    const [cmd, ...prefix] = this.o.command ?? ["cageworks-container"];
+    const [cmd, ...prefix] = this.o.command ?? ["fabriek-container"];
     const args = [...prefix, "role-enter", "--signing-key", role, this.o.factory, role];
     // stdin is a pipe that is never written: pi in rpc mode reads it for a
     // client and exits on its end, and the extension is the client here.
-    const child = spawn(cmd ?? "cageworks-container", args, { stdio: ["pipe", "inherit", "inherit"] });
+    const child = spawn(cmd ?? "fabriek-container", args, { stdio: ["pipe", "inherit", "inherit"] });
     this.children.set(role, child);
     child.on("exit", (code) => {
       this.children.delete(role);

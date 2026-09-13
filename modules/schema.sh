@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 ## Checking a value against a closed schema.
 ##
-## cageworks reads two declarations it did not write: the factory a repository
+## fabriek reads two declarations it did not write: the factory a repository
 ## declares about itself (ADR-020) and the ceilings an operator sets. Both are
 ## closed, meaning a key nobody recognises is refused with its own name rather
 ## than ignored, and for the first of the two that is the whole argument that a
@@ -20,7 +20,7 @@
 ##
 ## cat flattens a list of problem lists, because a check that finds nothing
 ## returns an empty list and every level is a list of levels.
-cageworks_schema_prelude() {
+fabriek_schema_prelude() {
 	cat <<'JQ'
 def unknown($obj; $allowed; $where):
   if ($obj | type) == "object"
@@ -35,21 +35,21 @@ JQ
 ## The program is expected to emit one problem per line and nothing when the
 ## value is good, so that "is this valid" and "what is wrong with it" are the
 ## same question asked once.
-cageworks_schema_check() {
+fabriek_schema_check() {
 	local program="$1" subject="${2:-input}" value problems
 	value="$(cat)"
 
 	if ! printf '%s' "$value" | jq -e . >/dev/null 2>&1; then
-		echo "cageworks: the $subject is not valid JSON" >&2
+		echo "fabriek: the $subject is not valid JSON" >&2
 		return 1
 	fi
 
-	problems="$(printf '%s' "$value" | jq -r "$(cageworks_schema_prelude)
+	problems="$(printf '%s' "$value" | jq -r "$(fabriek_schema_prelude)
 $program")" || return 1
 
 	if [ -n "$problems" ]; then
 		while IFS= read -r problem; do
-			echo "cageworks: $problem" >&2
+			echo "fabriek: $problem" >&2
 		done <<<"$problems"
 		return 1
 	fi

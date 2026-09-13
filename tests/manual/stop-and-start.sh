@@ -5,13 +5,13 @@
 ## A factory's machine is stopped and started ten times while its pool holds
 ## work, and every file is checked against a manifest each time. ADR-017 exists
 ## because a VM was ended rather than shut down and worktrees came back empty;
-## cageworks owns the stopping now, so this is the evidence rather than the
+## fabriek owns the stopping now, so this is the evidence rather than the
 ## argument.
 ##
 ## Wants a scratch directory holding an operator config and a repository that
 ## declares a factory called acme:
 ##
-##   export CAGEWORKS_PROOF_DIR=/tmp/cageworks-proof
+##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   tests/manual/stop-and-start.sh
 ##
 ## Prints down, up and boot seconds per cycle, which is also where ADR-019's
@@ -21,10 +21,10 @@
 ## data on the same pool and a board that does not come back is one nobody
 ## can rely on after the first restart.
 set -uo pipefail
-cd "${CAGEWORKS_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 1
-S="${CAGEWORKS_PROOF_DIR:?set CAGEWORKS_PROOF_DIR to a scratch directory}"
-export CAGEWORKS_MACHINES="$S/machines" CAGEWORKS_CONFIG="$S/cfg.toml" \
-       CAGEWORKS_LIB="$PWD/modules" CAGEWORKS_SELF="$PWD"
+cd "${FABRIEK_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 1
+S="${FABRIEK_PROOF_DIR:?set FABRIEK_PROOF_DIR to a scratch directory}"
+export FABRIEK_MACHINES="$S/machines" FABRIEK_CONFIG="$S/cfg.toml" \
+       FABRIEK_LIB="$PWD/modules" FABRIEK_SELF="$PWD"
 D="$S/machines/acme"
 sshm() {
   ssh -i "$D/id_ed25519" -p "$(cat "$D/port")" -o UserKnownHostsFile="$D/known_hosts" \
@@ -56,9 +56,9 @@ sshm 'set -e
 
 for cycle in $(seq 1 10); do
   t0=$(date +%s)
-  nix develop --command bash cageworks down acme >/dev/null 2>&1 || { echo "cycle $cycle: down FAILED"; exit 1; }
+  nix develop --command bash fabriek down acme >/dev/null 2>&1 || { echo "cycle $cycle: down FAILED"; exit 1; }
   t1=$(date +%s)
-  nix develop --command bash cageworks up acme >/dev/null 2>&1 || { echo "cycle $cycle: up FAILED"; exit 1; }
+  nix develop --command bash fabriek up acme >/dev/null 2>&1 || { echo "cycle $cycle: up FAILED"; exit 1; }
   t2=$(date +%s)
   boot=$(wait_ssh)
   if ! sshm 'cd /var/lib/nixcage/proof && sha256sum -c --quiet /var/lib/nixcage/manifest.sha256' 2>&1; then

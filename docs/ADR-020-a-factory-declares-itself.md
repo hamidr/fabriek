@@ -13,7 +13,7 @@ superseded_by: []
 ## Context
 
 A factory is declared today in the NixOS configuration of the machine it runs
-on, as `cageworks.factories.<name>`, rendered to `/etc/cageworks/factories` by a
+on, as `fabriek.factories.<name>`, rendered to `/etc/fabriek/factories` by a
 module. That placement was inherited rather than chosen: the factory grew inside
 nixcage, nixcage had a module, so the factory got options in it.
 
@@ -35,11 +35,11 @@ straight back, for the edits that happen most often.
 
 ## Decision
 
-**1. A factory declares itself in the repository it works,** as the `cageworks`
+**1. A factory declares itself in the repository it works,** as the `fabriek`
 output of that repository's own flake:
 
 ```nix
-cageworks = {
+fabriek = {
   name = "acme";
   roles.backend = {
     command = [ "claude" ];
@@ -71,17 +71,17 @@ commit. Only `resources` moves the VM, because only `resources` describes the
 machine.
 
 **3a. It is read from the commit, never from the working tree.** The read is
-`nix eval --json git+file://<path>?rev=<sha>#cageworks`, with the rev resolved
+`nix eval --json git+file://<path>?rev=<sha>#fabriek`, with the rev resolved
 from the repository's `HEAD`. The bare `git+file://` form was tested and does
 not do this: on a dirty tree it evaluates the working tree and prints a warning,
 which is the opposite of what is wanted here. Pinning the rev means the factory
 a repository declares is the one in its history, and it means the rev that was
-read is a fact cageworks can record beside the work, so which declaration a run
+read is a fact fabriek can record beside the work, so which declaration a run
 used is reconstructable afterwards. The cost is that an experiment needs a
 commit, which is the same cost every other fact about the repository already
 carries.
 
-**4. The operator keeps one plain file,** `~/.config/cageworks/config.toml`,
+**4. The operator keeps one plain file,** `~/.config/fabriek/config.toml`,
 identical on Linux and macOS: the ceilings this machine will allow, and the
 register of which factories live here.
 
@@ -97,18 +97,18 @@ path = "/home/me/Src/acme"
 ```
 
 There is no NixOS module for an operator to import, no flake to scaffold and no
-rebuild to run. `nix run github:hamidr/cageworks -- up` is first contact.
+rebuild to run. `nix run github:hamidr/fabriek -- up` is first contact.
 
 **5. The repository states its needs and the operator caps them.** Each field of
-`resources` is clamped to the matching cap, and cageworks says which value it
+`resources` is clamped to the matching cap, and fabriek says which value it
 clamped and to what, rather than silently sizing down. A repository decides who
 works it; the person whose hardware it is decides what that may cost.
 
-**6. The old placement is deleted, not deprecated.** `modules/cageworks.nix`,
-the `cageworks.factories.*` and `cageworks.supervisor.*` option namespace, the
-rendering of `/etc/cageworks/factories` and `examples/config/flake.nix` go in the
+**6. The old placement is deleted, not deprecated.** `modules/fabriek.nix`,
+the `fabriek.factories.*` and `fabriek.supervisor.*` option namespace, the
+rendering of `/etc/fabriek/factories` and `examples/config/flake.nix` go in the
 same change. No alias, no compatibility read of `/etc`, no fallback when the
-flake output is absent: a repository with no `cageworks` output is not a factory,
+flake output is absent: a repository with no `fabriek` output is not a factory,
 and saying so is the whole error message.
 
 ## Consequences
@@ -147,13 +147,13 @@ format, which the gate exempts.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 ```
 
-`examples/factory-project` gains the `cageworks` output it now needs, and is
+`examples/factory-project` gains the `fabriek` output it now needs, and is
 what the suite reads: `tests/unit/repo_declaration.bats` asserts that a valid
 declaration parses, that an unknown key is refused rather than ignored, that a
 `resources` field over its cap is clamped and reported, and that a repository
-with no `cageworks` output is rejected with the error of point 6.
+with no `fabriek` output is rejected with the error of point 6.

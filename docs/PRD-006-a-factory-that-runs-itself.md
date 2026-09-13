@@ -14,7 +14,7 @@ phases_done: 5
 
 ## Problem
 
-An operator with a factory today types every run. `cageworks task run` starts
+An operator with a factory today types every run. `fabriek task run` starts
 one session; when it ends, the operator reads what happened and types the
 next one. PRD-003 built a factory whose supervisor is content-blind and
 whose roles cannot start work, which is safe and is also why nothing moves
@@ -87,7 +87,7 @@ this document is the product that re-derivation describes.
    refusing at the proxy.
 3. Every verb the executor accepts is reachable from the TUI without the
    web UI, merge excepted.
-4. A second `cageworks up` on a running factory changes nothing on the
+4. A second `fabriek up` on a running factory changes nothing on the
    machine.
 5. A deliberately lying actor at reconciliation cannot cause a task to be
    assigned to two roles, shown by the executor's own scenarios.
@@ -162,11 +162,11 @@ this document is the product that re-derivation describes.
 
 - The relay's exact JSONL shape (3.5).
 - The record export format and whether it is re-imported on a fresh
-  machine (2.3, 3.3). Decided: `issues.json` on `refs/cageworks/record`,
+  machine (2.3, 3.3). Decided: `issues.json` on `refs/fabriek/record`,
   read back by prepare onto an empty board; comments are not exported.
 - The `probes` stream's cap and whether the proxy's metadata log joins the
   bus (2.2).
-- Whether a non-Forgejo origin accepts `refs/cageworks/record` (5.1).
+- Whether a non-Forgejo origin accepts `refs/fabriek/record` (5.1).
 
 ## Phases
 

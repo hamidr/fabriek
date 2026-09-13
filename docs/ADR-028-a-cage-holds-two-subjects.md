@@ -152,12 +152,12 @@ absolute path is what a session can actually run.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix develop --command bats tests/command/seam.bats
 docmeta-check docs && docmeta-tracker --check docs
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/observe.sh subjects
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/observe.sh containment
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/observe.sh subjects
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/observe.sh containment
 ```
 
 `seam.bats` is named on its own because point 3 changes the argv a role session

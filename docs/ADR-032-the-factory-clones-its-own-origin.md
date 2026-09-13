@@ -21,14 +21,14 @@ it cost nothing.
 
 ADR-019 ended that arrangement. A factory has a machine of its own, nothing of
 the operator's is mounted in it, and the only thing joining the two is an ssh
-port cageworks allocated. Under those conditions ADR-011 point 3 stops being
+port fabriek allocated. Under those conditions ADR-011 point 3 stops being
 free and becomes a mechanism to build: either the operator's checkout is shared
 into the VM, or the operator pushes into the machine, or something syncs on a
 schedule. Each is a way of making two directories on two machines agree.
 
 The reason none of them is needed: the repository already has a remote, and
 both sides can reach it. The operator's checkout and the factory's clone are
-two clients of one origin, which is a solved problem with no cageworks in it.
+two clients of one origin, which is a solved problem with no fabriek in it.
 
 Nothing had ever run in a factory's machine when this was decided. There was no
 clone, no worktree and no task on one, so the arrangement being replaced was
@@ -43,7 +43,7 @@ not through a share.
 The URL is read off the checkout the register already names, with
 `git remote get-url origin`, rather than declared a second time. Two places
 naming the same remote is two places that can disagree, and the checkout is
-open in front of `cageworks up` anyway for point 3's reason.
+open in front of `fabriek up` anyway for point 3's reason.
 
 **2. Role branches go back to origin.** The supervisor pushes them there. The
 operator sees them by fetching, the way they would see a colleague's branch,
@@ -52,8 +52,8 @@ because that is what they are.
 **3. The operator's checkout stops being the factory's source of code, and
 stays where a declaration is read.** ADR-011 points 3 and 4 are withdrawn:
 nothing fetches code from it and nothing pushes branches to it. It keeps the
-one job ADR-020 gave it, which has nothing to do with either -- `cageworks up`
-reads the committed `cageworks.nix` out of it to learn what machine to build,
+one job ADR-020 gave it, which has nothing to do with either -- `fabriek up`
+reads the committed `fabriek.nix` out of it to learn what machine to build,
 locally and before any machine exists. A first draft of this document said the
 checkout left the design entirely; that was written without looking at what
 `machine_spec` does, and it is wrong.
@@ -99,8 +99,8 @@ reaches it by being pushed, which is the same rule everybody else on the
 repository already lives under.
 
 **And a declaration can be ahead of the code the factory works.** The
-declaration is read from the checkout at `cageworks up`; the code is fetched
-from origin. Committing a change to `cageworks.nix` without pushing it builds a
+declaration is read from the checkout at `fabriek up`; the code is fetched
+from origin. Committing a change to `fabriek.nix` without pushing it builds a
 machine for a factory whose repository does not yet have that commit. The two
 were one thing while both came from the checkout, and this decision separates
 them.
@@ -124,7 +124,7 @@ asserts. That is PRD-004 phase 3's exit condition, and nothing here is done
 until it holds on a machine:
 
 ```bash
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/isolation.sh
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/isolation.sh
 # a session per role, each in its cage on the machine, in a worktree of the clone
 ```
 

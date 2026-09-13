@@ -12,17 +12,17 @@
 ## Sourced by store path, beside names.sh, sizes.sh, schema.sh, resources.sh
 ## and repo-declaration.sh, whose functions this relies on.
 
-## cageworks_machine_spec <declaration.json> <local.json>
+## fabriek_machine_spec <declaration.json> <local.json>
 ##
 ## local.json carries factory, system, hostSystem, sshPort, authorizedKey, the
 ## operator's caps, and which header carries which endpoint's credential. The
 ## credential itself is never here: a spec is built, logged and written beside
 ## the machine, and a secret in one would be a secret in all three (ADR-025).
-cageworks_machine_spec() {
+fabriek_machine_spec() {
 	local declaration_file="$1" local_file="$2"
 	local declaration caps
 
-	declaration="$(cageworks_declaration_validate <"$declaration_file")" || return 1
+	declaration="$(fabriek_declaration_validate <"$declaration_file")" || return 1
 
 	## What the clamp changed is kept in the spec rather than printed: this
 	## runs inside a build, whose log the operator never sees when it
@@ -31,7 +31,7 @@ cageworks_machine_spec() {
 	caps="$(mktemp)"
 	notes="$(mktemp)"
 	jq '.caps // {}' "$local_file" >"$caps"
-	declaration="$(printf '%s' "$declaration" | cageworks_resources_clamp "$caps" 2>"$notes")" || {
+	declaration="$(printf '%s' "$declaration" | fabriek_resources_clamp "$caps" 2>"$notes")" || {
 		cat "$notes" >&2
 		rm -f "$caps" "$notes"
 		return 1
@@ -44,9 +44,9 @@ cageworks_machine_spec() {
 	## falls back to its own bound rather than to none.
 	local mem="" record="" declared
 	declared="$(printf '%s' "$declaration" | jq -r '.resources.memory // empty')"
-	[ -z "$declared" ] || mem="$(cageworks_size_mib "$declared")" || return 1
+	[ -z "$declared" ] || mem="$(fabriek_size_mib "$declared")" || return 1
 	declared="$(printf '%s' "$declaration" | jq -r '.resources.recordQuota // empty')"
-	[ -z "$declared" ] || record="$(cageworks_size_mib "$declared")" || return 1
+	[ -z "$declared" ] || record="$(fabriek_size_mib "$declared")" || return 1
 
 	printf '%s' "$declaration" | jq -c \
 		--slurpfile local "$local_file" \

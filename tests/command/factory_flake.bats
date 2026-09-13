@@ -34,7 +34,7 @@ declare_flake() {
 	cat >"$REPO/flake.nix" <<NIX
 {
   outputs = { self }: {
-    cageworks = {
+    fabriek = {
       name = "acme";
       roles.builder = { command = [ "claude" ]; provides = [ "build" ]; shell = "backend"; };
       roles.reviewer = { command = [ "claude" ]; provides = [ "review" ]; };
@@ -55,7 +55,7 @@ NIX
 ## the scenarios read, so they are dropped.
 factory_eval() {
 	nix eval --json --impure --expr "
-	  ((builtins.getFlake \"path:$CAGEWORKS_ROOT\").lib.factory {
+	  ((builtins.getFlake \"path:$FABRIEK_ROOT\").lib.factory {
 	    project = builtins.getFlake \"git+file://$REPO\";
 	    local = $TEST_TEMP_DIR/local.json;
 	  })$1" 2> >(grep -v -e 'Nix search path entry' -e "^building '" >&2)
@@ -79,10 +79,10 @@ factory_eval() {
 @test "a role's devShell is realised into a profile, and a role naming none gets an empty one" {
 	run factory_eval '.profiles.builder.name'
 	assert_success
-	assert_output '"cageworks-role-builder"'
+	assert_output '"fabriek-role-builder"'
 	run factory_eval '.profiles.reviewer.name'
 	assert_success
-	assert_output '"cageworks-role-reviewer"'
+	assert_output '"fabriek-role-reviewer"'
 }
 
 # stdenv hands a shell its inputs as dev outputs (headers, curl-config), and
@@ -117,15 +117,15 @@ factory_eval() {
 	assert_output --partial "declares no factory"
 }
 
-@test "when the declaration carries a key cageworks does not know, the build fails by that key's name" {
-	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; cageworks.roles.builder.colour = \"blue\";"
+@test "when the declaration carries a key fabriek does not know, the build fails by that key's name" {
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.colour = \"blue\";"
 	run factory_eval '.spec.factory'
 	assert_failure
 	assert_output --partial "colour"
 }
 
 @test "the machine carries the clamped declaration as a file the machine reads instead of evaluating" {
-	run factory_eval '.config.environment.etc."cageworks/declaration.json".text'
+	run factory_eval '.config.environment.etc."fabriek/declaration.json".text'
 	assert_success
 	run jq -r '.resources.cores, (.resources.egress | length)' <<<"$(printf '%s' "$output" | jq -r .)"
 	assert_line --index 0 2

@@ -17,11 +17,11 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
+  cfg = config.fabriek.machine;
 in
 {
   config = {
-    environment.etc."cageworks/probes.bt".text = ''
+    environment.etc."fabriek/probes.bt".text = ''
       /* Filtered here rather than downstream: a predicate compiles into the
        * program, so an event the machine does not want never leaves the
        * kernel. uid 0 is the machine itself; no role is ever root. */
@@ -41,11 +41,11 @@ in
       }
     '';
 
-    systemd.services.cageworks-probes = {
+    systemd.services.fabriek-probes = {
       description = "What the kernel says this factory ran, onto the bus";
       wantedBy = [ "multi-user.target" ];
-      after = [ "cageworks-bus-acl.service" ];
-      wants = [ "cageworks-bus-acl.service" ];
+      after = [ "fabriek-bus-acl.service" ];
+      wants = [ "fabriek-bus-acl.service" ];
       serviceConfig = {
         Restart = "on-failure";
         RestartSec = 5;
@@ -54,12 +54,12 @@ in
         pkgs.coreutils
         pkgs.bpftrace
         pkgs.valkey
-        pkgs.cageworks-container
+        pkgs.fabriek-container
         "/run/current-system/sw"
       ];
       script = ''
         set -u
-        bpftrace -q -f text /etc/cageworks/probes.bt | cageworks-container probes-publish ${cfg.factory}
+        bpftrace -q -f text /etc/fabriek/probes.bt | fabriek-container probes-publish ${cfg.factory}
       '';
     };
   };

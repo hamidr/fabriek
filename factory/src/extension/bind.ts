@@ -6,14 +6,14 @@
 // socket; the environment reader at the bottom is what both callers share.
 //
 // Environment, set by the executor when it starts the session:
-//   CAGEWORKS_ROLE          the role this cage is
-//   CAGEWORKS_CAPABILITIES  what it provides, comma separated
-//   CAGEWORKS_BUS           host:port of the bus on the bridge
-//   CAGEWORKS_FORGE         the forge's API base, http://host:port/api/v1
-//   CAGEWORKS_REPOSITORY    owner/name on the forge
-//   CAGEWORKS_BUS_PASSWORD  file holding this role's bus password
-//   CAGEWORKS_FORGE_TOKEN   file holding this role's issue token
-//   CAGEWORKS_BASE_BRANCH   the branch a task's commits are counted against
+//   FABRIEK_ROLE          the role this cage is
+//   FABRIEK_CAPABILITIES  what it provides, comma separated
+//   FABRIEK_BUS           host:port of the bus on the bridge
+//   FABRIEK_FORGE         the forge's API base, http://host:port/api/v1
+//   FABRIEK_REPOSITORY    owner/name on the forge
+//   FABRIEK_BUS_PASSWORD  file holding this role's bus password
+//   FABRIEK_FORGE_TOKEN   file holding this role's issue token
+//   FABRIEK_BASE_BRANCH   the branch a task's commits are counted against
 import { readFileSync } from "node:fs";
 import { BusClient, type Entry } from "../bus/client.js";
 import { ForgeClient } from "../forge/client.js";
@@ -132,26 +132,26 @@ export function bindActor(o: BindOptions): Bound {
 
 function env(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`cageworks: ${name} is not set; the executor starts a role session with it`);
+  if (!v) throw new Error(`fabriek: ${name} is not set; the executor starts a role session with it`);
   return v;
 }
 
 /** The binding's inputs as the executor hands them to a session, read once. */
 export function fromEnvironment(): Pick<BindOptions, "role" | "capabilities" | "connect" | "forge"> & { baseBranch: string } {
-  const role = env("CAGEWORKS_ROLE");
-  const [busHost, busPort] = env("CAGEWORKS_BUS").split(":");
-  const [owner, repo] = env("CAGEWORKS_REPOSITORY").split("/");
+  const role = env("FABRIEK_ROLE");
+  const [busHost, busPort] = env("FABRIEK_BUS").split(":");
+  const [owner, repo] = env("FABRIEK_REPOSITORY").split("/");
   return {
     role,
-    capabilities: env("CAGEWORKS_CAPABILITIES").split(",").filter(Boolean),
+    capabilities: env("FABRIEK_CAPABILITIES").split(",").filter(Boolean),
     connect: () =>
       BusClient.connect({
         host: busHost ?? "127.0.0.1",
         port: Number(busPort ?? "6379"),
         user: role,
-        password: readFileSync(env("CAGEWORKS_BUS_PASSWORD"), "utf8").trim(),
+        password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
-    forge: new ForgeClient({ base: env("CAGEWORKS_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("CAGEWORKS_FORGE_TOKEN") }),
-    baseBranch: process.env["CAGEWORKS_BASE_BRANCH"] ?? "main",
+    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
+    baseBranch: process.env["FABRIEK_BASE_BRANCH"] ?? "main",
   };
 }

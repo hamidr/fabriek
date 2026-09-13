@@ -6,18 +6,18 @@
 ## a role and the devShell it names change together instead of drifting apart.
 ##
 ## It is a separate file only so that reading it costs nothing: the flake
-## imports it as its 'cageworks' output, and anything that wants to check the
+## imports it as its 'fabriek' output, and anything that wants to check the
 ## declaration can evaluate this file on its own.
 ##
 ## Nothing here can reach the machine the factory is given. The schema is
-## closed: a key cageworks does not recognise is refused with its own name.
+## closed: a key fabriek does not recognise is refused with its own name.
 {
   name = "example";
 
   ## A command is argv, one word per element, never a shell line, so nothing
   ## in it is re-split on the way through. Which coding agent a role runs is
-  ## this repository's business and not cageworks', and nothing validates it.
-  ## pi is the one cageworks supports (ADR-029): the console and the ledger are
+  ## this repository's business and not fabriek', and nothing validates it.
+  ## pi is the one fabriek supports (ADR-029): the console and the ledger are
   ## built on records the agent defines, so the factory needs an agent whose
   ## protocol it can pin and change rather than wait on.
   ##
@@ -51,7 +51,7 @@
   workflows.ship = {
     ## A stage says what the work needs, what a task must carry before it is
     ## taken, and what finishing means there. The last is prose: the role
-    ## reads it and cageworks never checks it.
+    ## reads it and fabriek never checks it.
     stages = [
       {
         needs = "design";
@@ -79,7 +79,7 @@
   };
 
   ## What this factory asks of the machine it is given. Every one of these is
-  ## clamped to the ceiling the operator set in their own config, and cageworks
+  ## clamped to the ceiling the operator set in their own config, and fabriek
   ## says which field it clamped rather than sizing down quietly.
   resources = {
     memory = "8G";

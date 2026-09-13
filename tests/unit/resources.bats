@@ -7,9 +7,9 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/sizes.sh
-	source "$CAGEWORKS_ROOT/modules/sizes.sh"
+	source "$FABRIEK_ROOT/modules/sizes.sh"
 	# shellcheck source=../../modules/resources.sh
-	source "$CAGEWORKS_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
 	CAPS="$TEST_TEMP_DIR/caps.json"
 	cat >"$CAPS" <<'JSON'
 { "memory": "16G", "cores": 8, "roleQuota": "50G", "recordQuota": "8G", "concurrency": 4 }
@@ -28,18 +28,18 @@ asking_for() {
 
 ## What the factory ends up allowed, ignoring what was said while deciding it.
 clamped() {
-	asking_for "$1" | cageworks_resources_clamp "$CAPS" 2>/dev/null | jq -c .resources
+	asking_for "$1" | fabriek_resources_clamp "$CAPS" 2>/dev/null | jq -c .resources
 }
 
 ## What was said about the clamping, ignoring the result.
 clamp_said() {
-	asking_for "$1" | cageworks_resources_clamp "$CAPS" 2>&1 >/dev/null
+	asking_for "$1" | fabriek_resources_clamp "$CAPS" 2>&1 >/dev/null
 }
 
 ## The clamp's own verdict on what a factory asked for. run() cannot drive a
 ## pipeline through a sourced function, so the pipeline is here.
 clamp_verdict() {
-	asking_for "$1" | cageworks_resources_clamp "$CAPS" >/dev/null
+	asking_for "$1" | fabriek_resources_clamp "$CAPS" >/dev/null
 }
 
 ## A whole declaration through the clamp, to see what else it touched. The
@@ -47,14 +47,14 @@ clamp_verdict() {
 ## the test sees, and not jq's.
 clamp_whole() {
 	local out
-	out="$(printf '%s\n' "$1" | cageworks_resources_clamp "$CAPS" 2>/dev/null)" || return 1
+	out="$(printf '%s\n' "$1" | fabriek_resources_clamp "$CAPS" 2>/dev/null)" || return 1
 	printf '%s\n' "$out" | jq -c .
 }
 
 ## A declaration the clamp should refuse, and what it said about it.
 clamp_refusal() {
 	local said status
-	said="$(printf '%s\n' "$1" | cageworks_resources_clamp "$CAPS" 2>&1 >/dev/null)"
+	said="$(printf '%s\n' "$1" | fabriek_resources_clamp "$CAPS" 2>&1 >/dev/null)"
 	status=$?
 	printf '%s\n' "$said"
 	return "$status"
@@ -136,7 +136,7 @@ clamp_refusal() {
 # The declaration's schema and the operator's caps both read this, so a field
 # added in one place is a field both of them know about.
 @test "the fields a factory may ask for are one table, so both readers agree" {
-	run cageworks_resource_field_names_json
+	run fabriek_resource_field_names_json
 	assert_success
 	assert_output '["memory","cores","roleQuota","recordQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
 }

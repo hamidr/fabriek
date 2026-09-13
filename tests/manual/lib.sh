@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 ## What every manual proof needs before it can ask a machine anything: the
-## scratch directory the operator named, the environment that points cageworks
+## scratch directory the operator named, the environment that points fabriek
 ## at it, a way to reach one factory's machine, and a checker that says which
 ## step failed and what it saw.
 ##
@@ -10,10 +10,10 @@
 ## they are replaced rather than migrated, because what they prove is
 ## replaced too (docs/roadmap.md phases 2 and 5).
 
-cd "${CAGEWORKS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}" || exit 1
-S="${CAGEWORKS_PROOF_DIR:?set CAGEWORKS_PROOF_DIR to a scratch directory}"
-export CAGEWORKS_MACHINES="$S/machines" CAGEWORKS_CONFIG="$S/cfg.toml" \
-	CAGEWORKS_LIB="$PWD/modules" CAGEWORKS_SELF="$PWD"
+cd "${FABRIEK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}" || exit 1
+S="${FABRIEK_PROOF_DIR:?set FABRIEK_PROOF_DIR to a scratch directory}"
+export FABRIEK_MACHINES="$S/machines" FABRIEK_CONFIG="$S/cfg.toml" \
+	FABRIEK_LIB="$PWD/modules" FABRIEK_SELF="$PWD"
 F="${F:-acme}"
 D="$S/machines/$F"
 
@@ -39,7 +39,7 @@ wait_ssh() {
 in_cage() {
 	local role="$1"
 	shift
-	bash cageworks role "$F" "$role" -- "$@" 2>/dev/null
+	bash fabriek role "$F" "$role" -- "$@" 2>/dev/null
 }
 
 # shellcheck disable=SC2034  # read by the script that sources this

@@ -3,7 +3,7 @@
 ##
 ## What a factory may cost on this machine, and which factories live here. The
 ## same file on Linux and on macOS, with no NixOS module to import, no flake to
-## scaffold and no rebuild to run: reaching cageworks for the first time is
+## scaffold and no rebuild to run: reaching fabriek for the first time is
 ## running it, not configuring a machine.
 ##
 ## It is TOML because a person edits it, and nix parses it because nix is
@@ -16,20 +16,20 @@
 ## Closed for the same reason the repository's declaration is. A ceiling that
 ## is ignored because it was misspelled is a ceiling nobody has.
 
-## Where the operator's config lives. CAGEWORKS_CONFIG overrides it, which is
+## Where the operator's config lives. FABRIEK_CONFIG overrides it, which is
 ## what the suite uses and what an operator with more than one of them needs.
-cageworks_operator_config_path() {
-	if [ -n "${CAGEWORKS_CONFIG:-}" ]; then
-		printf '%s\n' "$CAGEWORKS_CONFIG"
+fabriek_operator_config_path() {
+	if [ -n "${FABRIEK_CONFIG:-}" ]; then
+		printf '%s\n' "$FABRIEK_CONFIG"
 		return 0
 	fi
-	printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/cageworks/config.toml"
+	printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/fabriek/config.toml"
 }
 
 ## The schema, built around the one resources table so that what an operator
 ## may cap and what a factory may ask for cannot drift apart.
-cageworks_operator_config_program() {
-	printf 'def capFields: %s;\n' "$(cageworks_resource_field_names_json)"
+fabriek_operator_config_program() {
+	printf 'def capFields: %s;\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
 def schema:
   { top: ["caps", "factories", "credentials"]
@@ -64,28 +64,28 @@ JQ
 ## The operator's config as JSON, checked. Absent is refused rather than read
 ## as empty: no ceilings would mean a repository gets whatever it asked for,
 ## and a mistyped path should not be the way that happens.
-cageworks_operator_config() {
-	local file="${1:-$(cageworks_operator_config_path)}" json failed=0
+fabriek_operator_config() {
+	local file="${1:-$(fabriek_operator_config_path)}" json failed=0
 
 	if [ ! -f "$file" ]; then
-		echo "cageworks: no operator config at $file" >&2
+		echo "fabriek: no operator config at $file" >&2
 		return 1
 	fi
 
-	if ! json="$(CAGEWORKS_CONFIG_TOML="$(cat "$file")" nix eval --impure --json \
-		--expr 'builtins.fromTOML (builtins.getEnv "CAGEWORKS_CONFIG_TOML")' 2>/dev/null)"; then
-		echo "cageworks: $file is not TOML" >&2
+	if ! json="$(FABRIEK_CONFIG_TOML="$(cat "$file")" nix eval --impure --json \
+		--expr 'builtins.fromTOML (builtins.getEnv "FABRIEK_CONFIG_TOML")' 2>/dev/null)"; then
+		echo "fabriek: $file is not TOML" >&2
 		return 1
 	fi
 
 	printf '%s' "$json" |
-		cageworks_schema_check "$(cageworks_operator_config_program)" "operator config" >/dev/null || failed=1
+		fabriek_schema_check "$(fabriek_operator_config_program)" "operator config" >/dev/null || failed=1
 
 	local factory
 	while IFS= read -r factory; do
 		[ -n "$factory" ] || continue
-		cageworks_name_ok "$factory" && continue
-		echo "cageworks: $file registers $factory, which is not a usable factory name" >&2
+		fabriek_name_ok "$factory" && continue
+		echo "fabriek: $file registers $factory, which is not a usable factory name" >&2
 		failed=1
 	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | keys[]?')
 
@@ -96,12 +96,12 @@ cageworks_operator_config() {
 	local endpoint header
 	while IFS=$'\t' read -r endpoint header; do
 		[ -n "$endpoint" ] || continue
-		if ! cageworks_host_ok "$endpoint"; then
-			echo "cageworks: $file holds a credential for $endpoint, which is not a host" >&2
+		if ! fabriek_host_ok "$endpoint"; then
+			echo "fabriek: $file holds a credential for $endpoint, which is not a host" >&2
 			failed=1
 		fi
-		if ! cageworks_header_name_ok "$header"; then
-			echo "cageworks: $file carries the credential for $endpoint in $header, which is not a header name" >&2
+		if ! fabriek_header_name_ok "$header"; then
+			echo "fabriek: $file carries the credential for $endpoint in $header, which is not a header name" >&2
 			failed=1
 		fi
 	done < <(printf '%s' "$json" |
@@ -117,32 +117,32 @@ cageworks_operator_config() {
 
 ## What a factory may cost on this machine. An operator who set no ceilings has
 ## none, which is theirs to decide; what they cannot have is one they misspelled.
-cageworks_operator_caps() {
+fabriek_operator_caps() {
 	local json
-	json="$(cageworks_operator_config "${1:-}")" || return 1
+	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq '.caps // {}'
 }
 
 ## The factories registered on this machine, one per line.
-cageworks_operator_factories() {
+fabriek_operator_factories() {
 	local json
-	json="$(cageworks_operator_config "${1:-}")" || return 1
+	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq -r '(.factories // {}) | keys[]?'
 }
 
 ## Where a registered factory's repository is. A factory nobody registered here
 ## is refused by name rather than guessed at from the working directory.
-cageworks_operator_factory_path() {
+fabriek_operator_factory_path() {
 	local file="$1" factory="$2" path
-	cageworks_name_ok "$factory" || {
-		echo "cageworks: invalid factory name: $factory" >&2
+	fabriek_name_ok "$factory" || {
+		echo "fabriek: invalid factory name: $factory" >&2
 		return 1
 	}
 	local json
-	json="$(cageworks_operator_config "$file")" || return 1
+	json="$(fabriek_operator_config "$file")" || return 1
 	path="$(printf '%s' "$json" | jq -r --arg f "$factory" '.factories[$f].path // empty')"
 	if [ -z "$path" ]; then
-		echo "cageworks: no factory registered here as $factory" >&2
+		echo "fabriek: no factory registered here as $factory" >&2
 		return 1
 	fi
 	printf '%s\n' "$path"
@@ -151,8 +151,8 @@ cageworks_operator_factory_path() {
 ## The credentials this operator holds, keyed by the endpoint each one opens.
 ## An operator holding none holds none: not every host wants authenticating to,
 ## and a factory reaching one that does not is not a mistake.
-cageworks_operator_credentials() {
+fabriek_operator_credentials() {
 	local json
-	json="$(cageworks_operator_config "${1:-}")" || return 1
+	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq '.credentials // {}'
 }

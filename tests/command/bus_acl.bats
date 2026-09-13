@@ -14,9 +14,9 @@ setup() {
 	ETC="$TEST_TEMP_DIR/etc"
 	mkdir -p "$STATE/bus" "$STUB_DIR" "$ETC"
 	PATH="$STUB_DIR:$PATH"
-	export PATH STATE CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
+	export PATH STATE FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
 	cat >"$ETC/bridge.json" <<'JSON'
-{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24,
+{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "reviewer": "10.77.0.11", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
@@ -50,7 +50,7 @@ acl_calls() {
 }
 
 @test "every user is made default-deny with its own verbs and patterns: a role reads its mailbox and every findings stream and writes its own three" {
-	run_cageworks_container bus-acl acme
+	run_fabriek_container bus-acl acme
 	assert_success
 	run acl_calls
 	assert_line --partial "SETUSER builder on >pw-builder resetkeys resetchannels nocommands +xadd +xread +xrange +xrevrange +xlen +xinfo +ping %R~mailbox:builder %W~control:builder %W~findings:builder %R~findings:* %W~events:builder"
@@ -61,7 +61,7 @@ acl_calls() {
 }
 
 @test "the default user is turned off last, after every SETUSER" {
-	run_cageworks_container bus-acl acme
+	run_fabriek_container bus-acl acme
 	assert_success
 	run acl_calls
 	assert_line --index 5 --partial "SETUSER default off"
@@ -71,7 +71,7 @@ acl_calls() {
 
 @test "a user whose password file is absent is not made" {
 	rm "$STATE/bus/reviewer"
-	run_cageworks_container bus-acl acme
+	run_fabriek_container bus-acl acme
 	assert_success
 	run acl_calls
 	refute_output --partial "SETUSER reviewer"
@@ -80,7 +80,7 @@ acl_calls() {
 
 @test "when the default user is already off, it speaks as the executor with the password in the environment and never on argv" {
 	touch "$TEST_TEMP_DIR/default-off"
-	run_cageworks_container bus-acl acme
+	run_fabriek_container bus-acl acme
 	assert_success
 	run grep -c -- "--user executor --no-auth-warning ACL SETUSER" "$TEST_TEMP_DIR/bus-calls"
 	assert_output 6
@@ -95,7 +95,7 @@ acl_calls() {
 @test "when the default user is off and the executor has no password, it says so and fails" {
 	touch "$TEST_TEMP_DIR/default-off"
 	rm "$STATE/bus/executor"
-	run_cageworks_container bus-acl acme
+	run_fabriek_container bus-acl acme
 	assert_failure
 	assert_output --partial "executor"
 }

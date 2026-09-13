@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
-# cageworks -- run a factory of named roles over one repository.
+# fabriek -- run a factory of named roles over one repository.
 #
 # What an operator types. It files goals, reads back what is there, enters a
 # role by hand, and hands the factory's work to the operator's own repository.
 # None of it knows where the cages are: every machine command goes over ssh to
-# the machine cageworks built for that factory, and machine() is the only thing
+# the machine fabriek built for that factory, and machine() is the only thing
 # here that touches the transport (ADR-018, ADR-019).
 
 set -euo pipefail
 
-CAGEWORKS_VERSION="1.0.0"
+FABRIEK_VERSION="1.0.0"
 
 ## What the operator's side reads: their own ceilings and the register of
 ## factories on this machine (ADR-020). The machine program has its own copy of
 ## the modules it needs; these are the ones that only make sense where the
 ## operator's config lives, which is here and never in a cage.
-CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
+FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 # shellcheck source=modules/names.sh
-. "$CAGEWORKS_LIB/names.sh"
+. "$FABRIEK_LIB/names.sh"
 # shellcheck source=modules/schema.sh
-. "$CAGEWORKS_LIB/schema.sh"
+. "$FABRIEK_LIB/schema.sh"
 # shellcheck source=modules/sizes.sh
-. "$CAGEWORKS_LIB/sizes.sh"
+. "$FABRIEK_LIB/sizes.sh"
 # shellcheck source=modules/resources.sh
-. "$CAGEWORKS_LIB/resources.sh"
+. "$FABRIEK_LIB/resources.sh"
 # shellcheck source=modules/operator-config.sh
-. "$CAGEWORKS_LIB/operator-config.sh"
+. "$FABRIEK_LIB/operator-config.sh"
 # shellcheck source=modules/repo-declaration.sh
-. "$CAGEWORKS_LIB/repo-declaration.sh"
+. "$FABRIEK_LIB/repo-declaration.sh"
 # shellcheck source=modules/machine.sh
-. "$CAGEWORKS_LIB/machine.sh"
+. "$FABRIEK_LIB/machine.sh"
 
-## The flake a machine is built from: cageworks' own. Substituted at package
-## time so an installed cageworks builds the machine its own revision
+## The flake a machine is built from: fabriek' own. Substituted at package
+## time so an installed fabriek builds the machine its own revision
 ## describes, and overridable so a developer and the suite can point at a
 ## working tree.
-CAGEWORKS_SELF="${CAGEWORKS_SELF:-@self@}"
+FABRIEK_SELF="${FABRIEK_SELF:-@self@}"
 
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
@@ -44,15 +44,15 @@ CYAN=$'\033[0;36m'
 BOLD=$'\033[1m'
 NC=$'\033[0m'
 
-log_info() { echo -e "${CYAN}[cageworks]${NC} $*"; }
-log_ok()   { echo -e "${GREEN}[cageworks]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[cageworks]${NC} $*"; }
-log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
+log_info() { echo -e "${CYAN}[fabriek]${NC} $*"; }
+log_ok()   { echo -e "${GREEN}[fabriek]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[fabriek]${NC} $*"; }
+log_err()  { echo -e "${RED}[fabriek]${NC} $*" >&2; }
 
 ## What builds a machine, locks its flake and reads the spec back out of it.
 ## Named once for the same reason as the above: everything nix does for a
 ## machine goes through it, so it is the one thing a test has to stand in for.
-NIX="${CAGEWORKS_NIX:-nix}"
+NIX="${FABRIEK_NIX:-nix}"
 
 ## Run a machine command on the factory's own machine and return its output.
 ##
@@ -72,7 +72,7 @@ machine_ssh_args() {
   local factory="$1"
   local -n into="$2"
   local args arg
-  args="$(cageworks_machine_ssh_args "$factory")" || return 1
+  args="$(fabriek_machine_ssh_args "$factory")" || return 1
   into=()
   while IFS= read -r arg; do into+=("$arg"); done <<<"$args"
 }
@@ -95,7 +95,7 @@ machine() {
   machine_ssh_args "$factory" ssh_args || return 1
 
   printf '%s\0' "$@" |
-    ssh "${ssh_args[@]}" root@localhost xargs -0 cageworks-container
+    ssh "${ssh_args[@]}" root@localhost xargs -0 fabriek-container
 }
 
 ## A goal, filed into a factory. The workflow's first stage says who takes it
@@ -109,13 +109,13 @@ cmd_task() {
   file)
     local factory="${1:-}" workflow="${2:-}" title="${3:-}" body="${4:-}"
     if [[ -z "$factory" || -z "$workflow" || -z "$title" ]]; then
-      log_err "usage: cageworks task file <factory> <workflow> <title> [body]"
+      log_err "usage: fabriek task file <factory> <workflow> <title> [body]"
       exit 1
     fi
     machine task-file "$factory" "$workflow" "$title" "$body"
     ;;
   *)
-    log_err "usage: cageworks task file <factory> <workflow> <title> [body]"
+    log_err "usage: fabriek task file <factory> <workflow> <title> [body]"
     exit 1
     ;;
   esac
@@ -131,7 +131,7 @@ cmd_role() {
   if [[ "${1:-}" == stop ]]; then
     local factory="${2:-}" role="${3:-}"
     if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: cageworks role stop <factory> <role>"
+      log_err "usage: fabriek role stop <factory> <role>"
       exit 1
     fi
     machine role-stop "$factory" "$role"
@@ -142,7 +142,7 @@ cmd_role() {
   if [[ "${1:-}" == steer ]]; then
     local factory="${2:-}" role="${3:-}" text="${4:-}"
     if [[ -z "$factory" || -z "$role" || -z "$text" ]]; then
-      log_err "usage: cageworks role steer <factory> <role> <text>"
+      log_err "usage: fabriek role steer <factory> <role> <text>"
       exit 1
     fi
     machine role-steer "$factory" "$role" "$text"
@@ -151,7 +151,7 @@ cmd_role() {
 
   local factory="${1:-}" role="${2:-}"
   if [[ -z "$factory" || -z "$role" ]]; then
-    log_err "usage: cageworks role <factory> <role> [-- cmd...]"
+    log_err "usage: fabriek role <factory> <role> [-- cmd...]"
     exit 1
   fi
   shift 2
@@ -163,7 +163,7 @@ cmd_role() {
   # transport, so it is named there rather than here: on macOS its path is the
   # VM's and nothing on this side can spell it. Both programs are told, and
   # they are told different things -- nixcage forwards the agent and carries
-  # the variable across sudo, cageworks-container reads it once it is there.
+  # the variable across sudo, fabriek-container reads it once it is there.
   local -a forward=() use_agent=()
   if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
     forward=(-A)
@@ -185,7 +185,7 @@ cmd_role() {
   ## where it was cloned from.
   local repository=()
   local origin
-  if cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory" >/dev/null 2>&1; then
+  if fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory" >/dev/null 2>&1; then
     origin="$(factory_origin "$factory")" || exit 1
     repository=(--repository "$origin")
   fi
@@ -198,7 +198,7 @@ cmd_role() {
   printf '%s\0' role-enter ${use_agent[@]+"${use_agent[@]}"} \
     ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@" |
     ssh "${ssh_args[@]}" ${forward[@]+"${forward[@]}"} root@localhost \
-      xargs -0 cageworks-container
+      xargs -0 fabriek-container
 }
 
 ## The machine is always Linux, whatever the operator is on. A machine that
@@ -231,7 +231,7 @@ machine_system() {
 ## are two places that can disagree.
 factory_origin() {
   local factory="$1" path origin
-  path="$(cageworks_operator_factory_path "$(cageworks_operator_config_path)" "$factory")" || return 1
+  path="$(fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory")" || return 1
   if origin="$(git -C "$path" remote get-url origin 2>/dev/null)" && [[ -n "$origin" ]]; then
     printf '%s\n' "$origin"
   else
@@ -243,16 +243,16 @@ factory_origin() {
 ## The flake one factory's machine is built from (ADR-040). Written every
 ## time, because it is ours and nothing in it is the operator's to keep; the
 ## lock beside it is theirs and is only made on the first build or moved on
-## request. Two inputs: this cageworks, and the repository the factory works,
+## request. Two inputs: this fabriek, and the repository the factory works,
 ## pinned by rev in the lock so that which declaration a machine runs is the
 ## machine's identity. Beside the flake, the facts only this host knows, as a
 ## file the build reads: the way in, both systems, the ceilings, and which
 ## header carries which endpoint's credential. Never the credential.
 machine_flake() {
   local factory="$1" machine="$2" dir config path
-  dir="$(cageworks_machine_dir "$factory")" || return 1
-  config="$(cageworks_operator_config_path)"
-  path="$(cageworks_operator_factory_path "$config" "$factory")" || return 1
+  dir="$(fabriek_machine_dir "$factory")" || return 1
+  config="$(fabriek_operator_config_path)"
+  path="$(fabriek_operator_factory_path "$config" "$factory")" || return 1
   path="$(cd "$path" 2>/dev/null && pwd)" || {
     log_err "$factory's repository is not at the path the config names: $path"
     return 1
@@ -260,8 +260,8 @@ machine_flake() {
   mkdir -p "$machine"
 
   local caps creds
-  caps="$(cageworks_operator_caps "$config")" || return 1
-  creds="$(cageworks_operator_credentials "$config")" || return 1
+  caps="$(fabriek_operator_caps "$config")" || return 1
+  creds="$(fabriek_operator_credentials "$config")" || return 1
   jq -n \
     --arg factory "$factory" \
     --arg system "$(machine_system)" \
@@ -276,16 +276,16 @@ machine_flake() {
   mv "$machine/local.json.new" "$machine/local.json"
 
   cat >"$machine/flake.nix.new" <<EOF
-## Generated by cageworks for the factory $factory. Nothing here is edited by
+## Generated by fabriek for the factory $factory. Nothing here is edited by
 ## hand; the lock beside it is what pins which declaration this machine runs.
 {
   description = "The machine the factory $factory runs in";
   inputs = {
-    cageworks.url = $(cageworks_nix_string "path:$CAGEWORKS_SELF");
-    project.url = $(cageworks_nix_string "git+file://$path");
+    fabriek.url = $(fabriek_nix_string "path:$FABRIEK_SELF");
+    project.url = $(fabriek_nix_string "git+file://$path");
   };
-  outputs = { cageworks, project, ... }:
-    let factory = cageworks.lib.factory { inherit project; local = ./local.json; };
+  outputs = { fabriek, project, ... }:
+    let factory = fabriek.lib.factory { inherit project; local = ./local.json; };
     in {
       packages.\${factory.hostSystem}.runner = factory.runner;
       spec = factory.spec;
@@ -305,22 +305,22 @@ EOF
 cmd_up() {
   local factory="${1:-}" update=""
   if [[ -z "$factory" ]]; then
-    log_err "usage: cageworks up <factory> [--update]"
+    log_err "usage: fabriek up <factory> [--update]"
     exit 1
   fi
   [[ "${2:-}" == --update ]] && update=1
-  if cageworks_machine_running "$factory"; then
+  if fabriek_machine_running "$factory"; then
     log_ok "$factory is already running"
     return
   fi
   local dir machine runner
-  dir="$(cageworks_machine_ensure "$factory")" || exit 1
+  dir="$(fabriek_machine_ensure "$factory")" || exit 1
   machine="$dir/machine"
   machine_flake "$factory" "$machine" || exit 1
 
   ## The project is pinned once and moved only when asked, because which
-  ## declaration a machine runs is its identity (ADR-040). cageworks itself
-  ## follows the one running, because a machine built from an older cageworks
+  ## declaration a machine runs is its identity (ADR-040). fabriek itself
+  ## follows the one running, because a machine built from an older fabriek
   ## than the CLI driving it is the drift the lock exists to prevent.
   if [[ ! -f "$machine/flake.lock" ]]; then
     "$NIX" flake lock "path:$machine" || {
@@ -333,7 +333,7 @@ cmd_up() {
       exit 1
     }
   fi
-  "$NIX" flake update cageworks --flake "path:$machine" || exit 1
+  "$NIX" flake update fabriek --flake "path:$machine" || exit 1
 
   log_info "Building the machine $factory runs in..."
   runner="$("$NIX" build --no-link --print-out-paths "path:$machine#runner")" || {
@@ -355,12 +355,12 @@ cmd_up() {
   ## Volumes are made in the working directory, which is why the runner is
   ## started in the machine's own: its disk belongs beside its key and its
   ## port, and no factory writes into another's.
-  log_info "Starting $factory on port $(cageworks_machine_port "$factory")..."
+  log_info "Starting $factory on port $(fabriek_machine_port "$factory")..."
   ## Detached into a session of its own. A machine that ends when the command
   ## that started it ends is not one anything can be run in later, and every
   ## verb after this asks whether it is still up.
   local runner_pid
-  runner_pid="$(cd "$dir" && cageworks_machine_spawn "$dir/console.log" "$runner/bin/microvm-run")"
+  runner_pid="$(cd "$dir" && fabriek_machine_spawn "$dir/console.log" "$runner/bin/microvm-run")"
   disown "$runner_pid" 2>/dev/null || true
   echo "$runner_pid" >"$dir/pid.new"
   mv "$dir/pid.new" "$dir/pid"
@@ -387,8 +387,8 @@ give_credentials() {
   hosts="$(printf '%s' "$spec" | jq -r '(.egressHeaders // {}) | keys[]?')"
   [[ -n "$hosts" ]] || return 0
 
-  config="$(cageworks_operator_config_path)"
-  creds="$(cageworks_operator_credentials "$config")" || return 1
+  config="$(fabriek_operator_config_path)"
+  creds="$(fabriek_operator_credentials "$config")" || return 1
 
   local -a ssh_args=()
   machine_ssh_args "$factory" ssh_args || return 1
@@ -420,7 +420,7 @@ give_credentials() {
     ## far side is a name and never an expression.
     # shellcheck disable=SC2029
     if ! ssh "${ssh_args[@]}" root@localhost \
-      "cageworks-egress-credential $host" \
+      "fabriek-egress-credential $host" \
       <"$file"; then
       log_err "could not give $factory the credential for $host"
       return 1
@@ -429,7 +429,7 @@ give_credentials() {
 
   ## The proxy read its headers when it started, which was before any of this.
   if ! ssh "${ssh_args[@]}" root@localhost \
-    "systemctl restart cageworks-egress-credentials nginx" >/dev/null 2>&1; then
+    "systemctl restart fabriek-egress-credentials nginx" >/dev/null 2>&1; then
     log_err "$factory has its credentials but its proxy would not pick them up"
     return 1
   fi
@@ -437,15 +437,15 @@ give_credentials() {
 
 ## Stop a factory's machine by shutting it down. A stop that cannot
 ## complete is reported and the machine keeps running: ADR-017 exists because
-## one was ended rather than shut down, and cageworks owns the stopping now.
+## one was ended rather than shut down, and fabriek owns the stopping now.
 cmd_down() {
   local factory="${1:-}"
   if [[ -z "$factory" ]]; then
-    log_err "usage: cageworks down <factory>"
+    log_err "usage: fabriek down <factory>"
     exit 1
   fi
 
-  if ! cageworks_machine_running "$factory"; then
+  if ! fabriek_machine_running "$factory"; then
     log_ok "$factory is not running"
     return
   fi
@@ -466,7 +466,7 @@ cmd_down() {
   ssh "${ssh_args[@]}" root@localhost systemctl poweroff >/dev/null 2>&1 || true
 
   local pid waited=0
-  pid="$(cageworks_machine_pid "$factory")"
+  pid="$(fabriek_machine_pid "$factory")"
   while kill -0 "$pid" 2>/dev/null; do
     if [[ "$waited" -ge 60 ]]; then
       log_err "$factory has not stopped after 60s; it is still running and has not been killed"
@@ -475,7 +475,7 @@ cmd_down() {
     sleep 1
     waited=$((waited + 1))
   done
-  rm -f "$(cageworks_machine_dir "$factory")/pid"
+  rm -f "$(fabriek_machine_dir "$factory")/pid"
   log_ok "$factory has stopped"
 }
 
@@ -486,19 +486,19 @@ cmd_vm() {
     local factory port dir
     while IFS= read -r factory; do
       [ -n "$factory" ] || continue
-      port="$(cageworks_machine_port "$factory" 2>/dev/null)" || port="-"
-      dir="$(cageworks_machine_dir "$factory")" || continue
+      port="$(fabriek_machine_port "$factory" 2>/dev/null)" || port="-"
+      dir="$(fabriek_machine_dir "$factory")" || continue
       local state="stopped"
-      cageworks_machine_running "$factory" && state="running"
+      fabriek_machine_running "$factory" && state="running"
       if [ -f "$dir/pool.img" ]; then
         printf '%s\tport %s\t%s\tdisk\n' "$factory" "$port" "$state"
       else
         printf '%s\tport %s\t%s\tno disk yet\n' "$factory" "$port" "$state"
       fi
-    done < <(cageworks_machine_list)
+    done < <(fabriek_machine_list)
     ;;
   *)
-    log_err "usage: cageworks vm status"
+    log_err "usage: fabriek vm status"
     exit 1
     ;;
   esac
@@ -509,7 +509,7 @@ cmd_vm() {
 cmd_factory() {
   local sub="${1:-}" factory="${2:-}"
   if [[ -z "$sub" || -z "$factory" ]]; then
-    log_err "usage: cageworks factory mirror|watch|send|console|board <factory>"
+    log_err "usage: fabriek factory mirror|watch|send|console|board <factory>"
     exit 1
   fi
   case "$sub" in
@@ -528,7 +528,7 @@ cmd_factory() {
     ## the executor as the decider's would be.
     local json="${3:-}"
     if [[ -z "$json" ]]; then
-      log_err "usage: cageworks factory send <factory> '<json command>'"
+      log_err "usage: fabriek factory send <factory> '<json command>'"
       exit 1
     fi
     machine factory-send "$factory" "$json"
@@ -559,10 +559,10 @@ cmd_factory() {
     local roles
     roles="$(machine factory-roles "$factory")" || exit 1
     # shellcheck disable=SC2086  # roles are one word each by construction
-    exec cageworks-tui "$factory" $roles
+    exec fabriek-tui "$factory" $roles
     ;;
   *)
-    log_err "usage: cageworks factory mirror|watch|send|console|board <factory>"
+    log_err "usage: fabriek factory mirror|watch|send|console|board <factory>"
     exit 1
     ;;
   esac
@@ -570,10 +570,10 @@ cmd_factory() {
 
 cmd_help() {
   cat <<HELP
-${BOLD}cageworks${NC} v${CAGEWORKS_VERSION} -- a factory of named roles over one repository
+${BOLD}fabriek${NC} v${FABRIEK_VERSION} -- a factory of named roles over one repository
 
 ${BOLD}Usage:${NC}
-  cageworks <command> [args...]
+  fabriek <command> [args...]
 
 ${BOLD}Commands:${NC}
   role <factory> <role> [-- cmd...]
@@ -606,17 +606,17 @@ ${BOLD}Commands:${NC}
   help               Show this help
 
 ${BOLD}Configuration:${NC}
-  A repository declares the factory that works it, as the 'cageworks' output
+  A repository declares the factory that works it, as the 'fabriek' output
   of its own flake, and it is read from the commit rather than the working
   tree:
 
-    cageworks = {
+    fabriek = {
       name = "acme";
       roles.builder = { command = [ "claude" ]; provides = [ "build" ]; };
       workflows.ship.stages = [ { needs = "build"; } ];
     };
 
-  Your own config is one file, ~/.config/cageworks/config.toml, saying what a
+  Your own config is one file, ~/.config/fabriek/config.toml, saying what a
   factory may cost here and which factories live here:
 
     [caps]
@@ -625,7 +625,7 @@ ${BOLD}Configuration:${NC}
     path = "/home/me/Src/acme"
 
   A factory works a clone of that repository rather than your checkout;
-  what it merges reaches the repository's origin with 'cageworks factory
+  what it merges reaches the repository's origin with 'fabriek factory
   mirror', and only then.
 HELP
 }
@@ -640,7 +640,7 @@ main() {
   vm)      cmd_vm "$@" ;;
   task)    cmd_task "$@" ;;
   factory) cmd_factory "$@" ;;
-  version | --version | -v) echo "cageworks $CAGEWORKS_VERSION" ;;
+  version | --version | -v) echo "fabriek $FABRIEK_VERSION" ;;
   help | --help | -h) cmd_help ;;
   *)
     log_err "Unknown command: $command"

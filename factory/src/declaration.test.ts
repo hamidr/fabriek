@@ -1,5 +1,5 @@
 // The declaration as the machine carries it (ADR-040): read from
-// /etc/cageworks/declaration.json, already validated and clamped by the
+// /etc/fabriek/declaration.json, already validated and clamped by the
 // build. What is typed here is what the executor's checks read: which roles
 // exist, what each provides, which stages a workflow has and what each
 // needs, and the limits. The shape is the same table modules/repo-declaration.sh

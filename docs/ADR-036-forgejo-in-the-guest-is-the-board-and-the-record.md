@@ -42,7 +42,7 @@ is the shape to keep. The decider's token is `read:issue`, which cannot
 comment.
 
 **3. A role's memory is one pinned issue, labelled `memory`, opened as the
-role** at `cageworks up`, so the role is its poster and may rewrite it and
+role** at `fabriek up`, so the role is its poster and may rewrite it and
 nobody else may. The operator reads and clears it in the same UI as
 everything else; the edit history is the audit. Nothing conferring authority
 may live in it.
@@ -60,9 +60,9 @@ is the one credential it gains). Review happens in the guest.
 port. No verb merges, so the executor's refusal of anything touching `main`
 stays literal, and factory autonomy ends at an open, tested pull request.
 
-**7. The mirror to origin is an operator action,** `cageworks factory
+**7. The mirror to origin is an operator action,** `fabriek factory
 mirror`: merged `main` and the record, Forgejo's issues and comments
-exported as JSON under `refs/cageworks/record`, pushed together. Nothing
+exported as JSON under `refs/fabriek/record`, pushed together. Nothing
 leaves the machine until the operator says so, so PRD-003's criterion that a
 bad merge is recoverable with nothing outside having seen it is restored.
 Forgejo accepts the ref; other forges are unmeasured.
@@ -85,19 +85,19 @@ task-store.sh` go with them; ADR-011's sync with the operator's checkout is
 replaced by the mirror, and `modules/integrate.sh` is deleted.
 
 A role can revise its own comments and its memory's history. A factory with
-no operator present stops at its pull requests. `cageworks up` must be
+no operator present stops at its pull requests. `fabriek up` must be
 idempotent for accounts, tokens, memory issues and labels.
 
 ## Verification
 
-`cageworks up` scenarios (docs/roadmap.md 2.3): a second `up` changes no
+`fabriek up` scenarios (docs/roadmap.md 2.3): a second `up` changes no
 account, token, issue or label. Executor scenarios (3.3): a stage move is a
 label change, a `done` without a signed commit on the role's namespace is
-refused, `mirror` pushes `main` and `refs/cageworks/record` in one call. The
+refused, `mirror` pushes `main` and `refs/fabriek/record` in one call. The
 decision-52 probe script, rerun against the image the machine pins, must
 give the same twenty results.
 
-Status 2026-09-13: the `cageworks up` and executor scenarios above hold
+Status 2026-09-13: the `fabriek up` and executor scenarios above hold
 (`tests/command/prepare.bats`, `factory/src/executor/core.test.ts`), and
 since 2026-09-13 prepare reads the record back onto an empty board.
 `tests/system/journey.sh` drives the board on a real forge (Gitea on a

@@ -1,12 +1,12 @@
 ## Building the machine one factory runs in (ADR-019).
 ##
-## A function of the inputs cageworks pins and a spec describing one factory's
+## A function of the inputs fabriek pins and a spec describing one factory's
 ## machine, returning a NixOS configuration. It is a function rather than a
 ## nixosConfigurations attribute because a machine is per factory and per
 ## operator: how many cores it has and what port it answers on are not facts
 ## this repository can know.
 ##
-## The machine is nixpkgs, microvm.nix, nixcage's host module and cageworks' own,
+## The machine is nixpkgs, microvm.nix, nixcage's host module and fabriek' own,
 ## which is what ADR-019 point 2 decides. Inside the VM nixcage is in exactly
 ## the situation ADR-003 built it for.
 {
@@ -33,14 +33,14 @@ nixpkgs.lib.nixosSystem {
     {
       nixpkgs.overlays = [
         (final: _prev: {
-          cageworks-container =
+          fabriek-container =
             (import ./package.nix {
               pkgs = final;
               inherit self;
             }).container;
           ## The TypeScript half, for the loop the floor carries (ADR-035)
           ## and the executor, the decider and the relay beside it.
-          cageworks-factory = (import ../factory { pkgs = final; }).package;
+          fabriek-factory = (import ../factory { pkgs = final; }).package;
         })
       ];
     }
@@ -52,7 +52,7 @@ nixpkgs.lib.nixosSystem {
       microvm.vmHostPackages = nixpkgs.legacyPackages.${spec.hostSystem or spec.system};
     })
     {
-      cageworks.machine = builtins.removeAttrs spec [
+      fabriek.machine = builtins.removeAttrs spec [
         "system"
         "hostSystem"
         "workspaceRoots"

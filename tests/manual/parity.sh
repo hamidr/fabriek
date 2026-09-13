@@ -12,29 +12,29 @@
 ## journey stops at the first assignment, and the proof says so rather than
 ## failing: a decider with no model decides nothing.
 ##
-##   export CAGEWORKS_PROOF_DIR=/tmp/cageworks-proof
+##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   tests/manual/parity.sh
 ##
 ## What the machine must offer for these to pass, and where each is decided:
 ## Forgejo on the machine with an operator token under the state directory
 ## (2.3); a repository operator/<factory> whose labels are the workflow's
 ## stages (2.3); the executor as a unit and the decider as a session it
-## starts (3.3, 3.4); cageworks task file printing the issue number it
-## opened (4.1); cageworks factory mirror pushing main and
-## refs/cageworks/record (3.3).
+## starts (3.3, 3.4); fabriek task file printing the issue number it
+## opened (4.1); fabriek factory mirror pushing main and
+## refs/fabriek/record (3.3).
 set -uo pipefail
 F=acme
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 WAIT_TASK="${WAIT_TASK:-900}"
 
-bash cageworks up "$F" || exit 1
+bash fabriek up "$F" || exit 1
 wait_ssh || {
 	echo "the machine never answered"
 	exit 1
 }
 
-plan="$(sshm cat /etc/cageworks/bridge.json 2>/dev/null)"
+plan="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null)"
 forge="http://$(jq -r .forgejo <<<"$plan")/api/v1"
 proxy="$(jq -r .proxy <<<"$plan")"
 # shellcheck disable=SC2016  # the token expands on the machine, not here
@@ -66,14 +66,14 @@ check "every stage is a label" "$(printf '%s\n' "${stages[@]}" | sort | paste -s
 
 scenario "A filed goal is assigned without a second command"
 given "the executor is running and the decider's session with it"
-check "the executor unit is active" active "$(sshm systemctl is-active cageworks-executor 2>/dev/null)"
+check "the executor unit is active" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
 check "the decider's cage is running" yes "$(sshm "pgrep -f -- '--machine=decider( |\$)'" >/dev/null 2>&1 && echo yes || echo no)"
 when "the operator files a goal"
 ## Filing is one entry on the operator stream; the executor opens the issue.
 ## The number is read off the board by title, because task file cannot know
 ## it before the executor has acted.
 title="the importer handles empty files $(date +%s)"
-check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash cageworks task file "$F" ship "$title" "acceptance: an empty file imports as no rows" 2>/dev/null | tail -1)"
+check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash fabriek task file "$F" ship "$title" "acceptance: an empty file imports as no rows" 2>/dev/null | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
 issue_by_title() { api GET "$repo/issues?state=all&type=issues&limit=50" | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1 | sed 's/^[0-9][0-9]*$/found/'; }
 check "the executor opens an issue for it" found "$(eventually 60 found issue_by_title)"
@@ -91,7 +91,7 @@ if [ "$answer" = 401 ]; then
 	gated "the work moves through every stage on its own" "same"
 	gated "the executor opens a pull request and the operator merges and mirrors" "same"
 	gated "spend was counted" "same"
-	bash cageworks down "$F"
+	bash fabriek down "$F"
 	exit "$fail"
 fi
 check "the issue is assigned to a role" yes \
@@ -129,13 +129,13 @@ given "the pull request $pr"
 when "the operator merges it in Forgejo"
 check "the merge is accepted" 200 \
 	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
-when "the operator runs cageworks factory mirror"
-bash cageworks factory mirror "$F" >/dev/null 2>&1
+when "the operator runs fabriek factory mirror"
+bash fabriek factory mirror "$F" >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"
 main_origin="$(sshm git ls-remote "$origin" refs/heads/main 2>/dev/null | cut -f1)"
 check "origin's main is Forgejo's main" "$main_forge" "$main_origin"
-check "origin carries refs/cageworks/record" present \
-	"$(sshm git ls-remote "$origin" refs/cageworks/record 2>/dev/null | grep -q . && echo present || echo absent)"
+check "origin carries refs/fabriek/record" present \
+	"$(sshm git ls-remote "$origin" refs/fabriek/record 2>/dev/null | grep -q . && echo present || echo absent)"
 
 scenario "Spend was counted and the soft limit is the executor's"
 given "the spend the proxy counted for this journey"
@@ -143,7 +143,7 @@ total="$(sshm "curl -s http://$proxy/status" | jq -r '[.[]] | add // 0')"
 check "the proxy counted tokens" yes "$([ "${total:-0}" -gt 0 ] && echo yes || echo no)"
 when "the operator reads the executor's board on the relay"
 check "the executor is routing" true \
-	"$(timeout 20 bash cageworks factory watch "$F" --from 0 2>/dev/null | jq -r 'select(.stream == "events:executor" and .fields.name == "board") | .fields.json | fromjson | .routing' | tail -1)"
+	"$(timeout 20 bash fabriek factory watch "$F" --from 0 2>/dev/null | jq -r 'select(.stream == "events:executor" and .fields.name == "board") | .fields.json | fromjson | .routing' | tail -1)"
 
-bash cageworks down "$F"
+bash fabriek down "$F"
 exit "$fail"

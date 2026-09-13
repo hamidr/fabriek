@@ -11,9 +11,9 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
-	source "$CAGEWORKS_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/factory-config.sh
-	source "$CAGEWORKS_ROOT/modules/factory-config.sh"
+	source "$FABRIEK_ROOT/modules/factory-config.sh"
 	DECL="$TEST_TEMP_DIR/declaration.json"
 	cat >"$DECL" <<'JSON'
 {
@@ -41,14 +41,14 @@ declare_with() {
 }
 
 @test "the declared roles are listed in a stable order" {
-	run cageworks_factory_roles "$DECL"
+	run fabriek_factory_roles "$DECL"
 	assert_success
 	assert_line --index 0 "builder"
 	assert_line --index 1 "reviewer"
 }
 
 @test "a role's command is what its declaration says, one word per line" {
-	run cageworks_factory_role_command "$DECL" builder
+	run fabriek_factory_role_command "$DECL" builder
 	assert_success
 	assert_line --index 0 "claude"
 	assert_line --index 1 "--permission-mode"
@@ -56,39 +56,39 @@ declare_with() {
 }
 
 @test "a role that declares no command gets none, and that is not an error" {
-	run cageworks_factory_role_command "$DECL" reviewer
+	run fabriek_factory_role_command "$DECL" reviewer
 	assert_success
 	assert_output ""
 }
 
 @test "an undeclared role is refused, and the message says which roles exist" {
-	run cageworks_factory_role_command "$DECL" ghost
+	run fabriek_factory_role_command "$DECL" ghost
 	assert_failure
 	assert_output --partial "builder"
 	assert_output --partial "reviewer"
 }
 
 @test "a role name that could reach a path or a ref is refused" {
-	run cageworks_factory_role_command "$DECL" "../../../etc/passwd"
+	run fabriek_factory_role_command "$DECL" "../../../etc/passwd"
 	assert_failure
 }
 
 @test "a declaration with no roles is refused rather than silently empty" {
 	declare_with 'del(.roles)'
-	run cageworks_factory_roles "$DECL"
+	run fabriek_factory_roles "$DECL"
 	assert_failure
 	assert_output --partial "no roles"
 }
 
 @test "a specialist role names the devShell it works in" {
 	declare_with '.roles.builder.shell = "backend-jvm"'
-	run cageworks_factory_role_shell "$DECL" builder
+	run fabriek_factory_role_shell "$DECL" builder
 	assert_success
 	assert_output "backend-jvm"
 }
 
 @test "a role that names no shell gets none, and that is not an error" {
-	run cageworks_factory_role_shell "$DECL" reviewer
+	run fabriek_factory_role_shell "$DECL" reviewer
 	assert_success
 	assert_output ""
 }
@@ -97,13 +97,13 @@ declare_with() {
 # reference, which is why it is checked here as well as in the schema.
 @test "a role whose declared shell is not an attribute name is refused" {
 	declare_with '.roles.reviewer.shell = "not a name"'
-	run cageworks_factory_role_shell "$DECL" reviewer
+	run fabriek_factory_role_shell "$DECL" reviewer
 	assert_failure
 	assert_output --partial "reviewer"
 }
 
 @test "a role says what it can be given to do" {
-	run cageworks_factory_role_provides "$DECL" reviewer
+	run fabriek_factory_role_provides "$DECL" reviewer
 	assert_success
 	assert_line --index 0 "review"
 	assert_line --index 1 "build"
@@ -112,14 +112,14 @@ declare_with() {
 # A stage names a capability rather than a role, so declaring a second role
 # that provides it adds capacity without touching the pipeline (ADR-015).
 @test "every role providing a capability is offered, in a stable order" {
-	run cageworks_factory_roles_providing "$DECL" build
+	run fabriek_factory_roles_providing "$DECL" build
 	assert_success
 	assert_line --index 0 "builder"
 	assert_line --index 1 "reviewer"
 }
 
 @test "a capability nobody provides resolves to nobody, and that is not an error" {
-	run cageworks_factory_roles_providing "$DECL" telepathy
+	run fabriek_factory_roles_providing "$DECL" telepathy
 	assert_success
 	assert_output ""
 }

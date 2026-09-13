@@ -1,5 +1,5 @@
 // The declaration as the machine carries it (ADR-040): validated and clamped
-// by the build, written to /etc/cageworks/declaration.json, and read here by
+// by the build, written to /etc/fabriek/declaration.json, and read here by
 // the executor and the decider. The table is modules/repo-declaration.sh's;
 // this side only refuses what that table could not have produced, so a file
 // it does refuse is one somebody wrote by hand.
@@ -38,7 +38,7 @@ export interface Declaration {
   resources: Resources;
 }
 
-/** The defaults the shell side has (cageworks-container's factory_limit). */
+/** The defaults the shell side has (fabriek-container's factory_limit). */
 export const DEFAULTS: Resources = { taskAttempts: 3, tokens: 0, runTimeoutSeconds: 3600, concurrency: 0 };
 
 export class DeclarationError extends Error {

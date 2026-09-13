@@ -5,22 +5,22 @@
 ## and the labels were generated from, so a session that reads them cannot
 ## disagree with the machine it runs on.
 ##
-## Sourced by store path into cageworks-container beside names.sh. A file
+## Sourced by store path into fabriek-container beside names.sh. A file
 ## rather than an inline string so shellcheck reads it and bats sources it.
 
 ## The address a role's cage has on the factory's bridge. A machine with no
 ## plan has no bridge, and a role the plan does not place would have no
 ## address, and both are refusals rather than a session off the bridge.
-cageworks_bridge_address() {
+fabriek_bridge_address() {
 	local plan="$1" role="$2" address
-	cageworks_name_ok "$role" || return 1
+	fabriek_name_ok "$role" || return 1
 	if [ ! -f "$plan" ]; then
-		echo "cageworks: this machine has no bridge plan at $plan; no cage can be placed" >&2
+		echo "fabriek: this machine has no bridge plan at $plan; no cage can be placed" >&2
 		return 1
 	fi
 	address="$(jq -r --arg r "$role" '.cages[$r] // empty' "$plan")"
 	if [ -z "$address" ]; then
-		echo "cageworks: the bridge plan places no cage for role $role" >&2
+		echo "fabriek: the bridge plan places no cage for role $role" >&2
 		return 1
 	fi
 	printf '%s\n' "$address"
@@ -28,7 +28,7 @@ cageworks_bridge_address() {
 
 ## The placement nixcage's --network takes: the bridge's name and the address
 ## with the bridge's prefix.
-cageworks_bridge_placement() {
+fabriek_bridge_placement() {
 	local plan="$1" address="$2"
 	jq -r --arg a "$address" '"\(.bridge):\($a)/\(.prefix)"' "$plan"
 }
@@ -38,9 +38,9 @@ cageworks_bridge_placement() {
 ## found through the nspawn that holds it: the one whose argv names the
 ## machine, and its child. Asked by a hand session before it takes a veth,
 ## because an actor's cage holds the role's one veth and one address.
-cageworks_cage_leader() {
+fabriek_cage_leader() {
 	local name="$1" nspawn
-	cageworks_name_ok "$name" || return 1
+	fabriek_name_ok "$name" || return 1
 	nspawn="$(pgrep -f -- "--machine=$name( |\$)" 2>/dev/null | head -1)"
 	[ -n "$nspawn" ] || return 1
 	pgrep -P "$nspawn" 2>/dev/null | head -1 | grep .
@@ -48,23 +48,23 @@ cageworks_cage_leader() {
 
 ## What a session's --network is: a running cage's namespace when a hand
 ## joins one, the bridge placement otherwise (nixcage ADR-011).
-cageworks_cage_network() {
+fabriek_cage_network() {
 	local plan="$1" role="$2" leader
-	if leader="$(cageworks_cage_leader "$role")"; then
+	if leader="$(fabriek_cage_leader "$role")"; then
 		printf 'ns:/proc/%s/ns/net\n' "$leader"
 	else
 		local address
-		address="$(cageworks_bridge_address "$plan" "$role")" || return 1
-		cageworks_bridge_placement "$plan" "$address"
+		address="$(fabriek_bridge_address "$plan" "$role")" || return 1
+		fabriek_bridge_placement "$plan" "$address"
 	fi
 }
 
 ## The store path of a role's profile, resolved through the machine's own
 ## symlink so that what the session is handed is a path the cage can read
 ## through its read-only store. Fails quietly when the build realised none.
-cageworks_role_profile() {
+fabriek_role_profile() {
 	local etc="$1" role="$2" link
-	cageworks_name_ok "$role" || return 1
+	fabriek_name_ok "$role" || return 1
 	link="$etc/roles/$role/profile"
 	[ -L "$link" ] || [ -d "$link" ] || return 1
 	readlink -f "$link"
@@ -76,22 +76,22 @@ cageworks_role_profile() {
 ## extension reads. One flag per line, in a fixed order, because seam.bats
 ## asserts the whole line.
 ##
-## cageworks_actor_args <etc> <state> <factory> <role>
-cageworks_actor_args() {
+## fabriek_actor_args <etc> <state> <factory> <role>
+fabriek_actor_args() {
 	local etc="$1" state="$2" factory="$3" role="$4"
 	local password="$state/bus/$role" token="$state/forge/$role-token"
 	if [ ! -s "$password" ]; then
-		echo "cageworks: role $role has no bus password at $password; run cageworks up" >&2
+		echo "fabriek: role $role has no bus password at $password; run fabriek up" >&2
 		return 1
 	fi
 	if [ ! -s "$token" ]; then
-		echo "cageworks: role $role has no forge token at $token; run cageworks up" >&2
+		echo "fabriek: role $role has no forge token at $token; run fabriek up" >&2
 		return 1
 	fi
 	## The decider runs the machine's own loop, in a directory of its own,
 	## and reads the declaration and the policy rather than a capability.
 	local pidir="$etc/pi" capabilities=""
-	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+	if [ "$role" = "$FABRIEK_DECIDER" ]; then
 		pidir="$etc/pi-decider"
 	else
 		capabilities="$(jq -r --arg r "$role" '.roles[$r].provides | join(",")' "$etc/declaration.json")"
@@ -105,31 +105,31 @@ cageworks_actor_args() {
 	## No startup network calls: a cage has no route, and a call that fails
 	## slowly is a slow start nobody attributed (ADR-029 point 7).
 	printf '%s\n' \
-		"--bind-ro" "$pidir:/run/cageworks/pi" \
-		"--setenv" "PI_CODING_AGENT_DIR=/run/cageworks/pi" \
+		"--bind-ro" "$pidir:/run/fabriek/pi" \
+		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions" \
 		"--setenv" "PI_OFFLINE=1" \
-		"--bind-ro" "$password:/run/cageworks/bus-password" \
-		"--bind-ro" "$token:/run/cageworks/forge-token" \
-		"--setenv" "CAGEWORKS_BUS_PASSWORD=/run/cageworks/bus-password" \
-		"--setenv" "CAGEWORKS_FORGE_TOKEN=/run/cageworks/forge-token"
-	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+		"--bind-ro" "$password:/run/fabriek/bus-password" \
+		"--bind-ro" "$token:/run/fabriek/forge-token" \
+		"--setenv" "FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password" \
+		"--setenv" "FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token"
+	if [ "$role" = "$FABRIEK_DECIDER" ]; then
 		printf '%s\n' \
-			"--bind-ro" "$etc/declaration.json:/run/cageworks/declaration.json" \
-			"--setenv" "CAGEWORKS_DECLARATION=/run/cageworks/declaration.json"
+			"--bind-ro" "$etc/declaration.json:/run/fabriek/declaration.json" \
+			"--setenv" "FABRIEK_DECLARATION=/run/fabriek/declaration.json"
 		if [ -s "$etc/decider-policy.md" ]; then
 			printf '%s\n' \
-				"--bind-ro" "$etc/decider-policy.md:/run/cageworks/policy.md" \
-				"--setenv" "CAGEWORKS_POLICY=/run/cageworks/policy.md"
+				"--bind-ro" "$etc/decider-policy.md:/run/fabriek/policy.md" \
+				"--setenv" "FABRIEK_POLICY=/run/fabriek/policy.md"
 		fi
 	fi
 	printf '%s\n' \
-		"--setenv" "CAGEWORKS_ROLE=$role" \
-		"--setenv" "CAGEWORKS_CAPABILITIES=$capabilities" \
-		"--setenv" "CAGEWORKS_BUS=$bus" \
-		"--setenv" "CAGEWORKS_FORGE=http://$forge/api/v1" \
-		"--setenv" "CAGEWORKS_REPOSITORY=operator/$factory" \
-		"--setenv" "CAGEWORKS_BASE_BRANCH=main" \
-		"--setenv" "CAGEWORKS_PROXY=$proxy" \
-		"--setenv" "CAGEWORKS_HOME_HOST=$state/homes/$factory-$role"
+		"--setenv" "FABRIEK_ROLE=$role" \
+		"--setenv" "FABRIEK_CAPABILITIES=$capabilities" \
+		"--setenv" "FABRIEK_BUS=$bus" \
+		"--setenv" "FABRIEK_FORGE=http://$forge/api/v1" \
+		"--setenv" "FABRIEK_REPOSITORY=operator/$factory" \
+		"--setenv" "FABRIEK_BASE_BRANCH=main" \
+		"--setenv" "FABRIEK_PROXY=$proxy" \
+		"--setenv" "FABRIEK_HOME_HOST=$state/homes/$factory-$role"
 }

@@ -11,14 +11,14 @@
 ## that lists it. What "closed" means is schema.sh's, shared with the operator's
 ## own declaration so the two cannot drift apart.
 ##
-## Sourced by store path into cageworks-container beside names.sh, whose
-## cageworks_name_ok and cageworks_shell_name_ok this file relies on rather
+## Sourced by store path into fabriek-container beside names.sh, whose
+## fabriek_name_ok and fabriek_shell_name_ok this file relies on rather
 ## than restating the alphabet they accept.
 
 ## The schema, and the problems a declaration has against it. One jq program
 ## because a declaration is one value: a check that has to see the roles and
 ## the stages at once cannot be a separate pass.
-cageworks_declaration_program() {
+fabriek_declaration_program() {
 	## resources is not written out here. What a factory may ask of the machine
 	## is one table in resources.sh, read by this schema, by the operator's own
 	## schema and by the clamp that meets one against the other.
@@ -28,7 +28,7 @@ cageworks_declaration_program() {
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout"]\n'
 	printf '  , budget:    ["runs"]\n'
-	printf '  , resources: %s\n  };\n' "$(cageworks_resource_field_names_json)"
+	printf '  , resources: %s\n  };\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
 
 . as $d
@@ -138,7 +138,7 @@ JQ
 ## Every name a declaration puts somewhere a name has to be usable, as
 ## "kind<TAB>where<TAB>value". Emitted rather than checked here so that the
 ## alphabet stays in names.sh and is not written twice.
-cageworks_declaration_declared_names() {
+fabriek_declaration_declared_names() {
 	jq -r '
     [ "factory\tname\t\(.name // "")" ]
     + ((if (.roles | type) == "object" then .roles else {} end) | to_entries
@@ -156,51 +156,51 @@ cageworks_declaration_declared_names() {
 ## has to survive. Reported alongside the schema's own problems rather than
 ## instead of them, so one read of a bad declaration names everything wrong
 ## with it.
-cageworks_declaration_check_names() {
+fabriek_declaration_check_names() {
 	local declaration="$1" kind where value failed=0
 	while IFS=$'\t' read -r kind where value; do
 		case "$kind" in
 		shell)
-			cageworks_shell_name_ok "$value" && continue
-			echo "cageworks: $where: shell is not a devShell name: $value" >&2
+			fabriek_shell_name_ok "$value" && continue
+			echo "fabriek: $where: shell is not a devShell name: $value" >&2
 			;;
 		endpoint)
-			cageworks_host_ok "$value" && continue
-			echo "cageworks: $where: egress is not a host: $value" >&2
+			fabriek_host_ok "$value" && continue
+			echo "fabriek: $where: egress is not a host: $value" >&2
 			;;
 		role)
-			if [ "$value" = "$CAGEWORKS_DECIDER" ]; then
-				echo "cageworks: $where: $value is the machine's own role and cannot be declared" >&2
-			elif cageworks_role_name_ok "$value"; then
+			if [ "$value" = "$FABRIEK_DECIDER" ]; then
+				echo "fabriek: $where: $value is the machine's own role and cannot be declared" >&2
+			elif fabriek_role_name_ok "$value"; then
 				continue
 			else
-				echo "cageworks: $where: a role name is at most $CAGEWORKS_ROLE_NAME_MAX characters of a usable name: $value" >&2
+				echo "fabriek: $where: a role name is at most $FABRIEK_ROLE_NAME_MAX characters of a usable name: $value" >&2
 			fi
 			;;
 		*)
-			cageworks_name_ok "$value" && continue
-			echo "cageworks: $where: $kind is not a usable name: $value" >&2
+			fabriek_name_ok "$value" && continue
+			echo "fabriek: $where: $kind is not a usable name: $value" >&2
 			;;
 		esac
 		failed=1
-	done < <(printf '%s' "$declaration" | cageworks_declaration_declared_names)
+	done < <(printf '%s' "$declaration" | fabriek_declaration_declared_names)
 	return "$failed"
 }
 
 ## JSON in, the same JSON out when it is a declaration, and a message naming
 ## what was wrong when it is not.
-cageworks_declaration_validate() {
+fabriek_declaration_validate() {
 	local declaration failed=0
 	declaration="$(cat)"
 
 	if ! printf '%s' "$declaration" | jq -e . >/dev/null 2>&1; then
-		echo "cageworks: the declaration is not valid JSON" >&2
+		echo "fabriek: the declaration is not valid JSON" >&2
 		return 1
 	fi
 
 	printf '%s' "$declaration" |
-		cageworks_schema_check "$(cageworks_declaration_program)" declaration >/dev/null || failed=1
-	cageworks_declaration_check_names "$declaration" || failed=1
+		fabriek_schema_check "$(fabriek_declaration_program)" declaration >/dev/null || failed=1
+	fabriek_declaration_check_names "$declaration" || failed=1
 
 	[ "$failed" -eq 0 ] || return 1
 	printf '%s\n' "$declaration"
@@ -209,7 +209,7 @@ cageworks_declaration_validate() {
 ## A string, as nix will read it back. The flake reference below is built from
 ## a path the operator gave us, and a path is allowed to contain the three
 ## characters that would otherwise end the string or start an interpolation.
-cageworks_nix_string() {
+fabriek_nix_string() {
 	local value="$1"
 	value="${value//\\/\\\\}"
 	value="${value//\"/\\\"}"
@@ -219,10 +219,10 @@ cageworks_nix_string() {
 
 ## The rev a declaration is read from, which is what makes which declaration a
 ## run used reconstructable afterwards.
-cageworks_declaration_rev() {
+fabriek_declaration_rev() {
 	local repo="$1"
 	git -C "$repo" rev-parse HEAD 2>/dev/null || {
-		echo "cageworks: $repo has no commit to read a declaration from" >&2
+		echo "fabriek: $repo has no commit to read a declaration from" >&2
 		return 1
 	}
 }
@@ -231,28 +231,28 @@ cageworks_declaration_rev() {
 ## from the working tree (ADR-020 point 3a): the factory working a repository
 ## is the one its history declares.
 ##
-## The attribute is reached through getFlake rather than through a "#cageworks"
-## fragment, because a fragment resolves packages.<system>.cageworks first and
+## The attribute is reached through getFlake rather than through a "#fabriek"
+## fragment, because a fragment resolves packages.<system>.fabriek first and
 ## a repository with a package of that name would shadow its own declaration.
-cageworks_declaration_read() {
+fabriek_declaration_read() {
 	local repo="$1" rev absolute output
 	if ! absolute="$(cd "$repo" 2>/dev/null && pwd)"; then
-		echo "cageworks: no such repository: $repo" >&2
+		echo "fabriek: no such repository: $repo" >&2
 		return 1
 	fi
-	rev="$(cageworks_declaration_rev "$absolute")" || return 1
+	rev="$(fabriek_declaration_rev "$absolute")" || return 1
 	## nix's own complaint is kept and shown. Discarding it made every
-	## failure read as "no cageworks output", including the ones that were
+	## failure read as "no fabriek output", including the ones that were
 	## nix refusing to run at all, and a message that names the wrong cause
 	## costs more than the noise it saves.
 	local why
 	if ! output="$(nix eval --json --no-allow-import-from-derivation --expr \
-		"(builtins.getFlake $(cageworks_nix_string "git+file://$absolute?rev=$rev")).cageworks" 2>/tmp/cageworks-eval.$$)"; then
-		why="$(tail -3 "/tmp/cageworks-eval.$$" 2>/dev/null)"
-		rm -f "/tmp/cageworks-eval.$$"
-		echo "cageworks: $absolute declares no factory at $rev${why:+: $why}" >&2
+		"(builtins.getFlake $(fabriek_nix_string "git+file://$absolute?rev=$rev")).fabriek" 2>/tmp/fabriek-eval.$$)"; then
+		why="$(tail -3 "/tmp/fabriek-eval.$$" 2>/dev/null)"
+		rm -f "/tmp/fabriek-eval.$$"
+		echo "fabriek: $absolute declares no factory at $rev${why:+: $why}" >&2
 		return 1
 	fi
-	rm -f "/tmp/cageworks-eval.$$"
-	printf '%s' "$output" | cageworks_declaration_validate
+	rm -f "/tmp/fabriek-eval.$$"
+	printf '%s' "$output" | fabriek_declaration_validate
 }

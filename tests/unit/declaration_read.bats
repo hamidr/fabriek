@@ -9,13 +9,13 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
-	source "$CAGEWORKS_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/schema.sh
-	source "$CAGEWORKS_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
 	# shellcheck source=../../modules/resources.sh
-	source "$CAGEWORKS_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
 	# shellcheck source=../../modules/repo-declaration.sh
-	source "$CAGEWORKS_ROOT/modules/repo-declaration.sh"
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
 	REPO="$TEST_TEMP_DIR/acme"
 	mkdir -p "$REPO"
 	git init -q "$REPO"
@@ -34,7 +34,7 @@ write_flake() {
 	cat >"$REPO/flake.nix" <<EOF
 {
   outputs = { self }: {
-    cageworks = {
+    fabriek = {
       name = "$name";
       roles.builder = {
         command = [ "claude" ];
@@ -54,7 +54,7 @@ commit_all() {
 @test "the declaration is read, and it is the repository's own" {
 	write_flake acme
 	commit_all
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_success
 	assert_output --partial "acme"
 	assert_output --partial "builder"
@@ -67,20 +67,20 @@ commit_all() {
 	write_flake acme
 	commit_all
 	write_flake uncommitted-edit
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_success
 	assert_output --partial "acme"
 	refute_output --partial "uncommitted-edit"
 }
 
-# The reason the attribute is reached through getFlake. A "#cageworks"
-# fragment resolves packages.<system>.cageworks first, and a repository that
+# The reason the attribute is reached through getFlake. A "#fabriek"
+# fragment resolves packages.<system>.fabriek first, and a repository that
 # happens to build something of that name would shadow its own declaration.
-@test "a package named cageworks does not shadow the declaration" {
+@test "a package named fabriek does not shadow the declaration" {
 	cat >"$REPO/flake.nix" <<'EOF'
 {
   outputs = { self }: {
-    cageworks = {
+    fabriek = {
       name = "acme";
       roles.builder = {
         command = [ "claude" ];
@@ -88,16 +88,16 @@ commit_all() {
       };
     };
     packages = {
-      aarch64-darwin.cageworks = "shadow";
-      x86_64-darwin.cageworks = "shadow";
-      aarch64-linux.cageworks = "shadow";
-      x86_64-linux.cageworks = "shadow";
+      aarch64-darwin.fabriek = "shadow";
+      x86_64-darwin.fabriek = "shadow";
+      aarch64-linux.fabriek = "shadow";
+      x86_64-linux.fabriek = "shadow";
     };
   };
 }
 EOF
 	commit_all
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_success
 	assert_output --partial "acme"
 	refute_output --partial "shadow"
@@ -110,20 +110,20 @@ EOF
 }
 EOF
 	commit_all
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_failure
 	assert_output --partial "declares no factory"
 }
 
 @test "a repository with no commit has no declaration to read" {
 	write_flake acme
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_failure
 	assert_output --partial "no commit"
 }
 
 @test "a repository that is not there is refused by path" {
-	run cageworks_declaration_read "$TEST_TEMP_DIR/absent"
+	run fabriek_declaration_read "$TEST_TEMP_DIR/absent"
 	assert_failure
 	assert_output --partial "absent"
 }
@@ -134,7 +134,7 @@ EOF
 	cat >"$REPO/flake.nix" <<'EOF'
 {
   outputs = { self }: {
-    cageworks = {
+    fabriek = {
       name = "acme";
       roles.builder = {
         command = [ "claude" ];
@@ -146,7 +146,7 @@ EOF
 }
 EOF
 	commit_all
-	run cageworks_declaration_read "$REPO"
+	run fabriek_declaration_read "$REPO"
 	assert_failure
 	assert_output --partial "systemPackages"
 }
@@ -154,7 +154,7 @@ EOF
 @test "the rev a declaration was read from is what HEAD says" {
 	write_flake acme
 	commit_all
-	run cageworks_declaration_rev "$REPO"
+	run fabriek_declaration_rev "$REPO"
 	assert_success
 	assert_output "$(git -C "$REPO" rev-parse HEAD)"
 }

@@ -6,7 +6,7 @@
 // executor validates it again against the board and acts or refuses.
 //
 // Environment, as for a role's session, plus:
-//   CAGEWORKS_HOME_HOST   this cage's home as the machine sees it, so a file
+//   FABRIEK_HOME_HOST   this cage's home as the machine sees it, so a file
 //                         command can name files the executor can open
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -16,7 +16,7 @@ import { bindDecider, fromEnvironment, type BoundDecider } from "./bind.js";
 export default function decider(pi: ExtensionAPI): void {
   const world = fromEnvironment();
   const homeInside = process.env["HOME"] ?? "/root";
-  const homeHost = process.env["CAGEWORKS_HOME_HOST"] ?? homeInside;
+  const homeHost = process.env["FABRIEK_HOME_HOST"] ?? homeInside;
 
   let context: ExtensionContext | undefined;
   let bound: BoundDecider | undefined;

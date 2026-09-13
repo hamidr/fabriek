@@ -14,10 +14,10 @@ setup() {
 	ETC="$TEST_TEMP_DIR/etc"
 	mkdir -p "$STATE/bus" "$STUB_DIR" "$ETC"
 	PATH="$STUB_DIR:$PATH"
-	export PATH STATE CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
+	export PATH STATE FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
 	echo executor-pass >"$STATE/bus/executor"
 	cat >"$ETC/bridge.json" <<'JSON'
-{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24,
+{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10" }, "proxy": "10.77.0.1:8118",
   "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
@@ -43,7 +43,7 @@ sent_json() {
 }
 
 @test "given a goal, task-file writes the title and body as files and sends a file command naming them and the first stage" {
-	run_cageworks_container task-file acme ship "Add an importer" "it handles empty files"
+	run_fabriek_container task-file acme ship "Add an importer" "it handles empty files"
 	assert_success
 	run jq -r '.verb, .stage' <<<"$(sent_json)"
 	assert_line --index 0 file
@@ -57,7 +57,7 @@ sent_json() {
 }
 
 @test "the entry is written as the executor, to the operator stream, with the password from its file and not on argv" {
-	run_cageworks_container task-file acme ship "t" "b"
+	run_fabriek_container task-file acme ship "t" "b"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
 	assert_output --partial "--user executor"
@@ -66,40 +66,40 @@ sent_json() {
 }
 
 @test "a workflow the declaration lacks is refused before anything is written" {
-	run_cageworks_container task-file acme deploy "t" "b"
+	run_fabriek_container task-file acme deploy "t" "b"
 	assert_failure
 	assert_output --partial deploy
 	[ ! -f "$TEST_TEMP_DIR/bus-calls" ]
 }
 
 @test "role-stop sends a stop naming the role" {
-	run_cageworks_container role-stop acme builder
+	run_fabriek_container role-stop acme builder
 	assert_success
 	run jq -c . <<<"$(sent_json)"
 	assert_output '{"verb":"stop","role":"builder"}'
 }
 
 @test "factory-mirror asks the executor to mirror, which is not a verb of the decider's" {
-	run_cageworks_container factory-mirror acme
+	run_fabriek_container factory-mirror acme
 	assert_success
 	run jq -c . <<<"$(sent_json)"
 	assert_output '{"op":"mirror"}'
 }
 
-@test "without the executor's bus password on the machine, nothing is sent and the reason names cageworks up" {
+@test "without the executor's bus password on the machine, nothing is sent and the reason names fabriek up" {
 	rm "$STATE/bus/executor"
-	run_cageworks_container role-stop acme builder
+	run_fabriek_container role-stop acme builder
 	assert_failure
-	assert_output --partial "cageworks up"
+	assert_output --partial "fabriek up"
 }
 
 @test "factory-watch hands the connection to the relay with whatever follows the factory" {
-	cat >"$STUB_DIR/cageworks-relay" <<STUB
+	cat >"$STUB_DIR/fabriek-relay" <<STUB
 #!/usr/bin/env bash
 echo "relay \$*"
 STUB
-	chmod +x "$STUB_DIR/cageworks-relay"
-	run_cageworks_container factory-watch acme --from 0-0
+	chmod +x "$STUB_DIR/fabriek-relay"
+	run_fabriek_container factory-watch acme --from 0-0
 	assert_success
 	assert_output "relay --from 0-0"
 }

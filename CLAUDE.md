@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code when working with code in this repository.
 
-## What is cageworks
+## What is fabriek
 
-cageworks runs a factory: one git repository assigned to a set of declared
+fabriek runs a factory: one git repository assigned to a set of declared
 roles that work it at the same time, each in a cage of its own, on a machine
 of its own. A role is a worker, not a project: its own uid, its own dataset
 and home, its own signing key, its own forge account and bus user (ADR-010,
@@ -28,7 +28,7 @@ cage has no route off the machine (ADR-037).
 
 ## The interface with nixcage
 
-cageworks uses three exported primitives and nothing else. It writes no nspawn
+fabriek uses three exported primitives and nothing else. It writes no nspawn
 arguments, runs no `zfs` and allocates no uid. The only SSH connection it opens
 is to a machine it built itself, over the key and port it allocated for that
 factory (ADR-019).
@@ -50,12 +50,12 @@ A change to what a role session is shows up there as a diff.
 
 ## Repository layout
 
-- `cageworks`: the operator's launcher: `up`, `down`, `vm status`, `role`,
+- `fabriek`: the operator's launcher: `up`, `down`, `vm status`, `role`,
   `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console|board`.
   Reaches the machine program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
-- `cageworks-container`: the machine program. Composes a role session
+- `fabriek-container`: the machine program. Composes a role session
   (`role-enter`, `role-worktree`), prepares the factory on the machine
   (`factory-prepare`), and writes the operator's interventions to the bus
   (`task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
@@ -69,7 +69,7 @@ A change to what a role session is shows up there as a diff.
   the thread's attempt lines (`src/thread.ts`) are defined once. No runtime dependency and no npm: built with `tsc`, tested
   with node's own runner, pi's types linked in from the pi in the closure
   (`factory/default.nix`).
-- `modules/names.sh`: the names cageworks accepts, checked where they are
+- `modules/names.sh`: the names fabriek accepts, checked where they are
   declared. A role name is also its cage's, and nspawn names the veth after
   the cage, so it is at most twelve characters; `decider` is reserved.
 - `modules/*.sh`: what the two programs source by store path.
@@ -115,13 +115,13 @@ A change to what a role session is shows up there as a diff.
 
 ```bash
 nix develop                          # bash, jq, shellcheck, bats, git, node
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/       # ~310 scenarios, minutes
 nix develop --command bats -f "one invocation" tests/command/seam.bats
 nix build .#factory                  # compiles and runs its 125 scenarios
 nix develop --command bash -c 'cd factory && npm test'
 nix develop --command tests/system/journey.sh              # the factory on this host, ~4 minutes
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
 ```
 
 There is no build step for the shell programs; both run directly. The
@@ -182,15 +182,15 @@ the TUI's forge-side views, and the three real-machine proofs are open.
 
 ## Conventions
 
-- `cageworks_*` prefix for shell-module functions, `cmd_*` for command
+- `fabriek_*` prefix for shell-module functions, `cmd_*` for command
   handlers.
-- Machine-side logic goes in `cageworks-container` or a `modules/*.sh` file it
+- Machine-side logic goes in `fabriek-container` or a `modules/*.sh` file it
   sources, never inline in a command string.
 - A declared command is argv, one word per element, never a shell line: the
   declaration is data and nothing in it is re-split on the way.
 - Names that reach a path, a ref, a uid, an interface or a flake reference are
-  validated where they are declared (`cageworks_name_ok`,
-  `cageworks_role_name_ok`, `cageworks_shell_name_ok`), not where they are
+  validated where they are declared (`fabriek_name_ok`,
+  `fabriek_role_name_ok`, `fabriek_shell_name_ok`), not where they are
   used.
 - A role session's cage is composed of nixcage flags and nothing else. Reaching
   for anything outside the three primitives means the interface is wrong, and

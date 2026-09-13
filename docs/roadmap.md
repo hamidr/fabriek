@@ -57,7 +57,7 @@ and 38, section 4).
   with the two bridge rules and spend attribution. Exit: both run and fail
   for the right reason on today's machine. Written 2026-09-12, with
   `tests/manual/lib.sh` holding what every proof shares. The run is
-  blocked: `cageworks up` fails on this host in microvm.nix's
+  blocked: `fabriek up` fails on this host in microvm.nix's
   `microvm-store-disk.erofs` (mkfs.erofs under bubblewrap cannot open
   `nixos-tmpfiles.d/lib`, and the copy fallback is refused), which is
   upstream of everything here. Unverified on a machine until that builds.
@@ -82,14 +82,14 @@ Two commits in two repositories and a lock bump each (ADR-018).
 
 - 2.1 A generated machine flake per factory under the state directory, the
   worked repository as its input, `flake.lock` pinned per factory.
-  `cageworks up` builds from the lock; a bad declaration fails the build.
+  `fabriek up` builds from the lock; a bad declaration fails the build.
   Each role's devShell resolved at build time and handed to the session as
   environment. Done 2026-09-12 on the branch: `modules/machine-spec.sh`
   composes the spec inside a derivation from the same validators, and
   `lib.factory` realises each role's devShell inputs into a profile at
-  `/etc/cageworks/roles/<role>/profile` (its `buildInputs`, not
+  `/etc/fabriek/roles/<role>/profile` (its `buildInputs`, not
   `print-dev-env`: there is no shell to run a hook in). The clamped
-  declaration lands at `/etc/cageworks/declaration.json`; the machine program
+  declaration lands at `/etc/fabriek/declaration.json`; the machine program
   starts reading it there in 4.1, when the executor does (3.3). 450 tests
   green.
 - 2.2 Machine services: Forgejo on a `recordQuota` dataset; Valkey with no
@@ -108,14 +108,14 @@ Two commits in two repositories and a lock bump each (ADR-018).
   and the profile on `NIXCAGE_PATH_PREFIX` in, `--subject`, `--shell` and
   the journal bind out; `seam.bats` asserts the new line. The machine has
   not booted with any of this: the erofs builder failure of 0.6 stands.
-- 2.3 `cageworks up` idempotent for Forgejo accounts, `read` collaborators,
+- 2.3 `fabriek up` idempotent for Forgejo accounts, `read` collaborators,
   `write:issue` tokens, memory issues opened as each role, labels for every
   stage, and ACL users. Second `up` changes nothing. Done 2026-09-12 on the
-  branch: `cageworks-container factory-prepare`, run by `up` once the
+  branch: `fabriek-container factory-prepare`, run by `up` once the
   machine holds its credential, with `modules/forge.sh` and `modules/bus.sh`
   behind it and `tests/command/prepare.bats` driving a stubbed forge twice.
   A stage's label is its capability's name. The record's re-import from
-  `refs/cageworks/record` landed 2026-09-13: on a board with no issue at
+  `refs/fabriek/record` landed 2026-09-13: on a board with no issue at
   all, prepare reads `issues.json` off origin and opens each issue again in
   number order with its labels and state, memory issues excepted (each is
   opened as its role), naming a label the declaration no longer has. The
@@ -143,7 +143,7 @@ Two commits in two repositories and a lock bump each (ADR-018).
 One package, built through the flake, tests in its own runner.
 
 - 3.1 Skeleton: the six-verb vocabulary and every bus message as types,
-  validators for both, `cageworks.nix` schema mirrored for the executor's
+  validators for both, `fabriek.nix` schema mirrored for the executor's
   checks. Exit: a malformed command and a malformed message are refused by
   test. Done 2026-09-12 on the branch: `factory/`, built by the flake with
   `tsc` and tested with node's own runner, no npm and no lockfile; pi's
@@ -162,7 +162,7 @@ One package, built through the flake, tests in its own runner.
   fake. A fresh session is a fresh process (ADR-035 point 4 amended), the
   outcome is a `report_outcome` tool the agent calls, memory an
   `update_memory` tool. The machine carries the extension and a
-  `models.json` under `/etc/cageworks/pi` (`machine/floor.nix`), and a
+  `models.json` under `/etc/fabriek/pi` (`machine/floor.nix`), and a
   supervised session is handed them with its two credentials and its
   environment (`seam.bats`).
 - 3.3 Executor: reconciliation on start against `assigning` rows; the six
@@ -171,17 +171,17 @@ One package, built through the flake, tests in its own runner.
   after the executor's own commit, signature and namespace check; push and
   pull request on Forgejo; token minting; unit watching; decider restart;
   soft limit stops routing; `mirror` as a server-side verb exporting issues
-  to `refs/cageworks/record` and pushing with `main`. Exit: the routing
+  to `refs/fabriek/record` and pushing with `main`. Exit: the routing
   scenarios of 0.1 pass as tests, including the liar. Done
   2026-09-12 on the branch: `factory/src/executor/core.ts` against five
   interfaces, 20 scenarios including the crash between board write and
   send, the stall and the liar; adapters for the forge, the bus, sessions
-  and git; `main.ts` as the `cageworks-executor` unit, which publishes the
+  and git; `main.ts` as the `fabriek-executor` unit, which publishes the
   board and the spend to `events:executor` for the relay. The operator
   writes through it: `task-file`, `role-stop`, `role-steer`,
   `factory-mirror` and `factory-send` put one entry on the `operator`
   stream as the executor's bus user, title and body as files. The export is
-  `issues.json` on `refs/cageworks/record`; prepare reads it back (2.3).
+  `issues.json` on `refs/fabriek/record`; prepare reads it back (2.3).
 - 3.4 Decider: a cage like any other, prompt from the four parts of
   decision 41, read token on Forgejo, typed commands out. Exit: a recorded
   board produces a valid `assign` and an invalid one is refused upstream.
@@ -189,9 +189,9 @@ One package, built through the flake, tests in its own runner.
   (7 scenarios) and gates every tool call through the vocabulary and the
   declaration; `decider/index.ts` runs it as a pi extension in its own
   cage, named `decider`, which the declaration may not use; the policy
-  file is `decider.policy` in `cageworks.nix`, baked into the image and
+  file is `decider.policy` in `fabriek.nix`, baked into the image and
   bound read-only.
-- 3.5 Relay: `cageworks factory watch <factory>` JSONL over ssh, its shape
+- 3.5 Relay: `fabriek factory watch <factory>` JSONL over ssh, its shape
   written down, one contract test on each side. Done 2026-09-12 on the
   branch: one JSON object per line, `stream`, `id`, `fields` as the bus
   holds them; `relay/fixtures.json` is the contract, read by the relay's
@@ -199,7 +199,7 @@ One package, built through the flake, tests in its own runner.
 
 ## Phase 4: the operator's side, on the branch
 
-- 4.1 `cageworks` reduced to the launcher of decision 53: `up`, `down`,
+- 4.1 `fabriek` reduced to the launcher of decision 53: `up`, `down`,
   `vm status`, `factory mirror`, `factory watch`, `task file`, `role stop`.
   Deleted with their tests: `task-store.sh`, `record.sh`, `caps.sh`,
   `integrate.sh`, `journal.sh`, `factory-clone.sh`, the `role`, `task` and
@@ -214,11 +214,11 @@ One package, built through the flake, tests in its own runner.
   is reachable from it without the web UI, merge excepted. Done 2026-09-12
   on the branch for what the relay carries: `tui/model.ts` folds relay
   lines (pure, tested on the fixture), `tui/view.ts` renders (tested),
-  `tui/main.ts` reads `cageworks factory watch` and writes through the
+  `tui/main.ts` reads `fabriek factory watch` and writes through the
   CLI; keys file, steer, stop, retry, block, push and mirror. Not yet on
   it: a memory view and the pull request list, which are the forge's and
   not on the bus; the board reaches the TUI as the executor's `board`
-  event. `cageworks factory console <factory>` starts it.
+  event. `fabriek factory console <factory>` starts it.
 
 ## Phase 5: parity and merge
 
@@ -265,5 +265,5 @@ One package, built through the flake, tests in its own runner.
 
 Relay shape: 3.5. Record export format and re-import: 3.3, with re-import
 in 2.3. `probes` cap and the proxy log's place: 2.2. Re-announce after a
-Valkey restart: 3.2. `cageworks up` idempotency: 2.3. Origin ref acceptance
+Valkey restart: 3.2. `fabriek up` idempotency: 2.3. Origin ref acceptance
 on non-Forgejo forges: 5.1, measured against the real origin.

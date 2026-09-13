@@ -8,7 +8,7 @@ import { decide } from "./policy.js";
 const world = fromEnvironment();
 const bound = bindDecider({
   ...world,
-  tickMs: Number(process.env["CAGEWORKS_FAKE_TICK_MS"] ?? "2000"),
+  tickMs: Number(process.env["FABRIEK_FAKE_TICK_MS"] ?? "2000"),
   async think(_prompt, snapshot) {
     for (const c of decide(snapshot, world.declaration)) {
       const r = await bound.core.command(c);

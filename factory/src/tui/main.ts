@@ -1,7 +1,7 @@
 // The operator's one face (ADR-039 point 3), on the operator's host. Reads
-// the relay through `cageworks factory watch`, folds every line into the
+// the relay through `fabriek factory watch`, folds every line into the
 // model, draws the view, and writes through the CLI: every key here is a
-// cageworks command, so every intervention passes the executor and is
+// fabriek command, so every intervention passes the executor and is
 // recorded. Nothing here reaches the machine any other way.
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -15,14 +15,14 @@ const CLEAR = `${ESC}[2J${ESC}[H`;
 
 const factory: string = process.argv[2] ?? "";
 if (!factory) {
-  process.stderr.write("usage: cageworks-tui <factory> [role ...]\n");
+  process.stderr.write("usage: fabriek-tui <factory> [role ...]\n");
   process.exit(1);
 }
 const roles = process.argv.slice(3);
 let state: State = initial(roles);
 let draw = true;
 
-const cli = process.env["CAGEWORKS_CLI"] ?? "cageworks";
+const cli = process.env["FABRIEK_CLI"] ?? "fabriek";
 
 function run(args: string[]): Promise<string> {
   return new Promise((resolve) => {

@@ -55,7 +55,7 @@ prepends, so a project shadowing any of these with its own build gets its own.
 **3. The floor is declared by the machine, not by nixcage's own userland.**
 nixcage has no opinion about coding agents and ADR-018 exists to keep it that
 way. What it gains is one option -- a host-declared extension to the base
-userland -- and cageworks' guest module declares `pi-coding-agent` into it
+userland -- and fabriek' guest module declares `pi-coding-agent` into it
 beside `nixcage.principalUidRange` and `nixcage.principalSubjects`. Mechanism
 in nixcage, policy here.
 
@@ -70,7 +70,7 @@ declares pi, because that is what makes the choice visible to somebody reading
 it. It no longer needs to provide pi, and the sentence reasoning from ADR-016
 that it should is wrong.
 
-**6. There are three tiers, and only the first is cageworks'.** A cage carries
+**6. There are three tiers, and only the first is fabriek'.** A cage carries
 the floor, whatever anything declares. A repository composes what every one of
 its roles gets, in its own flake. A role names the devShell of its speciality
 (ADR-016). Only the first is a decision of this repository's; the second is a
@@ -83,7 +83,7 @@ alone finds them invisible to every specialist. The repair is concatenation in
 the project's own flake. A `resources.packages` in the declaration would be
 worse in three ways: it would be baked into the machine image, so adding a tool
 would cost a rebuild where a devShell edit costs nothing; the names would
-resolve against cageworks' nixpkgs rather than the project's, so a repository
+resolve against fabriek' nixpkgs rather than the project's, so a repository
 would be asking for a tool from a pin it cannot see; and a floor a project can
 declare is a floor a project can forget, which is the failure point 1 exists to
 remove. The example demonstrates the composition instead.
@@ -97,7 +97,7 @@ holding the error cannot reach.
 **The agent's version is the machine's, not the project's.** ADR-029 point 2
 said pi would be "pinned like every other input here" and I noted at the time
 that it was not: it came from the project's devShell, which the project pinned.
-Now it comes from the machine's, which cageworks pins, and that sentence
+Now it comes from the machine's, which fabriek pins, and that sentence
 becomes true. A project wanting a different build of pi shadows it in its own
 devShell, which point 2 above allows and nothing here prevents.
 
@@ -156,7 +156,7 @@ On a machine, the floor is what a cage can run rather than what a module says
 it declared:
 
 ```bash
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/observe.sh floor
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/observe.sh floor
 # in a cage of a project with no devShell: pi, sed, grep, awk and xargs resolve
 ```
 

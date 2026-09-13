@@ -1,6 +1,6 @@
 ---
 id: ADR-039
-title: The operator's client is a TUI on a relay, and cageworks is the machine
+title: The operator's client is a TUI on a relay, and fabriek is the machine
 status: implemented
 date: 2026-09-12
 status_date: 2026-09-13
@@ -25,21 +25,21 @@ running turn.
 survives a dead executor; every intervention is recorded; stopping works
 over ssh without the executor.
 
-**2. `cageworks factory watch <factory>` is the relay:** the bus as JSONL on
+**2. `fabriek factory watch <factory>` is the relay:** the bus as JSONL on
 stdout over the machine's ssh port, its shape written down and covered by a
 contract test on each side. It is what our client consumes and what anyone
 building another client consumes, so ADR-026 point 7 survives as an option
 beside ours.
 
 **3. The client is a TUI of ours, on the operator's host,** consuming the
-relay and writing through the `cageworks` CLI. It is the one face: roles and
+relay and writing through the `fabriek` CLI. It is the one face: roles and
 their state, the board by stage label, the live stream per role, steer and
 abort, file, block, retry, stop, mirror, each role's memory issue, the open
 pull requests, and spend per role and for the decider against the ceiling.
 Forgejo's web UI over the forwarded port stays reachable and is required for
 the merge click alone (ADR-036 point 6).
 
-**4. cageworks is the machine; the host holds a launcher and a client.** On
+**4. fabriek is the machine; the host holds a launcher and a client.** On
 the operator's host: `up`, `down`, `vm status`, `factory mirror`, `factory
 watch`, `task file`, `role stop`, the TUI, and `config.toml` with its
 ceilings and credential paths. Everything else lives on the machine, and a

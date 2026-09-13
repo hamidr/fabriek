@@ -47,7 +47,7 @@ export interface Git {
   /** Commits on the branch after the given one, or after the base when null. */
   commitsSince(branch: string, since: string | null): Promise<number>;
   push(branch: string): Promise<void>;
-  /** main and refs/cageworks/record to origin, together. */
+  /** main and refs/fabriek/record to origin, together. */
   mirror(): Promise<void>;
 }
 

@@ -11,10 +11,10 @@ import { RoleSessions, sessionCommand } from "./sessions.js";
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("role sessions", () => {
-  it("given CAGEWORKS_SESSION_COMMAND, the words are the argv prefix; without it the machine program is", () => {
-    assert.deepEqual(sessionCommand({ CAGEWORKS_SESSION_COMMAND: "/tmp/session --verbose" }), ["/tmp/session", "--verbose"]);
-    assert.deepEqual(sessionCommand({}), ["cageworks-container"]);
-    assert.deepEqual(sessionCommand({ CAGEWORKS_SESSION_COMMAND: "  " }), ["cageworks-container"]);
+  it("given FABRIEK_SESSION_COMMAND, the words are the argv prefix; without it the machine program is", () => {
+    assert.deepEqual(sessionCommand({ FABRIEK_SESSION_COMMAND: "/tmp/session --verbose" }), ["/tmp/session", "--verbose"]);
+    assert.deepEqual(sessionCommand({}), ["fabriek-container"]);
+    assert.deepEqual(sessionCommand({ FABRIEK_SESSION_COMMAND: "  " }), ["fabriek-container"]);
   });
 
   it("given a substituted program, a session is started with it and the same role-enter line the machine would get", async () => {

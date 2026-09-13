@@ -4,7 +4,7 @@ title: A factory brings its own machine and declares itself
 status: implementing
 date: 2026-09-06
 status_date: 2026-09-12
-summary: a factory is declared in the repository it works and runs in a VM cageworks builds for it on either platform
+summary: a factory is declared in the repository it works and runs in a VM fabriek builds for it on either platform
 depends_on: [PRD-003]
 supersedes: []
 superseded_by: []
@@ -84,7 +84,7 @@ one platform out of two by the project that does not own it.
   and PRD-003. The VM is local and its port is on loopback.
 - **Replacing nixcage's own paths.** nixcage keeps its shared macOS VM and its
   native Linux cages for the single-project case. This document changes only
-  what cageworks uses.
+  what fabriek uses.
 - **Dispatch.** What remains of PRD-002 remains there. A factory with its own
   machine still starts runs only when a person types the command.
 
@@ -115,7 +115,7 @@ one platform out of two by the project that does not own it.
 ### The declaration
 
 - A repository states the factory that works it, in its own flake, against a
-  schema cageworks defines and closes. What is read is what the repository has
+  schema fabriek defines and closes. What is read is what the repository has
   committed, so the factory working a repository is the one its history
   declares, and which declaration a run used stays reconstructable. Nothing outside that schema is accepted,
   and an unknown key is an error naming the key rather than a value ignored.
@@ -136,7 +136,7 @@ one platform out of two by the project that does not own it.
 
 ### The machine
 
-- Each factory runs in a machine of its own, built by cageworks from the same
+- Each factory runs in a machine of its own, built by fabriek from the same
   description on Linux and on macOS. A person cannot tell from inside which
   platform they are on.
 - Two factories share no kernel, no store, no uid space and no filesystem.
@@ -150,7 +150,7 @@ one platform out of two by the project that does not own it.
   recoverable is inside the machine now being stopped.
 - The operator can see which factories exist here, which are running, and what
   each is holding, without entering one.
-- Reaching into a factory's machine is cageworks' own business, since cageworks
+- Reaching into a factory's machine is fabriek' own business, since fabriek
   made the machine. No factory reads another factory's way in.
 
 ### Roles, unchanged
@@ -186,7 +186,7 @@ one platform out of two by the project that does not own it.
   ADR-020 that this is accepted rather than solved.
 - **The machine is written twice.** nixcage's own VM module already carries
   the volumes, the pool, the shares and the networking, per machine. ADR-019
-  gives the VM to cageworks, so this is a second implementation of that
+  gives the VM to fabriek, so this is a second implementation of that
   scaffolding, per factory. It was weighed against importing nixcage's module
   and parameterising it, which is cheaper and is the split ADR-019 rejected.
   The cost is that a fix upstream does not arrive here, and the mitigation is
@@ -199,7 +199,7 @@ one platform out of two by the project that does not own it.
   than one behind a running cage. Measured in phase 2 rather than assumed, and
   if it is bad the answer is keeping the machine up rather than removing it.
 - **The storage disaster is inherited.** ADR-017 exists because a VM was killed
-  rather than shut down and worktrees came back empty. cageworks now owns the
+  rather than shut down and worktrees came back empty. fabriek now owns the
   stopping, so it owns that failure mode; the requirement above is the mitigation
   and the phase 2 exit test is the evidence.
 - **Two ways to declare, briefly.** Between phases the declaration moves before
@@ -219,7 +219,7 @@ one platform out of two by the project that does not own it.
   shared into the machine or fetched over the machine's own transport is not
   settled, and the two differ in what the machine can see of the host.
 - **Where do secrets come from?** `secretEnv` resolves against the host's
-  sops-nix today. A machine cageworks built has no such host, and nothing here
+  sops-nix today. A machine fabriek built has no such host, and nothing here
   says what replaces it.
 - **Is concurrency per factory or per host?** The cap is stated per host and
   spent per factory, and with several factories running those are different
@@ -235,7 +235,7 @@ deleted before the thing replacing it exists.
    reported. Factories still run exactly where they run today. The NixOS module,
    the option namespace, the rendered declaration and the old example are deleted
    in this phase, because this is the phase that replaces them.
-2. **A machine exists.** cageworks builds and boots one microVM per factory on
+2. **A machine exists.** fabriek builds and boots one microVM per factory on
    both platforms, with its own disk, its pool, and nixcage's host module inside.
    `up`, `down` and a status that says which machines are here. No roles in it
    yet. Exits on the stop-and-start test, because the storage that phase 3
@@ -254,12 +254,12 @@ deleted before the thing replacing it exists.
    for chattr and stopped. A machine ended with the command that started it,
    twice: backgrounding is not detaching, and setsid refuses when the caller
    already leads a process group. The machine generated SSH host keys on the
-   rootfs, so it was a different machine every boot and cageworks refused the
+   rootfs, so it was a different machine every boot and fabriek refused the
    second one. And a successful shutdown looked like a refusal, because
    powering off takes the connection down with it.
 3. **The factory moves in.** The transport, the clone on the machine's own pool,
    worktrees as datasets, and the three primitives called inside the machine.
-   `cageworks role` and `cageworks task run` work against the machine on both
+   `fabriek role` and `fabriek task run` work against the machine on both
    platforms, and the recorded role-session invocation is unchanged. The
    transport of the previous arrangement stops being used here.
 
@@ -281,7 +281,7 @@ deleted before the thing replacing it exists.
    were invisible to a suite of 431 passing tests, because the suite drives the
    machine program with the transport stubbed and the machine had been built and
    booted without either meeting the other. The machine program was not installed
-   on the machine at all, so a factory answered "cageworks-container: command
+   on the machine at all, so a factory answered "fabriek-container: command
    not found" to every verb the CLI sends. The machine's nix refused
    `nix-command` and `flakes`, so no declaration could be read and no role
    resolved. `git` was on no path but the wrapper's. And a clone that checks out
@@ -291,7 +291,7 @@ deleted before the thing replacing it exists.
 
    A fifth was not a fault in what ran but in what it said. Reading a
    declaration discarded nix's own complaint, so all four of the above reported
-   as "its flake has no cageworks output". That message sent me to inspect a
+   as "its flake has no fabriek output". That message sent me to inspect a
    flake that was correct, three times, before I ran the evaluation by hand.
 
    Not done here, and not required by this phase: pushing role branches back to
@@ -304,10 +304,10 @@ deleted before the thing replacing it exists.
    only visible once roles are working in it.
 
    Done, by ADR-040: the clamp runs inside the image build
-   (`modules/machine-spec.sh`), `cageworks up` prints what it changed, and
+   (`modules/machine-spec.sh`), `fabriek up` prints what it changed, and
    `tests/manual/stop-and-start.sh` ran ten rebuild-and-boot cycles on
    2026-09-12 with the pool intact (docs/roadmap.md 2.5).
-5. **First contact.** Running cageworks without installing it, an example
+5. **First contact.** Running fabriek without installing it, an example
    repository carrying a real declaration, and the documents rewritten to
    describe what the thing now is. The phase that makes goal 4 true for somebody
    who did not build this.

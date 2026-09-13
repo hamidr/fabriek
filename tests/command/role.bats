@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# 'cageworks role' enters a declared role by hand. Unlike entering a project it
+# 'fabriek role' enters a declared role by hand. Unlike entering a project it
 # takes no directory: the repository comes from the declaration and the role's
 # worktree lives in nixcage state, so nothing about it depends on where it is
 # typed.
@@ -16,24 +16,24 @@ teardown() {
 }
 
 @test "role runs the machine role-enter with the factory and the role" {
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	assert_success
 	run nixcage_calls
-	assert_output --partial "cageworks-container role-enter acme builder true"
+	assert_output --partial "fabriek-container role-enter acme builder true"
 }
 
 @test "role needs no flake in the current directory and no workspace root" {
 	# A role works a worktree the supervisor keeps, not a project the operator
 	# is standing in.
 	cd "$TEST_TEMP_DIR"
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	assert_success
 	refute_output --partial "flake.nix"
 	refute_output --partial "workspace root"
 }
 
 @test "a session command reaches the machine as the words it was written as" {
-	run_cageworks role acme builder -- sh -c "echo one two"
+	run_fabriek role acme builder -- sh -c "echo one two"
 	assert_success
 	run nixcage_argv
 	assert_line --index 4 "sh"
@@ -47,10 +47,10 @@ teardown() {
 	# cage key of ADR-009 belongs to the run nobody watches.
 	touch "$TEST_TEMP_DIR/agent.sock"
 	export SSH_AUTH_SOCK="$TEST_TEMP_DIR/agent.sock"
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	assert_success
 	run nixcage_calls
-	assert_output --partial "cageworks-container role-enter --agent acme builder"
+	assert_output --partial "fabriek-container role-enter --agent acme builder"
 	## And the transport forwards the operator's own agent, which is a
 	## different thing from the flag the machine program reads: one says which
 	## socket to sign through, the other carries it across the connection.
@@ -63,7 +63,7 @@ teardown() {
 	# the operator's own and would resolve to nothing over there.
 	touch "$TEST_TEMP_DIR/agent.sock"
 	export SSH_AUTH_SOCK="$TEST_TEMP_DIR/agent.sock"
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	run nixcage_calls
 	refute_output --partial "$TEST_TEMP_DIR/agent.sock"
 	refute_output --partial "--auth-sock"
@@ -71,7 +71,7 @@ teardown() {
 
 @test "with no agent to forward the session still starts" {
 	unset SSH_AUTH_SOCK
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	assert_success
 	run nixcage_calls
 	refute_output --partial "--agent"
@@ -80,7 +80,7 @@ teardown() {
 @test "the agent flag precedes the factory, or the machine reads it as the command" {
 	touch "$TEST_TEMP_DIR/agent.sock"
 	export SSH_AUTH_SOCK="$TEST_TEMP_DIR/agent.sock"
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	run nixcage_argv
 	assert_line --index 2 "--agent"
 	assert_line --index 3 "acme"
@@ -89,17 +89,17 @@ teardown() {
 @test "an interactive session asks for a terminal and a commanded one does not" {
 	# A terminal is the transport's to ask for now: ssh -t rather than a flag
 	# the machine program reads, so it is asserted where it is actually passed.
-	run_cageworks role acme builder
+	run_fabriek role acme builder
 	run ssh_flags
 	assert_output --partial " -t"
 	rm -f "$SSH_FLAGS"
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	run ssh_flags
 	refute_output --partial " -t"
 }
 
 @test "role without a factory and a role explains itself" {
-	run_cageworks role acme
+	run_fabriek role acme
 	assert_failure
 	assert_output --partial "role <factory> <role>"
 }
@@ -111,7 +111,7 @@ teardown() {
 	local repo="$TEST_TEMP_DIR/checkout"
 	git init -q "$repo"
 	git -C "$repo" remote add origin https://example.invalid/acme.git
-	cat >"$CAGEWORKS_CONFIG" <<EOF
+	cat >"$FABRIEK_CONFIG" <<EOF
 [caps]
 memory = "16G"
 cores = 8
@@ -119,7 +119,7 @@ cores = 8
 [factories.acme]
 path = "$repo"
 EOF
-	run_cageworks role acme builder -- true
+	run_fabriek role acme builder -- true
 	assert_success
 
 	run nixcage_argv

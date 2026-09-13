@@ -11,7 +11,7 @@ setup() {
 	setup_temp_dir
 	for m in names sizes schema resources repo-declaration machine-spec; do
 		# shellcheck disable=SC1090
-		source "$CAGEWORKS_ROOT/modules/$m.sh"
+		source "$FABRIEK_ROOT/modules/$m.sh"
 	done
 	DECL="$TEST_TEMP_DIR/declaration.json"
 	LOCAL="$TEST_TEMP_DIR/local.json"
@@ -34,7 +34,7 @@ teardown() {
 	teardown_temp_dir
 }
 
-spec() { cageworks_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
+spec() { fabriek_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 
 @test "given a declaration and the local facts, the spec names the factory, its port and its key" {
 	run jq -r '.factory, .system, .hostSystem, .sshPort, .authorizedKey' <<<"$(spec)"
@@ -66,16 +66,16 @@ spec() { cageworks_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 	assert_line --index 2 1
 }
 
-@test "when the declaration carries a key cageworks does not know, the build is refused by that key's name" {
+@test "when the declaration carries a key fabriek does not know, the build is refused by that key's name" {
 	jq '.roles.builder.colour = "blue"' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
-	run cageworks_machine_spec "$DECL" "$LOCAL"
+	run fabriek_machine_spec "$DECL" "$LOCAL"
 	assert_failure
 	assert_output --partial colour
 }
 
 @test "when a stage needs what no role provides, the build is refused" {
 	jq '.workflows.ship.stages[0].needs = "review"' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
-	run cageworks_machine_spec "$DECL" "$LOCAL"
+	run fabriek_machine_spec "$DECL" "$LOCAL"
 	assert_failure
 	assert_output --partial review
 }

@@ -15,7 +15,7 @@
 ## on a bridge (a veth on no bridge would be "ve-<cage>"), and a cage is
 ## named after its role (names.sh bounds a role to what fits). The set below
 ## is keyed on that name and the address the executor hands the session,
-## which is the same plan this file writes to /etc/cageworks/bridge.json for
+## which is the same plan this file writes to /etc/fabriek/bridge.json for
 ## the executor to read.
 ##
 ## The machine's own firewall is the third party here: it drops a new
@@ -27,10 +27,10 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
+  cfg = config.fabriek.machine;
   roles = lib.attrNames (cfg.declaration.roles or { });
   net = "10.77.0";
-  bridge = "cageworks-${cfg.factory}";
+  bridge = "fabriek-${cfg.factory}";
   host = "${net}.1";
   cages = {
     decider = "${net}.2";
@@ -48,7 +48,7 @@ let
   );
 in
 {
-  options.cageworks.machine = {
+  options.fabriek.machine = {
     forgejoPort = lib.mkOption {
       type = lib.types.port;
       default = 3000;
@@ -80,7 +80,7 @@ in
     ## The plan, for the executor that starts sessions and the proofs that
     ## check them. One copy, and the rules below are generated from the same
     ## attributes, so the two cannot disagree.
-    environment.etc."cageworks/bridge.json".text = builtins.toJSON plan;
+    environment.etc."fabriek/bridge.json".text = builtins.toJSON plan;
 
     networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
       cfg.forgejoPort
@@ -88,7 +88,7 @@ in
       cfg.egressPort
     ];
 
-    networking.nftables.tables.cageworks-cages = {
+    networking.nftables.tables.fabriek-cages = {
       family = "bridge";
       content = ''
         set cages {

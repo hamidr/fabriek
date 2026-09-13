@@ -161,7 +161,7 @@ here by decision 6.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec models/factory-structure.als
@@ -172,5 +172,5 @@ The compare-and-swap is asserted against real git rather than stubbed, since it
 is the whole decision: two processes creating one claim ref leave one at exit 0
 and one at exit 128, a delete with a mismatched expected value leaves the ref in
 place at exit 1, and a delete with the all-zeros object id is refused by
-cageworks before it reaches git. Those three exit codes were measured on git
+fabriek before it reaches git. Those three exit codes were measured on git
 2.55.0 before this document was written.

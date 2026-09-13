@@ -12,7 +12,7 @@
       url = "github:hamidr/nixcage";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    ## The machine a factory runs in is cageworks' now, so what builds one is
+    ## The machine a factory runs in is fabriek' now, so what builds one is
     ## an input of ours rather than something reached through nixcage
     ## (ADR-019).
     microvm = {
@@ -34,7 +34,7 @@
       perSystem =
         { pkgs, lib, ... }:
         let
-          cageworks = import ./modules/package.nix {
+          fabriek = import ./modules/package.nix {
             inherit pkgs;
             inherit (inputs) self;
           };
@@ -42,8 +42,8 @@
         in
         {
           packages = {
-            default = cageworks.cli;
-            cageworks = cageworks.cli;
+            default = fabriek.cli;
+            fabriek = fabriek.cli;
             ## The TypeScript half: executor, extension, decider, relay, TUI.
             factory = factory.package;
           }
@@ -51,7 +51,7 @@
           ## macOS is the VM and never this one. It is not offered here at
           ## all: it needs setfacl, and acl does not build on darwin.
           // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-            cageworks-container = cageworks.container;
+            fabriek-container = fabriek.container;
           };
 
           devShells.default = pkgs.mkShell {
@@ -93,12 +93,12 @@
         };
 
       flake.overlays.default = final: _prev: {
-        cageworks =
+        fabriek =
           (import ./modules/package.nix {
             pkgs = final;
             inherit (inputs) self;
           }).cli;
-        cageworks-container =
+        fabriek-container =
           (import ./modules/package.nix {
             pkgs = final;
             inherit (inputs) self;

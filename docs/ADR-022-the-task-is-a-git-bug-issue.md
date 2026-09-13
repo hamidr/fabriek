@@ -104,7 +104,7 @@ so its ref partition has to be told where the partition now stops.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 ```

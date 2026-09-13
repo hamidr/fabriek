@@ -6,9 +6,9 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
-	source "$CAGEWORKS_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/factory-clone.sh
-	source "$CAGEWORKS_ROOT/modules/factory-clone.sh"
+	source "$FABRIEK_ROOT/modules/factory-clone.sh"
 	STATE="$TEST_TEMP_DIR/state"
 }
 
@@ -17,24 +17,24 @@ teardown() {
 }
 
 @test "a factory's clone lives in nixcage state, beside nothing the operator edits" {
-	run cageworks_factory_clone_path "$STATE" acme
+	run fabriek_factory_clone_path "$STATE" acme
 	assert_success
 	assert_output "$STATE/factories/acme"
 }
 
 @test "two factories do not share a clone" {
-	a="$(cageworks_factory_clone_path "$STATE" acme)"
-	b="$(cageworks_factory_clone_path "$STATE" other)"
+	a="$(fabriek_factory_clone_path "$STATE" acme)"
+	b="$(fabriek_factory_clone_path "$STATE" other)"
 	[ "$a" != "$b" ]
 }
 
 @test "a factory name that could escape the state directory is refused" {
-	run cageworks_factory_clone_path "$STATE" "../../etc"
+	run fabriek_factory_clone_path "$STATE" "../../etc"
 	assert_failure
 }
 
 @test "the clone never shares object files with the repository it came from" {
-	run cageworks_factory_clone_args /srv/acme "$STATE/factories/acme"
+	run fabriek_factory_clone_args /srv/acme "$STATE/factories/acme"
 	assert_success
 	assert_output --partial "--no-hardlinks"
 	assert_output --partial "/srv/acme"
@@ -42,20 +42,20 @@ teardown() {
 }
 
 @test "the clone's own tree sits on a branch no role could ever hold" {
-	run cageworks_factory_clone_branch
+	run fabriek_factory_clone_branch
 	assert_success
 	# A role's branches are always <role>/<leaf>, so a single segment cannot collide.
 	refute_output --partial "/"
 }
 
 @test "main is not what the clone has checked out" {
-	run cageworks_factory_clone_branch
+	run fabriek_factory_clone_branch
 	refute_output "main"
 	refute_output "master"
 }
 
 @test "git is told a role's worktree is trustworthy, since the supervisor does not own it" {
-	run cageworks_factory_git_args "$STATE/factories/acme"
+	run fabriek_factory_git_args "$STATE/factories/acme"
 	assert_success
 	assert_output --partial "safe.directory=$STATE/factories/acme"
 }
@@ -72,7 +72,7 @@ teardown() {
 	# main checked out by nothing, exactly as the design requires.
 	git -C "$origin" switch -q -c operator/work
 
-	path="$(cageworks_factory_clone_ensure "$STATE" acme "$origin")"
+	path="$(fabriek_factory_clone_ensure "$STATE" acme "$origin")"
 	run git -C "$path" rev-parse --verify refs/heads/main
 	assert_success
 }
@@ -88,15 +88,15 @@ teardown() {
 	git -C "$origin" commit -qm one
 	git -C "$origin" switch -q -c operator/work
 
-	path="$(cageworks_factory_clone_ensure "$STATE" acme2 "$origin")"
-	[ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$(cageworks_factory_shared_branch)" ]
+	path="$(fabriek_factory_clone_ensure "$STATE" acme2 "$origin")"
+	[ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$(fabriek_factory_shared_branch)" ]
 }
 
 @test "a repository may carry its own guidance for the roles working it" {
 	repo="$TEST_TEMP_DIR/guided"
 	mkdir -p "$repo/docs"
 	printf 'in this factory, ADRs are immutable.\n' >"$repo/docs/factory-guidance.md"
-	run cageworks_factory_guidance "$repo"
+	run fabriek_factory_guidance "$repo"
 	assert_success
 	assert_output --partial "ADRs are immutable"
 }
@@ -104,13 +104,13 @@ teardown() {
 @test "a repository that carries none is not an error" {
 	repo="$TEST_TEMP_DIR/unguided"
 	mkdir -p "$repo"
-	run cageworks_factory_guidance "$repo"
+	run fabriek_factory_guidance "$repo"
 	assert_success
 	assert_output ""
 }
 
 @test "guidance is read from the factory's own clone, not from anywhere else" {
-	run cageworks_factory_guidance_path "$STATE/factories/acme"
+	run fabriek_factory_guidance_path "$STATE/factories/acme"
 	assert_success
 	assert_output "$STATE/factories/acme/docs/factory-guidance.md"
 }
@@ -135,7 +135,7 @@ teardown() {
 	git -C "$seed" push -q "$origin" HEAD:refs/heads/main
 	git -C "$origin" symbolic-ref HEAD refs/heads/nowhere
 
-	run cageworks_factory_clone_ensure "$STATE" acme "$origin"
+	run fabriek_factory_clone_ensure "$STATE" acme "$origin"
 	assert_failure
 	assert_output --partial "no commit"
 

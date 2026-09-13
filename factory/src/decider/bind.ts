@@ -7,9 +7,9 @@
 // without a socket.
 //
 // Environment, as for a role's session, plus:
-//   CAGEWORKS_DECLARATION the declaration file
-//   CAGEWORKS_POLICY      the policy file the machine bound in, if any
-//   CAGEWORKS_PROXY       host:port of the proxy, for the soft limit
+//   FABRIEK_DECLARATION the declaration file
+//   FABRIEK_POLICY      the policy file the machine bound in, if any
+//   FABRIEK_PROXY       host:port of the proxy, for the soft limit
 import { readFileSync } from "node:fs";
 import { BusClient, type Entry } from "../bus/client.js";
 import { ForgeClient } from "../forge/client.js";
@@ -167,7 +167,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
 
 function env(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`cageworks: ${name} is not set; the executor starts the decider with it`);
+  if (!v) throw new Error(`fabriek: ${name} is not set; the executor starts the decider with it`);
   return v;
 }
 
@@ -182,10 +182,10 @@ function readOr(path: string | undefined): string | null {
 
 /** The binding's inputs as the executor hands them to the decider's session, read once. */
 export function fromEnvironment(): Pick<DeciderBindOptions, "declaration" | "policy" | "connect" | "forge" | "spent"> {
-  const declaration = readDeclaration(readFileSync(env("CAGEWORKS_DECLARATION"), "utf8"));
-  const [busHost, busPort] = env("CAGEWORKS_BUS").split(":");
-  const [owner, repo] = env("CAGEWORKS_REPOSITORY").split("/");
-  const proxy = process.env["CAGEWORKS_PROXY"];
+  const declaration = readDeclaration(readFileSync(env("FABRIEK_DECLARATION"), "utf8"));
+  const [busHost, busPort] = env("FABRIEK_BUS").split(":");
+  const [owner, repo] = env("FABRIEK_REPOSITORY").split("/");
+  const proxy = process.env["FABRIEK_PROXY"];
   const spent = async (): Promise<number> => {
     const r = await fetch(`http://${proxy}/status`).catch(() => null);
     const counts = r && r.ok ? ((await r.json()) as Record<string, number>) : {};
@@ -194,14 +194,14 @@ export function fromEnvironment(): Pick<DeciderBindOptions, "declaration" | "pol
   return {
     ...(proxy ? { spent } : {}),
     declaration,
-    policy: readOr(process.env["CAGEWORKS_POLICY"]),
+    policy: readOr(process.env["FABRIEK_POLICY"]),
     connect: () =>
       BusClient.connect({
         host: busHost ?? "127.0.0.1",
         port: Number(busPort ?? "6379"),
         user: "decider",
-        password: readFileSync(env("CAGEWORKS_BUS_PASSWORD"), "utf8").trim(),
+        password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
-    forge: new ForgeClient({ base: env("CAGEWORKS_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("CAGEWORKS_FORGE_TOKEN") }),
+    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
   };
 }

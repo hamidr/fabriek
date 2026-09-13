@@ -1,7 +1,7 @@
 ## One factory's machine, from the repository it works and the facts only the
 ## operator's host knows (ADR-040).
 ##
-## The declaration is the repository's own 'cageworks' output, evaluated from
+## The declaration is the repository's own 'fabriek' output, evaluated from
 ## the rev the machine flake's lock pins. Validation and the clamp run inside
 ## a derivation, by the same shell modules the operator's side used to run at
 ## every command, so a bad declaration fails the build with its own message
@@ -29,14 +29,14 @@ let
   machinePkgs = nixpkgs.legacyPackages.${facts.system};
 
   declaration =
-    project.cageworks
-      or (throw "the repository ${facts.factory} works declares no factory: its flake has no 'cageworks' output");
+    project.fabriek
+      or (throw "the repository ${facts.factory} works declares no factory: its flake has no 'fabriek' output");
 
   ## The spec, composed by modules/machine-spec.sh in a build. Import from
   ## derivation on purpose: the modules are the one description of what a
   ## declaration may say, and a second one in Nix would drift.
   specFile =
-    hostPkgs.runCommand "cageworks-spec-${facts.factory}"
+    hostPkgs.runCommand "fabriek-spec-${facts.factory}"
       {
         nativeBuildInputs = [
           hostPkgs.bash
@@ -49,7 +49,7 @@ let
         for m in names sizes schema resources repo-declaration machine-spec; do
           . ${self}/modules/$m.sh
         done
-        cageworks_machine_spec "$declarationPath" ${local} >"$out"
+        fabriek_machine_spec "$declarationPath" ${local} >"$out"
       '';
   spec = builtins.fromJSON (builtins.readFile specFile);
 
@@ -91,7 +91,7 @@ let
     ## build that happens to realise the profile.
     builtins.seq inputs (
       machinePkgs.buildEnv {
-        name = "cageworks-role-${name}";
+        name = "fabriek-role-${name}";
         paths = inputs;
         ignoreCollisions = true;
       }
@@ -106,12 +106,12 @@ let
   ## is part of the image like the rest of the declaration.
   policy = spec.declaration.decider.policy or null;
   policyModule = lib.optionalAttrs (policy != null) {
-    environment.etc."cageworks/decider-policy.md".source = "${project}/${policy}";
+    environment.etc."fabriek/decider-policy.md".source = "${project}/${policy}";
   };
   factoryModule = {
     environment.etc =
       lib.mapAttrs' (
-        name: profile: lib.nameValuePair "cageworks/roles/${name}/profile" { source = profile; }
+        name: profile: lib.nameValuePair "fabriek/roles/${name}/profile" { source = profile; }
       ) profiles
       // (policyModule.environment.etc or { });
   };

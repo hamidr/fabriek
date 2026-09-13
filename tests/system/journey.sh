@@ -10,13 +10,13 @@
 ##
 ##   nix develop --command tests/system/journey.sh
 ##
-## CAGEWORKS_PROOF_DIR names where it works; a fresh temp dir otherwise.
+## FABRIEK_PROOF_DIR names where it works; a fresh temp dir otherwise.
 ## Everything it starts is killed on exit. On a Mac the forge is Gitea
 ## (flake.nix says why); the API and CLI it drives are the ones the forge
 ## modules use on Forgejo, and the machine proofs are the check on Forgejo.
 set -uo pipefail
 F=acme
-export CAGEWORKS_PROOF_DIR="${CAGEWORKS_PROOF_DIR:-$(mktemp -d)}"
+export FABRIEK_PROOF_DIR="${FABRIEK_PROOF_DIR:-$(mktemp -d)}"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/../manual/lib.sh"
 ROOT="$PWD"
@@ -24,8 +24,8 @@ W="$S/system"
 rm -rf "$W"
 STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge"
 mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE"
-export CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
-export PATH="$BIN:$PATH" CAGEWORKS_LIB="$ROOT/modules"
+export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
+export PATH="$BIN:$PATH" FABRIEK_LIB="$ROOT/modules"
 
 ## Everything this run starts, and everything a run before it left: the
 ## executor's sessions are its children and not this script's, so they are
@@ -66,7 +66,7 @@ cat >"$ETC/declaration.json" <<JSON
   "resources": { "taskAttempts": 2 } }
 JSON
 cat >"$ETC/bridge.json" <<JSON
-{ "bridge": "cageworks-$F", "host": "127.0.0.1", "prefix": 24,
+{ "bridge": "fabriek-$F", "host": "127.0.0.1", "prefix": 24,
   "cages": { "builder": "127.0.0.10", "reviewer": "127.0.0.11", "decider": "127.0.0.2" },
   "proxy": "127.0.0.1:1", "forgejo": "127.0.0.1:$FORGE_PORT", "valkey": "127.0.0.1:$VALKEY_PORT" }
 JSON
@@ -83,14 +83,14 @@ STUB
 cat >"$BIN/systemctl" <<STUB
 #!/usr/bin/env bash
 case "\$*" in
-*cageworks-bus-acl*) exec cageworks-container bus-acl $F ;;
+*fabriek-bus-acl*) exec fabriek-container bus-acl $F ;;
 *) exit 0 ;;
 esac
 STUB
 ## The programs as the tree holds them, run by bash as the suite runs them.
-cat >"$BIN/cageworks-container" <<STUB
+cat >"$BIN/fabriek-container" <<STUB
 #!/usr/bin/env bash
-exec bash "$ROOT/cageworks-container" "\$@"
+exec bash "$ROOT/fabriek-container" "\$@"
 STUB
 forge_bin="$(command -v forgejo || command -v gitea)"
 cat >"$BIN/forgejo" <<STUB
@@ -113,7 +113,7 @@ scenario "The bus and the forge come up on this host"
 valkey-server --bind 127.0.0.1 --port "$VALKEY_PORT" --save "" --appendonly no --protected-mode no >"$LOG/valkey" 2>&1 &
 pids+=($!)
 cat >"$FORGE/app.ini" <<INI
-APP_NAME = cageworks
+APP_NAME = fabriek
 RUN_MODE = prod
 [server]
 HTTP_ADDR = 127.0.0.1
@@ -147,8 +147,8 @@ check "the forge answers" 200 "$(eventually 60 200 forge_up)"
 check "the bus answers" PONG "$(valkey-cli -p "$VALKEY_PORT" ping 2>/dev/null)"
 
 scenario "The machine program prepares the factory on them"
-when "factory-prepare runs as cageworks up would run it"
-check "prepare succeeds" "$F: prepared" "$(cageworks-container factory-prepare "$F" "$ORIGIN" 2>"$LOG/prepare" | tail -1)"
+when "factory-prepare runs as fabriek up would run it"
+check "prepare succeeds" "$F: prepared" "$(fabriek-container factory-prepare "$F" "$ORIGIN" 2>"$LOG/prepare" | tail -1)"
 api() {
 	local method="$1" path="$2" body="${3:-}"
 	curl -s -X "$method" -H "Authorization: token $(cat "$STATE/forge/operator-token")" \
@@ -178,7 +178,7 @@ scenario "The executor starts with scripted sessions where the cages would be"
 . "$ROOT/modules/names.sh"
 # shellcheck source=modules/factory-clone.sh
 . "$ROOT/modules/factory-clone.sh"
-CLONE="$(cageworks_factory_clone_ensure "$STATE" "$F" "$ORIGIN")"
+CLONE="$(fabriek_factory_clone_ensure "$STATE" "$F" "$ORIGIN")"
 check "the factory has its clone" yes "$([ -d "$CLONE/.git" ] && echo yes || echo no)"
 (cd "$ROOT/factory" && npm run build >"$LOG/build" 2>&1) || { echo "the package does not build; see $LOG/build"; exit 1; }
 ## The session program: what role-enter would compose on the machine, as
@@ -186,17 +186,17 @@ check "the factory has its clone" yes "$([ -d "$CLONE/.git" ] && echo yes || ech
 cat >"$BIN/session" <<SESSION
 #!/usr/bin/env bash
 role="\${@: -1}"
-export CAGEWORKS_ROLE="\$role"
-export CAGEWORKS_CAPABILITIES="\$(jq -r --arg r "\$role" '.roles[\$r].provides // [] | join(",")' "$ETC/declaration.json")"
-export CAGEWORKS_BUS="127.0.0.1:$VALKEY_PORT"
-export CAGEWORKS_FORGE="$forge"
-export CAGEWORKS_REPOSITORY="operator/$F"
-export CAGEWORKS_BUS_PASSWORD="$STATE/bus/\$role"
-export CAGEWORKS_FORGE_TOKEN="$STATE/forge/\$role-token"
-export CAGEWORKS_BASE_BRANCH=main
-export CAGEWORKS_CLONE="$CLONE"
-export CAGEWORKS_DECLARATION="$ETC/declaration.json"
-export CAGEWORKS_FAKE_OUTCOME_FILE="$W/outcome.\$role"
+export FABRIEK_ROLE="\$role"
+export FABRIEK_CAPABILITIES="\$(jq -r --arg r "\$role" '.roles[\$r].provides // [] | join(",")' "$ETC/declaration.json")"
+export FABRIEK_BUS="127.0.0.1:$VALKEY_PORT"
+export FABRIEK_FORGE="$forge"
+export FABRIEK_REPOSITORY="operator/$F"
+export FABRIEK_BUS_PASSWORD="$STATE/bus/\$role"
+export FABRIEK_FORGE_TOKEN="$STATE/forge/\$role-token"
+export FABRIEK_BASE_BRANCH=main
+export FABRIEK_CLONE="$CLONE"
+export FABRIEK_DECLARATION="$ETC/declaration.json"
+export FABRIEK_FAKE_OUTCOME_FILE="$W/outcome.\$role"
 if [ "\$role" = decider ]; then
   exec node "$DIST/fake-decider/main.js" >>"$LOG/decider" 2>&1
 else
@@ -204,7 +204,7 @@ else
 fi
 SESSION
 chmod +x "$BIN/session"
-CAGEWORKS_SESSION_COMMAND="$BIN/session" node "$DIST/executor/main.js" >"$LOG/executor" 2>&1 &
+FABRIEK_SESSION_COMMAND="$BIN/session" node "$DIST/executor/main.js" >"$LOG/executor" 2>&1 &
 pids+=($!)
 node "$DIST/relay/main.js" --from 0-0 >"$LOG/relay" 2>&1 &
 pids+=($!)
@@ -215,7 +215,7 @@ check "both roles announce ready on the bus, and the relay prints it" "control:b
 scenario "A filed goal is worked through every stage with nothing typed after it"
 when "the operator files a goal"
 title="the importer handles empty files"
-check "task-file is accepted" "$F: filed at build" "$(cageworks-container task-file "$F" ship "$title" "acceptance: an empty file imports as no rows" 2>>"$LOG/operator" | tail -1)"
+check "task-file is accepted" "$F: filed at build" "$(fabriek-container task-file "$F" ship "$title" "acceptance: an empty file imports as no rows" 2>>"$LOG/operator" | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
 issue_by_title() { api GET "$repo/issues?state=all&type=issues&limit=50" | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1; }
 number="$(eventually 30 x issue_by_title)"
@@ -246,7 +246,7 @@ check "the builder's finding reached its stream" yes "$(grep -q '"stream":"findi
 scenario "A done with no commit is not done, and a failed task is retried by the same role"
 echo done-without-commit >"$W/outcome.builder"
 title2="a change that was never committed"
-cageworks-container task-file "$F" ship "$title2" "" >>"$LOG/operator" 2>&1
+fabriek-container task-file "$F" ship "$title2" "" >>"$LOG/operator" 2>&1
 title="$title2"
 n2="$(eventually 30 x issue_by_title)"
 # shellcheck disable=SC2329  # invoked through eventually
@@ -257,22 +257,22 @@ check "the decider sends it again to the same role, as attempt 2" yes "$(eventua
 check "and this time it moves on" yes "$(eventually 90 yes relay_has "\"stream\":\"mailbox:reviewer\".*\"kind\":\"assignment\",\"issue\":\"$n2\"")"
 
 scenario "The operator pushes a role's branch and mirrors, and both land where they should"
-check "push opens a pull request for builder/work" "$F: sent" "$(cageworks-container factory-send "$F" '{"verb":"push","role":"builder"}' 2>>"$LOG/operator" | tail -1)"
+check "push opens a pull request for builder/work" "$F: sent" "$(fabriek-container factory-send "$F" '{"verb":"push","role":"builder"}' 2>>"$LOG/operator" | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
 pulls() { api GET "$repo/pulls?state=open" | jq -r '[.[].head.ref] | join(",")'; }
 check "the forge shows the pull request" "builder/work" "$(eventually 30 builder/work pulls)"
-check "mirror is requested" "$F: mirror requested" "$(cageworks-container factory-mirror "$F" 2>>"$LOG/operator" | tail -1)"
+check "mirror is requested" "$F: mirror requested" "$(fabriek-container factory-mirror "$F" 2>>"$LOG/operator" | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
-record_on_origin() { git -C "$ORIGIN" rev-parse --verify --quiet refs/cageworks/record >/dev/null && echo yes || echo no; }
-check "refs/cageworks/record lands on origin" yes "$(eventually 60 yes record_on_origin)"
-check "the record carries every issue" "$(api GET "$repo/issues?state=all&type=issues&limit=100" | jq -r 'length')" "$(git -C "$ORIGIN" show refs/cageworks/record:issues.json | jq -r 'length')"
+record_on_origin() { git -C "$ORIGIN" rev-parse --verify --quiet refs/fabriek/record >/dev/null && echo yes || echo no; }
+check "refs/fabriek/record lands on origin" yes "$(eventually 60 yes record_on_origin)"
+check "the record carries every issue" "$(api GET "$repo/issues?state=all&type=issues&limit=100" | jq -r 'length')" "$(git -C "$ORIGIN" show refs/fabriek/record:issues.json | jq -r 'length')"
 check "the relay printed the executor's board events" yes "$(grep -q '"name":"board"' "$LOG/relay" && echo yes || echo no)"
 
 echo
 if [ "$fail" -eq 0 ]; then echo "journey: every check passed (logs under $LOG)"; else echo "journey: a check failed (logs under $LOG)"; fi
-## For looking around: CAGEWORKS_JOURNEY_HOLD=1 keeps everything up until
+## For looking around: FABRIEK_JOURNEY_HOLD=1 keeps everything up until
 ## interrupted, with the ports and the state directory printed above.
-if [ -n "${CAGEWORKS_JOURNEY_HOLD:-}" ]; then
+if [ -n "${FABRIEK_JOURNEY_HOLD:-}" ]; then
 	echo "holding: bus 127.0.0.1:$VALKEY_PORT, forge $forge, state $STATE; interrupt to end"
 	while sleep 60; do :; done
 fi

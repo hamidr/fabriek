@@ -1,34 +1,34 @@
 # shellcheck shell=bash
 ## The forge on the machine, prepared and prepared again (ADR-036).
 ##
-## Everything here is made only if it is absent, so that cageworks up after
+## Everything here is made only if it is absent, so that fabriek up after
 ## a rebuild is the same command as the first one. Tokens are minted once and
 ## kept as files under the state directory, readable by root alone, and reach
 ## the API through a header file rather than an argument: an argument is
 ## readable from /proc by anything on the machine.
 ##
-## Sourced by store path into cageworks-container beside names.sh. A file
+## Sourced by store path into fabriek-container beside names.sh. A file
 ## rather than an inline string so shellcheck reads it and bats sources it,
 ## with the forge's CLI and curl stubbed on PATH.
 
 ## Where the forge's tokens live. Beside the bus passwords, and for the same
 ## reason: the pool outlives a rebuild and a token minted twice is two tokens.
-cageworks_forge_dir() { printf '%s/forge\n' "$1"; }
-cageworks_forge_token_path() {
+fabriek_forge_dir() { printf '%s/forge\n' "$1"; }
+fabriek_forge_token_path() {
 	local state="$1" who="$2"
-	cageworks_name_ok "$who" || return 1
-	printf '%s/%s-token\n' "$(cageworks_forge_dir "$state")" "$who"
+	fabriek_name_ok "$who" || return 1
+	printf '%s/%s-token\n' "$(fabriek_forge_dir "$state")" "$who"
 }
 
 ## The forge's own CLI, run as its user, which is the only way an account is
 ## made when registration is off.
-cageworks_forge_admin() {
+fabriek_forge_admin() {
 	forgejo admin "$@"
 }
 
-cageworks_forge_user_exists() {
+fabriek_forge_user_exists() {
 	local who="$1"
-	cageworks_forge_admin user list 2>/dev/null | grep -qE "(^| )$who( |$)"
+	fabriek_forge_admin user list 2>/dev/null | grep -qE "(^| )$who( |$)"
 }
 
 ## An account, once. A role's password is random and never kept: nothing logs
@@ -37,13 +37,13 @@ cageworks_forge_user_exists() {
 ## The CLI opens the database beside the running server and can lose that
 ## race, so a list that shows nothing is not proof of absence: a create that
 ## finds the account there is the confirmation, not an error.
-cageworks_forge_ensure_user() {
+fabriek_forge_ensure_user() {
 	local who="$1" email="$2"
 	shift 2
-	cageworks_forge_user_exists "$who" && return 0
+	fabriek_forge_user_exists "$who" && return 0
 	local err
-	if err="$(cageworks_forge_admin user create "$@" --username "$who" \
-		--password "$(cageworks_secret)" --email "$email" \
+	if err="$(fabriek_forge_admin user create "$@" --username "$who" \
+		--password "$(fabriek_secret)" --email "$email" \
 		--must-change-password=false 2>&1 >/dev/null)"; then
 		return 0
 	fi
@@ -55,22 +55,22 @@ cageworks_forge_ensure_user() {
 }
 
 ## A token, once, with exactly the scopes the caller names, kept as a file.
-cageworks_forge_ensure_token() {
+fabriek_forge_ensure_token() {
 	local state="$1" who="$2" scopes="$3" file
-	file="$(cageworks_forge_token_path "$state" "$who")" || return 1
+	file="$(fabriek_forge_token_path "$state" "$who")" || return 1
 	[ -s "$file" ] && return 0
 	mkdir -p "$(dirname "$file")"
 	chmod 0700 "$(dirname "$file")"
 	local token
-	token="$(cageworks_forge_admin user generate-access-token \
-		--username "$who" --token-name cageworks --scopes "$scopes" --raw)" || return 1
+	token="$(fabriek_forge_admin user generate-access-token \
+		--username "$who" --token-name fabriek --scopes "$scopes" --raw)" || return 1
 	(umask 077 && printf '%s\n' "$token" >"$file.new") && mv "$file.new" "$file"
 	chmod 0400 "$file"
 }
 
 ## A random secret: a password nothing needs to remember, or a bus password
 ## the ACL is set from.
-cageworks_secret() {
+fabriek_secret() {
 	head -c 32 /dev/urandom | base64 | tr -d '/+=\n' | head -c 40
 	echo
 }
@@ -78,8 +78,8 @@ cageworks_secret() {
 ## One API call, as the holder of a token file. The token reaches curl as a
 ## header read from a file, so it is in no argument and no log line.
 ##
-## cageworks_forge_api <base-url> <token-file> <method> <path> [json-body]
-cageworks_forge_api() {
+## fabriek_forge_api <base-url> <token-file> <method> <path> [json-body]
+fabriek_forge_api() {
 	local base="$1" token_file="$2" method="$3" path="$4" body="${5:-}"
 	local header
 	header="$(mktemp)"
@@ -94,63 +94,63 @@ cageworks_forge_api() {
 
 ## The repository the board lives in, once. Private, because its issues are
 ## the record and its branches are a role's work in progress.
-cageworks_forge_ensure_repository() {
+fabriek_forge_ensure_repository() {
 	local base="$1" token="$2" owner="$3" name="$4"
-	cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name" >/dev/null 2>&1 && return 0
-	cageworks_forge_api "$base" "$token" POST /user/repos \
+	fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name" >/dev/null 2>&1 && return 0
+	fabriek_forge_api "$base" "$token" POST /user/repos \
 		"$(jq -cn --arg n "$name" '{name: $n, private: true, auto_init: false}')" >/dev/null
 }
 
 ## Read on the repository, for a role. Idempotent on the forge's side.
-cageworks_forge_ensure_reader() {
+fabriek_forge_ensure_reader() {
 	local base="$1" token="$2" owner="$3" name="$4" who="$5"
-	cageworks_forge_api "$base" "$token" PUT "/repos/$owner/$name/collaborators/$who" \
+	fabriek_forge_api "$base" "$token" PUT "/repos/$owner/$name/collaborators/$who" \
 		'{"permission":"read"}' >/dev/null
 }
 
 ## A label, once. The stage labels are the executor's to move (ADR-036 point
 ## 1) and blocked and memory are the two others the design names.
-cageworks_forge_ensure_label() {
+fabriek_forge_ensure_label() {
 	local base="$1" token="$2" owner="$3" name="$4" label="$5" existing
-	existing="$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/labels" |
+	existing="$(fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name/labels" |
 		jq -r '.[].name')"
 	printf '%s\n' "$existing" | grep -qxF "$label" && return 0
-	cageworks_forge_api "$base" "$token" POST "/repos/$owner/$name/labels" \
+	fabriek_forge_api "$base" "$token" POST "/repos/$owner/$name/labels" \
 		"$(jq -cn --arg l "$label" '{name: $l, color: "#888888"}')" >/dev/null
 }
 
 ## A role's memory issue, once, opened as the role so that the role is its
 ## poster and may rewrite it and nobody else may (ADR-036 point 3). Labelled
 ## and pinned by the operator's token, because a role's cannot label.
-cageworks_forge_ensure_memory() {
+fabriek_forge_ensure_memory() {
 	local base="$1" operator="$2" role_token="$3" owner="$4" name="$5" role="$6"
 	local number
-	number="$(cageworks_forge_api "$base" "$operator" GET \
+	number="$(fabriek_forge_api "$base" "$operator" GET \
 		"/repos/$owner/$name/issues?state=all&labels=memory&type=issues&limit=50" |
 		jq -r --arg r "$role" '.[] | select(.user.login == $r) | .number' | head -1)"
 	[ -n "$number" ] && return 0
-	number="$(cageworks_forge_api "$base" "$role_token" POST "/repos/$owner/$name/issues" \
+	number="$(fabriek_forge_api "$base" "$role_token" POST "/repos/$owner/$name/issues" \
 		"$(jq -cn --arg t "memory: $role" '{title: $t, body: ""}')" | jq -r .number)" || return 1
 	[ -n "$number" ] || return 1
 	local label_id
-	label_id="$(cageworks_forge_api "$base" "$operator" GET "/repos/$owner/$name/labels" |
+	label_id="$(fabriek_forge_api "$base" "$operator" GET "/repos/$owner/$name/labels" |
 		jq -r '.[] | select(.name == "memory") | .id' | head -1)"
-	cageworks_forge_api "$base" "$operator" POST "/repos/$owner/$name/issues/$number/labels" \
+	fabriek_forge_api "$base" "$operator" POST "/repos/$owner/$name/issues/$number/labels" \
 		"$(jq -cn --argjson id "${label_id:-0}" '{labels: [$id]}')" >/dev/null
-	cageworks_forge_api "$base" "$operator" POST "/repos/$owner/$name/issues/$number/pin" >/dev/null || true
+	fabriek_forge_api "$base" "$operator" POST "/repos/$owner/$name/issues/$number/pin" >/dev/null || true
 }
 
-## The record as origin holds it: issues.json on refs/cageworks/record, what
+## The record as origin holds it: issues.json on refs/fabriek/record, what
 ## mirror exported (ADR-036 point 7). Fetched into a repository made for the
 ## purpose, because prepare runs before the factory's clone need exist.
 ## Prints nothing when origin carries no record; fails only when origin
 ## cannot be asked at all.
-cageworks_record_read() {
+fabriek_record_read() {
 	local origin="$1" tmp
 	tmp="$(mktemp -d)"
 	local status=0
 	if git init -q "$tmp" &&
-		GIT_TERMINAL_PROMPT=0 git -C "$tmp" fetch -q --depth 1 "$origin" refs/cageworks/record 2>/dev/null; then
+		GIT_TERMINAL_PROMPT=0 git -C "$tmp" fetch -q --depth 1 "$origin" refs/fabriek/record 2>/dev/null; then
 		git -C "$tmp" show FETCH_HEAD:issues.json || status=1
 	elif ! GIT_TERMINAL_PROMPT=0 git ls-remote -q "$origin" >/dev/null 2>&1; then
 		status=1
@@ -165,48 +165,48 @@ cageworks_record_read() {
 ## out, because each is opened as its role and prepare does that itself.
 ## A label the declaration no longer has is named and dropped, and the
 ## issue keeps the rest; the record is not edited to fit.
-cageworks_forge_restore_record() {
+fabriek_forge_restore_record() {
 	local base="$1" token="$2" owner="$3" name="$4" record="$5"
 	local labels number issue title body state wanted ids unknown
-	labels="$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/labels")" || return 1
+	labels="$(fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name/labels")" || return 1
 	while IFS= read -r issue; do
 		[ -n "$issue" ] || continue
 		title="$(jq -r '.title' <<<"$issue")"
 		body="$(jq -r '.body // ""' <<<"$issue")"
 		state="$(jq -r '.state' <<<"$issue")"
-		number="$(cageworks_forge_api "$base" "$token" POST "/repos/$owner/$name/issues" \
+		number="$(fabriek_forge_api "$base" "$token" POST "/repos/$owner/$name/issues" \
 			"$(jq -cn --arg t "$title" --arg b "$body" '{title: $t, body: $b}')" | jq -r .number)" || return 1
 		[ -n "$number" ] || return 1
 		wanted="$(jq -c '[.labels[].name]' <<<"$issue")"
 		ids="$(jq -c --argjson w "$wanted" '[.[] | select(.name as $n | $w | index($n)) | .id]' <<<"$labels")"
 		unknown="$(jq -r --argjson w "$wanted" '[.[].name] as $have | $w[] | . as $l | select(($have | index($l)) == null)' <<<"$labels")"
-		[ -z "$unknown" ] || printf 'cageworks: the record labels "%s" with %s, which the declaration no longer has\n' \
+		[ -z "$unknown" ] || printf 'fabriek: the record labels "%s" with %s, which the declaration no longer has\n' \
 			"$title" "$(paste -sd, - <<<"$unknown")" >&2
 		if [ "$ids" != "[]" ]; then
-			cageworks_forge_api "$base" "$token" POST "/repos/$owner/$name/issues/$number/labels" \
+			fabriek_forge_api "$base" "$token" POST "/repos/$owner/$name/issues/$number/labels" \
 				"$(jq -cn --argjson l "$ids" '{labels: $l}')" >/dev/null || return 1
 		fi
 		if [ "$state" = "closed" ]; then
-			cageworks_forge_api "$base" "$token" PATCH "/repos/$owner/$name/issues/$number" \
+			fabriek_forge_api "$base" "$token" PATCH "/repos/$owner/$name/issues/$number" \
 				'{"state":"closed"}' >/dev/null || return 1
 		fi
 	done < <(jq -c 'sort_by(.number) | .[] | select(([.labels[].name] | index("memory")) == null)' <<<"$record")
 }
 
 ## Whether the board has any issue at all, memory ones included.
-cageworks_forge_board_empty() {
+fabriek_forge_board_empty() {
 	local base="$1" token="$2" owner="$3" name="$4"
-	[ "$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/issues?state=all&type=issues&limit=1" |
+	[ "$(fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name/issues?state=all&type=issues&limit=1" |
 		jq -r 'length')" = "0" ]
 }
 
 ## Where the forge's copy of the repository is pushed to and fetched from,
 ## for the executor and for prepare alike. Overridable for a suite that has
 ## no forge listening, so a push lands in a bare repository of its own.
-cageworks_forge_git_url() {
+fabriek_forge_git_url() {
 	local plan="$1" owner="$2" name="$3"
-	if [ -n "${CAGEWORKS_FORGE_GIT_URL:-}" ]; then
-		printf '%s\n' "$CAGEWORKS_FORGE_GIT_URL"
+	if [ -n "${FABRIEK_FORGE_GIT_URL:-}" ]; then
+		printf '%s\n' "$FABRIEK_FORGE_GIT_URL"
 	else
 		printf 'http://%s/%s/%s.git\n' "$(jq -r .forgejo "$plan")" "$owner" "$name"
 	fi
@@ -218,10 +218,10 @@ cageworks_forge_git_url() {
 ## operator's token through a credential helper that reads the file, so the
 ## token is in no argument and no remote URL.
 ##
-## cageworks_forge_ensure_main <base> <token-file> <owner> <name> <origin> <git-url>
-cageworks_forge_ensure_main() {
+## fabriek_forge_ensure_main <base> <token-file> <owner> <name> <origin> <git-url>
+fabriek_forge_ensure_main() {
 	local base="$1" token="$2" owner="$3" name="$4" origin="$5" url="$6"
-	cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/branches/main" >/dev/null 2>&1 && return 0
+	fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name/branches/main" >/dev/null 2>&1 && return 0
 	local tmp status=0
 	tmp="$(mktemp -d)"
 	## git's own words are kept: what went wrong is what the log should say.
@@ -233,7 +233,7 @@ cageworks_forge_ensure_main() {
 				GIT_CONFIG_VALUE_0="!f() { echo username=$owner; echo \"password=\$(cat '$token')\"; }; f" \
 				git -C "$tmp/origin.git" push -q "$url" refs/heads/main:refs/heads/main && break
 			status=1
-			echo "cageworks: push of main to the forge failed on attempt $attempt" >&2
+			echo "fabriek: push of main to the forge failed on attempt $attempt" >&2
 			sleep 2
 		done
 	else

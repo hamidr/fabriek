@@ -5,9 +5,9 @@
 // a host with no cage and no credential (tests/system/journey.sh).
 //
 // Environment, beyond what the executor sets for any session:
-//   CAGEWORKS_CLONE              the clone the role's branch is made in
-//   CAGEWORKS_FAKE_OUTCOME       done (default), done-without-commit, failed, blocked
-//   CAGEWORKS_FAKE_OUTCOME_FILE  a file read at each task, whose word wins
+//   FABRIEK_CLONE              the clone the role's branch is made in
+//   FABRIEK_FAKE_OUTCOME       done (default), done-without-commit, failed, blocked
+//   FABRIEK_FAKE_OUTCOME_FILE  a file read at each task, whose word wins
 //                                over the variable, so a harness can change
 //                                the script between tasks of one session
 import { execFileSync } from "node:child_process";
@@ -20,11 +20,11 @@ import { workBranch } from "../executor/core.js";
 type Script = "done" | "done-without-commit" | "failed" | "blocked";
 
 const world = fromEnvironment();
-const clone = process.env["CAGEWORKS_CLONE"] ?? "";
+const clone = process.env["FABRIEK_CLONE"] ?? "";
 const branch = workBranch(world.role);
 
 function script(): Script {
-  const file = process.env["CAGEWORKS_FAKE_OUTCOME_FILE"];
+  const file = process.env["FABRIEK_FAKE_OUTCOME_FILE"];
   if (file) {
     try {
       const word = readFileSync(file, "utf8").trim();
@@ -33,7 +33,7 @@ function script(): Script {
       // no file yet: the variable says
     }
   }
-  return (process.env["CAGEWORKS_FAKE_OUTCOME"] ?? "done") as Script;
+  return (process.env["FABRIEK_FAKE_OUTCOME"] ?? "done") as Script;
 }
 
 function git(args: string[], cwd = clone): string {

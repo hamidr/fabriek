@@ -7,15 +7,15 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
-	source "$CAGEWORKS_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/schema.sh
-	source "$CAGEWORKS_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
 	# shellcheck source=../../modules/sizes.sh
-	source "$CAGEWORKS_ROOT/modules/sizes.sh"
+	source "$FABRIEK_ROOT/modules/sizes.sh"
 	# shellcheck source=../../modules/resources.sh
-	source "$CAGEWORKS_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
 	# shellcheck source=../../modules/operator-config.sh
-	source "$CAGEWORKS_ROOT/modules/operator-config.sh"
+	source "$FABRIEK_ROOT/modules/operator-config.sh"
 	CONFIG="$TEST_TEMP_DIR/config.toml"
 	write_config
 }
@@ -41,27 +41,27 @@ TOML
 }
 
 @test "the ceilings are what the operator wrote" {
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_success
 	assert_output --partial '"memory": "16G"'
 	assert_output --partial '"cores": 8'
 }
 
 @test "a registered factory is found by the path it was registered at" {
-	run cageworks_operator_factory_path "$CONFIG" acme
+	run fabriek_operator_factory_path "$CONFIG" acme
 	assert_success
 	assert_output "/home/me/Src/acme"
 }
 
 @test "the factories on this machine are listed in a stable order" {
-	run cageworks_operator_factories "$CONFIG"
+	run fabriek_operator_factories "$CONFIG"
 	assert_success
 	assert_line --index 0 "acme"
 	assert_line --index 1 "widgets"
 }
 
 @test "a factory nobody registered here is refused by name" {
-	run cageworks_operator_factory_path "$CONFIG" ghost
+	run fabriek_operator_factory_path "$CONFIG" ghost
 	assert_failure
 	assert_output --partial "ghost"
 }
@@ -73,7 +73,7 @@ TOML
 [caps]
 memmory = "16G"
 TOML
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_failure
 	assert_output --partial "memmory"
 }
@@ -86,7 +86,7 @@ memory = "16G"
 [supervisor]
 taskAttempts = 3
 TOML
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_failure
 	assert_output --partial "supervisor"
 }
@@ -97,7 +97,7 @@ TOML
 path = "/home/me/Src/acme"
 branch = "main"
 TOML
-	run cageworks_operator_factories "$CONFIG"
+	run fabriek_operator_factories "$CONFIG"
 	assert_failure
 	assert_output --partial "branch"
 }
@@ -106,7 +106,7 @@ TOML
 	cat >"$CONFIG" <<'TOML'
 [factories.acme]
 TOML
-	run cageworks_operator_factories "$CONFIG"
+	run fabriek_operator_factories "$CONFIG"
 	assert_failure
 	assert_output --partial "acme"
 }
@@ -116,21 +116,21 @@ TOML
 [factories."../../etc"]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_factories "$CONFIG"
+	run fabriek_operator_factories "$CONFIG"
 	assert_failure
 }
 
 # Failing safe. A config that is not there would otherwise mean no ceilings,
 # and no ceilings means a repository gets whatever it asked for.
 @test "a config that is not there is refused, and the message is the path" {
-	run cageworks_operator_caps "$TEST_TEMP_DIR/absent.toml"
+	run fabriek_operator_caps "$TEST_TEMP_DIR/absent.toml"
 	assert_failure
 	assert_output --partial "absent.toml"
 }
 
 @test "a config that is not TOML is refused rather than read as empty" {
 	printf 'this is not = = toml\n' >"$CONFIG"
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_failure
 }
 
@@ -138,20 +138,20 @@ TOML
 # what lets nix be the parser without the file being able to reach the reader.
 @test "a config that looks like a nix expression is still only TOML" {
 	printf 'x = "${builtins.currentTime}"\n' >"$CONFIG"
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_failure
 	assert_output --partial "x"
 }
 
 @test "the config lives where the operator's own config lives" {
-	unset CAGEWORKS_CONFIG
-	XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" run cageworks_operator_config_path
+	unset FABRIEK_CONFIG
+	XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" run fabriek_operator_config_path
 	assert_success
-	assert_output "$TEST_TEMP_DIR/xdg/cageworks/config.toml"
+	assert_output "$TEST_TEMP_DIR/xdg/fabriek/config.toml"
 }
 
 @test "an operator with more than one config says which, and it wins" {
-	CAGEWORKS_CONFIG="$TEST_TEMP_DIR/other.toml" run cageworks_operator_config_path
+	FABRIEK_CONFIG="$TEST_TEMP_DIR/other.toml" run fabriek_operator_config_path
 	assert_success
 	assert_output "$TEST_TEMP_DIR/other.toml"
 }
@@ -169,13 +169,13 @@ egress = ["api.anthropic.com"]
 [factories.acme]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_success
 	assert_output --partial 'api.anthropic.com'
 }
 
 @test "an operator who names no endpoints has a ceiling, not an absence" {
-	run cageworks_operator_caps "$CONFIG"
+	run fabriek_operator_caps "$CONFIG"
 	assert_success
 	refute_output --partial 'egress'
 }
@@ -201,14 +201,14 @@ TOML
 
 @test "the operator says which header carries a credential for an endpoint" {
 	with_credentials
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_success
 	assert_output --partial "x-api-key"
 	assert_output --partial "api.anthropic.com"
 }
 
 @test "an operator holding no credentials holds none, which is not an error" {
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_success
 	assert_output "{}"
 }
@@ -222,7 +222,7 @@ file = "$TEST_TEMP_DIR/k"
 [factories.acme]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_failure
 	assert_output --partial "api.anthropic.com"
 }
@@ -238,7 +238,7 @@ file = "$TEST_TEMP_DIR/k"
 [factories.acme]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_failure
 }
 
@@ -250,7 +250,7 @@ header = "x-api-key"
 [factories.acme]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_failure
 	assert_output --partial "file"
 }
@@ -265,7 +265,7 @@ command = "curl evil"
 [factories.acme]
 path = "/home/me/Src/acme"
 TOML
-	run cageworks_operator_credentials "$CONFIG"
+	run fabriek_operator_credentials "$CONFIG"
 	assert_failure
 	assert_output --partial "command"
 }

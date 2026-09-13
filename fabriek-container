@@ -1,62 +1,62 @@
 #!/usr/bin/env bash
-# cageworks-container -- the factory, on the machine the cages are on.
+# fabriek-container -- the factory, on the machine the cages are on.
 #
 # Everything here is about several named workers sharing one repository: roles,
 # capabilities, tasks, workflows, stage policies, the record, integration. None
 # of it is about a cage. Where a cage is needed this calls nixcage-container,
-# which is the whole of what cageworks knows about how one is built (ADR-018).
+# which is the whole of what fabriek knows about how one is built (ADR-018).
 #
 # A real script rather than a Nix string so that shellcheck reads it and the
-# bats suite drives it directly. The Nix module wraps it, setting CAGEWORKS_LIB
+# bats suite drives it directly. The Nix module wraps it, setting FABRIEK_LIB
 # to the store directory holding the shell modules it sources.
 
 set -euo pipefail
 
 # Where the shell modules and the role guidance live. Set by the Nix wrapper to
 # a store path; the suite points it at the working tree.
-CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
+FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 
 # shellcheck source=modules/names.sh
-. "$CAGEWORKS_LIB/names.sh"
+. "$FABRIEK_LIB/names.sh"
 # shellcheck source=modules/role-worktree.sh
-. "$CAGEWORKS_LIB/role-worktree.sh"
+. "$FABRIEK_LIB/role-worktree.sh"
 # shellcheck source=modules/factory-clone.sh
-. "$CAGEWORKS_LIB/factory-clone.sh"
+. "$FABRIEK_LIB/factory-clone.sh"
 # shellcheck source=modules/signing.sh
-. "$CAGEWORKS_LIB/signing.sh"
+. "$FABRIEK_LIB/signing.sh"
 # shellcheck source=modules/factory-config.sh
-. "$CAGEWORKS_LIB/factory-config.sh"
+. "$FABRIEK_LIB/factory-config.sh"
 # shellcheck source=modules/schema.sh
-. "$CAGEWORKS_LIB/schema.sh"
+. "$FABRIEK_LIB/schema.sh"
 # shellcheck source=modules/sizes.sh
-. "$CAGEWORKS_LIB/sizes.sh"
+. "$FABRIEK_LIB/sizes.sh"
 # shellcheck source=modules/resources.sh
-. "$CAGEWORKS_LIB/resources.sh"
+. "$FABRIEK_LIB/resources.sh"
 # shellcheck source=modules/repo-declaration.sh
-. "$CAGEWORKS_LIB/repo-declaration.sh"
+. "$FABRIEK_LIB/repo-declaration.sh"
 # shellcheck source=modules/role-guidance.sh
-. "$CAGEWORKS_LIB/role-guidance.sh"
+. "$FABRIEK_LIB/role-guidance.sh"
 # shellcheck source=modules/machine-plan.sh
-. "$CAGEWORKS_LIB/machine-plan.sh"
+. "$FABRIEK_LIB/machine-plan.sh"
 # shellcheck source=modules/forge.sh
-. "$CAGEWORKS_LIB/forge.sh"
+. "$FABRIEK_LIB/forge.sh"
 # shellcheck source=modules/bus.sh
-. "$CAGEWORKS_LIB/bus.sh"
+. "$FABRIEK_LIB/bus.sh"
 # shellcheck source=modules/operator.sh
-. "$CAGEWORKS_LIB/operator.sh"
+. "$FABRIEK_LIB/operator.sh"
 # shellcheck source=modules/probes.sh
-. "$CAGEWORKS_LIB/probes.sh"
+. "$FABRIEK_LIB/probes.sh"
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
 # dataset for a path the pool already covers, so a state root of our own would
 # buy a tidier name and cost every factory its datasets (ADR-018).
-STATE_DIR="${CAGEWORKS_STATE:-/var/lib/nixcage}"
+STATE_DIR="${FABRIEK_STATE:-/var/lib/nixcage}"
 
 # What the machine's build put on it: the bridge plan and each role's profile
 # (ADR-040). Overridable so the suite can put a machine's facts in a scratch
 # directory.
-CAGEWORKS_ETC="${CAGEWORKS_ETC:-/etc/cageworks}"
+FABRIEK_ETC="${FABRIEK_ETC:-/etc/fabriek}"
 
 
 ## The declaration a factory is working, read out of its own clone (ADR-020)
@@ -66,7 +66,7 @@ CAGEWORKS_ETC="${CAGEWORKS_ETC:-/etc/cageworks}"
 ## wrote, validated and clamped, and never evaluated here. A machine is one
 ## factory's, so a request naming another factory is a mistake to say.
 factory_declaration() {
-	local factory="$1" file="$CAGEWORKS_ETC/declaration.json" built
+	local factory="$1" file="$FABRIEK_ETC/declaration.json" built
 	[ -f "$file" ] || die "this machine carries no declaration at $file"
 	built="$(jq -r '.name // empty' "$file")"
 	[ "$built" = "$factory" ] || die "this machine runs the factory $built, not $factory"
@@ -84,28 +84,28 @@ factory_limit() {
 ## Where a factory's clone came from. Nothing declares this: a clone records
 ## where it was cloned from, which is what a clone is.
 ## Where a factory's repository is. The clone records it once it exists;
-## before that, the origin cageworks up filed on the machine (ADR-032, ADR-040):
+## before that, the origin fabriek up filed on the machine (ADR-032, ADR-040):
 ## the executor starts every session, and a session needs no origin on argv.
 factory_repository() {
 	local factory="$1" clone
-	clone="$(cageworks_factory_clone_path "$STATE_DIR" "$factory")" || return 1
+	clone="$(fabriek_factory_clone_path "$STATE_DIR" "$factory")" || return 1
 	if [ -d "$clone" ]; then
 		git -C "$clone" remote get-url origin
 	elif [ -s "$STATE_DIR/origin" ]; then
 		cat "$STATE_DIR/origin"
 	else
-		die "$factory has no clone yet, and no origin was filed; run cageworks up"
+		die "$factory has no clone yet, and no origin was filed; run fabriek up"
 	fi
 }
 
 die() {
-	echo "cageworks-container: $*" >&2
+	echo "fabriek-container: $*" >&2
 	exit 1
 }
 
 usage() {
 	cat <<'USAGE'
-usage: cageworks-container
+usage: fabriek-container
   role-enter [--agent|--auth-sock <path>|--signing-key <role>] [--task-dir <path>]
              [--repository <path>] <factory> <role> [cmd...]
   role-worktree <factory> <role> <repo>
@@ -204,10 +204,10 @@ cmd_role_enter() {
 
 	## The decider is the machine's own role (ADR-034 point 1): not in the
 	## declaration, running the agent in the mode its loop drives.
-	if [ "$role" = "$CAGEWORKS_DECIDER" ]; then
+	if [ "$role" = "$FABRIEK_DECIDER" ]; then
 		declared_cmd=$'pi\n--mode\nrpc'
 	else
-		declared_cmd="$(cageworks_factory_role_command \
+		declared_cmd="$(fabriek_factory_role_command \
 			"$(factory_declaration "$factory")" "$role")" || exit 1
 	fi
 
@@ -225,10 +225,10 @@ cmd_role_enter() {
 	local network cage="$role"
 	if [ -n "$signing_role" ]; then
 		local address
-		address="$(cageworks_bridge_address "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
-		network="$(cageworks_bridge_placement "$CAGEWORKS_ETC/bridge.json" "$address")"
+		address="$(fabriek_bridge_address "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
+		network="$(fabriek_bridge_placement "$FABRIEK_ETC/bridge.json" "$address")"
 	else
-		network="$(cageworks_cage_network "$CAGEWORKS_ETC/bridge.json" "$role")" || exit 1
+		network="$(fabriek_cage_network "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
 		case "$network" in ns:*) cage="$role-hand" ;; esac
 	fi
 
@@ -245,7 +245,7 @@ cmd_role_enter() {
 	## to enter a devShell with. A role whose build realised none enters with
 	## the floor alone (ADR-030).
 	local profile
-	if profile="$(cageworks_role_profile "$CAGEWORKS_ETC" "$role")"; then
+	if profile="$(fabriek_role_profile "$FABRIEK_ETC" "$role")"; then
 		opts+=(--setenv "NIXCAGE_PATH_PREFIX=$profile/bin")
 	fi
 
@@ -266,15 +266,15 @@ cmd_role_enter() {
 	while IFS= read -r guidance_line; do
 		[ -n "$guidance_line" ] || continue
 		opts+=("$guidance_line")
-	done < <(cageworks_role_guidance_args "$CAGEWORKS_LIB/role-guidance.md" "$role")
+	done < <(fabriek_role_guidance_args "$FABRIEK_LIB/role-guidance.md" "$role")
 
 	## A task reaches the session as files rather than as arguments: the brief
 	## is read, the outcome is written, and neither ever passes through a
 	## command line or a keystroke stream.
 	if [ -n "$task_dir" ]; then
 		opts+=(
-			--bind "$task_dir:/run/cageworks/task"
-			--setenv "CAGEWORKS_TASK=/run/cageworks/task"
+			--bind "$task_dir:/run/fabriek/task"
+			--setenv "FABRIEK_TASK=/run/fabriek/task"
 		)
 	fi
 
@@ -284,15 +284,15 @@ cmd_role_enter() {
 	## role commits as itself.
 	if [ -n "$signing_role" ]; then
 		local key signers gitconfig line
-		key="$(cageworks_signing_ensure "$STATE_DIR" "$signing_role" "$uid")" ||
+		key="$(fabriek_signing_ensure "$STATE_DIR" "$signing_role" "$uid")" ||
 			die "could not prepare a signing key for $signing_role"
-		signers="$(cageworks_signing_signers "$STATE_DIR")"
-		gitconfig="$(cageworks_signing_gitconfig_path "$STATE_DIR" "$signing_role")" || exit 1
-		cageworks_signing_gitconfig "$signing_role" >"$gitconfig"
+		signers="$(fabriek_signing_signers "$STATE_DIR")"
+		gitconfig="$(fabriek_signing_gitconfig_path "$STATE_DIR" "$signing_role")" || exit 1
+		fabriek_signing_gitconfig "$signing_role" >"$gitconfig"
 		while IFS= read -r line; do
 			[ -n "$line" ] || continue
 			opts+=(--bind-ro "$line")
-		done < <(cageworks_signing_binds "$key" "$signers" "$gitconfig")
+		done < <(fabriek_signing_binds "$key" "$signers" "$gitconfig")
 
 		## A supervised run is an actor (ADR-033): it gets the loop, which is
 		## pi's configuration directory with the extension in it (ADR-035
@@ -304,7 +304,7 @@ cmd_role_enter() {
 		## substitution, because a refusal has to stop the session and a
 		## loop's status is the loop's, not the substitution's.
 		local actor_lines actor_line
-		actor_lines="$(cageworks_actor_args "$CAGEWORKS_ETC" "$STATE_DIR" "$factory" "$role")" || exit 1
+		actor_lines="$(fabriek_actor_args "$FABRIEK_ETC" "$STATE_DIR" "$factory" "$role")" || exit 1
 		while IFS= read -r actor_line; do
 			[ -n "$actor_line" ] || continue
 			opts+=("$actor_line")
@@ -347,7 +347,7 @@ cmd_role_worktree() {
 	[[ "$repo" == *://* ]] || [ -d "$repo" ] || die "repository not found: $repo"
 
 	local clone
-	clone="$(cageworks_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" ||
+	clone="$(fabriek_factory_clone_ensure "$STATE_DIR" "$factory" "$repo")" ||
 		die "could not prepare the factory clone for $factory"
 
 	## The agent's number rather than the block's base: this uid is only ever
@@ -362,7 +362,7 @@ cmd_role_worktree() {
 	## declaration the quota is stated in. A quota is applied on every
 	## preparation rather than at creation (ADR-017), so the first one made
 	## before a declaration existed is bound by the next run.
-	cageworks_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" \
+	fabriek_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" \
 		"$(factory_limit "$factory" roleQuota "")" ||
 		die "could not prepare the worktree for role $role"
 }
@@ -394,9 +394,9 @@ cmd_role_worktree() {
 ## Everything reads the declaration the build put on the machine.
 cmd_factory_prepare() {
 	local factory="${1:-}" origin="${2:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-prepare <factory> [origin]"
-	cageworks_name_ok "$factory" || die "invalid factory name: $factory"
-	local declaration="$CAGEWORKS_ETC/declaration.json"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-prepare <factory> [origin]"
+	fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+	local declaration="$FABRIEK_ETC/declaration.json"
 	[ -f "$declaration" ] || die "this machine carries no declaration at $declaration"
 
 	## The repository's origin, filed for every session the executor starts
@@ -407,26 +407,26 @@ cmd_factory_prepare() {
 
 	local user
 	while IFS= read -r user; do
-		cageworks_bus_ensure_password "$STATE_DIR" "$user" ||
+		fabriek_bus_ensure_password "$STATE_DIR" "$user" ||
 			die "could not make a bus password for $user"
-	done < <(cageworks_bus_users "$declaration")
-	systemctl restart cageworks-bus-acl.service
+	done < <(fabriek_bus_users "$declaration")
+	systemctl restart fabriek-bus-acl.service
 
 	local base owner="operator"
-	base="http://$(jq -r .forgejo "$CAGEWORKS_ETC/bridge.json")/api/v1"
-	cageworks_forge_ensure_user operator "operator@$factory.invalid" --admin ||
+	base="http://$(jq -r .forgejo "$FABRIEK_ETC/bridge.json")/api/v1"
+	fabriek_forge_ensure_user operator "operator@$factory.invalid" --admin ||
 		die "could not make the operator's account"
-	cageworks_forge_ensure_token "$STATE_DIR" operator all ||
+	fabriek_forge_ensure_token "$STATE_DIR" operator all ||
 		die "could not mint the operator's token"
 	local operator
-	operator="$(cageworks_forge_token_path "$STATE_DIR" operator)"
-	cageworks_forge_ensure_repository "$base" "$operator" "$owner" "$factory" ||
+	operator="$(fabriek_forge_token_path "$STATE_DIR" operator)"
+	fabriek_forge_ensure_repository "$base" "$operator" "$owner" "$factory" ||
 		die "could not make the repository $owner/$factory"
 
 	local label
 	while IFS= read -r label; do
 		[ -n "$label" ] || continue
-		cageworks_forge_ensure_label "$base" "$operator" "$owner" "$factory" "$label" ||
+		fabriek_forge_ensure_label "$base" "$operator" "$owner" "$factory" "$label" ||
 			die "could not make the label $label"
 	done < <(jq -r '[.workflows[].stages[].needs] + ["assigning", "assigned", "blocked", "memory"] | unique | .[]' "$declaration")
 
@@ -436,9 +436,9 @@ cmd_factory_prepare() {
 	local origin_url
 	origin_url="$(factory_repository "$factory" 2>/dev/null)" || origin_url=""
 	if [ -n "$origin_url" ]; then
-		cageworks_forge_ensure_main "$base" "$operator" "$owner" "$factory" "$origin_url" \
-			"$(cageworks_forge_git_url "$CAGEWORKS_ETC/bridge.json" "$owner" "$factory")" ||
-			echo "cageworks-container: could not put main from $origin_url on the forge; a pull request and a mirror need it" >&2
+		fabriek_forge_ensure_main "$base" "$operator" "$owner" "$factory" "$origin_url" \
+			"$(fabriek_forge_git_url "$FABRIEK_ETC/bridge.json" "$owner" "$factory")" ||
+			echo "fabriek-container: could not put main from $origin_url on the forge; a pull request and a mirror need it" >&2
 	fi
 
 	## A board with nothing on it is a fresh machine, and origin may carry
@@ -446,47 +446,47 @@ cmd_factory_prepare() {
 	## memory issues so that the board is the record's and then the roles'.
 	## An origin that cannot be reached is said and not fatal: the clone
 	## will say it again, and a factory with no record is still a factory.
-	if cageworks_forge_board_empty "$base" "$operator" "$owner" "$factory"; then
+	if fabriek_forge_board_empty "$base" "$operator" "$owner" "$factory"; then
 		local origin_url record
 		origin_url="$(factory_repository "$factory" 2>/dev/null)" || origin_url=""
 		if [ -n "$origin_url" ]; then
-			if record="$(cageworks_record_read "$origin_url")"; then
-				[ -z "$record" ] || cageworks_forge_restore_record "$base" "$operator" "$owner" "$factory" "$record" ||
+			if record="$(fabriek_record_read "$origin_url")"; then
+				[ -z "$record" ] || fabriek_forge_restore_record "$base" "$operator" "$owner" "$factory" "$record" ||
 					die "could not restore the record from $origin_url"
 			else
-				echo "cageworks-container: could not ask $origin_url for the record; the board starts empty" >&2
+				echo "fabriek-container: could not ask $origin_url for the record; the board starts empty" >&2
 			fi
 		fi
 	fi
 
 	local role
 	while IFS= read -r role; do
-		cageworks_forge_ensure_user "$role" "$role@$factory.invalid" ||
+		fabriek_forge_ensure_user "$role" "$role@$factory.invalid" ||
 			die "could not make an account for role $role"
-		cageworks_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$role" ||
+		fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$role" ||
 			die "could not give role $role read on the repository"
-		cageworks_forge_ensure_token "$STATE_DIR" "$role" write:issue ||
+		fabriek_forge_ensure_token "$STATE_DIR" "$role" write:issue ||
 			die "could not mint a token for role $role"
-		cageworks_forge_ensure_memory "$base" "$operator" \
-			"$(cageworks_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
+		fabriek_forge_ensure_memory "$base" "$operator" \
+			"$(fabriek_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
 			die "could not open the memory issue for role $role"
 		cage_owns_credentials "$role"
 	done < <(jq -r '.roles | keys[]' "$declaration")
 
-	cageworks_forge_ensure_user "$CAGEWORKS_DECIDER" "$CAGEWORKS_DECIDER@$factory.invalid" ||
+	fabriek_forge_ensure_user "$FABRIEK_DECIDER" "$FABRIEK_DECIDER@$factory.invalid" ||
 		die "could not make the decider's account"
-	cageworks_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$CAGEWORKS_DECIDER" ||
+	fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$FABRIEK_DECIDER" ||
 		die "could not give the decider read on the repository"
-	cageworks_forge_ensure_token "$STATE_DIR" "$CAGEWORKS_DECIDER" read:issue ||
+	fabriek_forge_ensure_token "$STATE_DIR" "$FABRIEK_DECIDER" read:issue ||
 		die "could not mint the decider's token"
-	cage_owns_credentials "$CAGEWORKS_DECIDER"
+	cage_owns_credentials "$FABRIEK_DECIDER"
 
 	## The executor starts every session, and a session started before its
 	## credentials are the cage's is one that fails or is deaf, so the
 	## executor's unit waits for this mark and is started on it. Written
 	## last, and by rename, so that a mark seen is a machine prepared.
 	: >"$STATE_DIR/prepared.new" && mv "$STATE_DIR/prepared.new" "$STATE_DIR/prepared"
-	systemctl restart cageworks-executor.service
+	systemctl restart fabriek-executor.service
 	echo "$factory: prepared"
 }
 
@@ -496,8 +496,8 @@ cmd_factory_prepare() {
 cage_owns_credentials() {
 	local cage="$1" uid
 	uid="$(nixcage-container uid "$cage")" || die "could not get a uid for $cage"
-	chown "$uid" "$(cageworks_bus_dir "$STATE_DIR")/$cage" \
-		"$(cageworks_forge_token_path "$STATE_DIR" "$cage")" ||
+	chown "$uid" "$(fabriek_bus_dir "$STATE_DIR")/$cage" \
+		"$(fabriek_forge_token_path "$STATE_DIR" "$cage")" ||
 		die "could not give $cage its credentials"
 }
 
@@ -506,16 +506,16 @@ cage_owns_credentials() {
 cmd_task_file() {
 	local factory="${1:-}" workflow="${2:-}" title="${3:-}" body="${4:-}"
 	[ -n "$factory" ] && [ -n "$workflow" ] && [ -n "$title" ] ||
-		die "usage: cageworks-container task-file <factory> <workflow> <title> [body]"
-	cageworks_name_ok "$factory" || die "invalid factory name: $factory"
-	local declaration="$CAGEWORKS_ETC/declaration.json" stage
+		die "usage: fabriek-container task-file <factory> <workflow> <title> [body]"
+	fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+	local declaration="$FABRIEK_ETC/declaration.json" stage
 	stage="$(jq -r --arg w "$workflow" '.workflows[$w].stages[0].needs // empty' "$declaration")"
 	[ -n "$stage" ] || die "$factory declares no workflow $workflow"
 	local dir
-	dir="$(cageworks_operator_filed "$STATE_DIR")"
+	dir="$(fabriek_operator_filed "$STATE_DIR")"
 	printf '%s\n' "$title" >"$dir/title"
 	printf '%s\n' "$body" >"$dir/body"
-	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg t "$dir/title" --arg b "$dir/body" --arg s "$stage" \
 			'{verb: "file", titleFile: $t, bodyFile: $b, stage: $s}')" || exit 1
 	echo "$factory: filed at $stage"
@@ -523,9 +523,9 @@ cmd_task_file() {
 
 cmd_role_stop() {
 	local factory="${1:-}" role="${2:-}"
-	[ -n "$factory" ] && [ -n "$role" ] || die "usage: cageworks-container role-stop <factory> <role>"
-	cageworks_role_name_ok "$role" || die "invalid role name: $role"
-	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop <factory> <role>"
+	fabriek_role_name_ok "$role" || die "invalid role name: $role"
+	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" '{verb: "stop", role: $r}')" || exit 1
 	echo "$factory: stop sent to $role"
 }
@@ -534,17 +534,17 @@ cmd_role_stop() {
 ## point 2). The relay is the factory package's; this only names it.
 cmd_factory_watch() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-watch <factory> [--from <id>]"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-watch <factory> [--from <id>]"
 	shift
-	exec cageworks-relay "$@"
+	exec fabriek-relay "$@"
 }
 
 cmd_role_steer() {
 	local factory="${1:-}" role="${2:-}" text="${3:-}"
 	[ -n "$factory" ] && [ -n "$role" ] && [ -n "$text" ] ||
-		die "usage: cageworks-container role-steer <factory> <role> <text>"
-	cageworks_role_name_ok "$role" || die "invalid role name: $role"
-	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" \
+		die "usage: fabriek-container role-steer <factory> <role> <text>"
+	fabriek_role_name_ok "$role" || die "invalid role name: $role"
+	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" --arg t "$text" '{op: "steer", role: $r, text: $t}')" || exit 1
 	echo "$factory: steered $role"
 }
@@ -553,10 +553,10 @@ cmd_role_steer() {
 ## validates it exactly as it validates the decider's.
 cmd_factory_send() {
 	local factory="${1:-}" json="${2:-}"
-	[ -n "$factory" ] && [ -n "$json" ] || die "usage: cageworks-container factory-send <factory> <json>"
+	[ -n "$factory" ] && [ -n "$json" ] || die "usage: fabriek-container factory-send <factory> <json>"
 	jq -e '.verb | type == "string"' <<<"$json" >/dev/null 2>&1 ||
 		die "not a command: $json"
-	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(jq -c . <<<"$json")" || exit 1
+	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(jq -c . <<<"$json")" || exit 1
 	echo "$factory: sent"
 }
 
@@ -564,7 +564,7 @@ cmd_factory_send() {
 ## has said anything.
 cmd_factory_roles() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-roles <factory>"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-roles <factory>"
 	jq -r '.roles | keys[]' "$(factory_declaration "$factory")" | paste -sd' ' -
 }
 
@@ -575,14 +575,14 @@ cmd_factory_roles() {
 ## else. The address first, the password second, one per line.
 cmd_factory_board() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-board <factory>"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-board <factory>"
 	factory_declaration "$factory" >/dev/null
 	local password
-	password="$(cageworks_secret)"
-	cageworks_forge_admin user change-password --username operator \
+	password="$(fabriek_secret)"
+	fabriek_forge_admin user change-password --username operator \
 		--password "$password" --must-change-password=false >/dev/null 2>&1 ||
 		die "could not set the operator's password on the board"
-	jq -r .forgejo "$CAGEWORKS_ETC/bridge.json"
+	jq -r .forgejo "$FABRIEK_ETC/bridge.json"
 	printf '%s\n' "$password"
 }
 
@@ -591,8 +591,8 @@ cmd_factory_board() {
 ## prepare restarts that unit after writing a new password.
 cmd_bus_acl() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container bus-acl <factory>"
-	cageworks_bus_apply "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(factory_declaration "$factory")" ||
+	[ -n "$factory" ] || die "usage: fabriek-container bus-acl <factory>"
+	fabriek_bus_apply "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(factory_declaration "$factory")" ||
 		die "could not apply the bus ACL"
 }
 
@@ -600,14 +600,14 @@ cmd_bus_acl() {
 ## each uid belongs to (ADR-038 point 3).
 cmd_probes_publish() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container probes-publish <factory>"
-	cageworks_probes_publish "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(factory_declaration "$factory")"
+	[ -n "$factory" ] || die "usage: fabriek-container probes-publish <factory>"
+	fabriek_probes_publish "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(factory_declaration "$factory")"
 }
 
 cmd_factory_mirror() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: cageworks-container factory-mirror <factory>"
-	cageworks_operator_send "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" '{"op":"mirror"}' || exit 1
+	[ -n "$factory" ] || die "usage: fabriek-container factory-mirror <factory>"
+	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" '{"op":"mirror"}' || exit 1
 	echo "$factory: mirror requested"
 }
 

@@ -30,9 +30,9 @@ setup_temp_dir() {
 	unset SSH_AUTH_SOCK
 	# Both programs source their shell modules by store path. In the suite that
 	# path is the working tree, which is what lets bats drive them directly.
-	export CAGEWORKS_LIB="$CAGEWORKS_ROOT/modules"
+	export FABRIEK_LIB="$FABRIEK_ROOT/modules"
 	# The operator's own config, kept out of the way of the developer's.
-	export CAGEWORKS_CONFIG="$TEST_TEMP_DIR/cageworks.toml"
+	export FABRIEK_CONFIG="$TEST_TEMP_DIR/fabriek.toml"
 	mkdir -p "$XDG_STATE_HOME/nixcage" "$NIXCAGE_FLAKE"
 }
 
@@ -63,23 +63,23 @@ WORKSPACE_ROOTS=$roots
 EOF
 }
 
-CAGEWORKS_ROOT="$NIXCAGE_ROOT"
-CAGEWORKS_CONTAINER_BIN="${CAGEWORKS_ROOT}/cageworks-container"
-CAGEWORKS_BIN="${CAGEWORKS_ROOT}/cageworks"
+FABRIEK_ROOT="$NIXCAGE_ROOT"
+FABRIEK_CONTAINER_BIN="${FABRIEK_ROOT}/fabriek-container"
+FABRIEK_BIN="${FABRIEK_ROOT}/fabriek"
 
 # Run the machine program as a command. It is a real script rather than a Nix
 # string so the suite can drive it directly, which is what makes the seam
 # something a test asserts on rather than something it crosses.
-run_cageworks_container() {
-	run bash "$CAGEWORKS_CONTAINER_BIN" "$@"
+run_fabriek_container() {
+	run bash "$FABRIEK_CONTAINER_BIN" "$@"
 }
 
 # Run the operator's CLI as a command.
-run_cageworks() {
-	run bash "$CAGEWORKS_BIN" "$@"
+run_fabriek() {
+	run bash "$FABRIEK_BIN" "$@"
 }
 
-# The transport, stubbed. cageworks reaches its machine program over the ssh port
+# The transport, stubbed. fabriek reaches its machine program over the ssh port
 # and key it allocated the factory's own machine (ADR-019), and knows nothing
 # else about where the cages are, so this is the whole of what the CLI tests
 # have to stand in for.
@@ -100,11 +100,11 @@ stub_nixcage() {
 printf '%s\n' "\$*" >>"$SSH_FLAGS"
 ## Only a machine command carries argv on stdin; anything else is a machine
 ## verb reaching the same host and says nothing about the machine program.
-if printf '%s' "\$*" | grep -q 'xargs -0 cageworks-container'; then
-	## xargs -0 execs cageworks-container with those words, so that is the
+if printf '%s' "\$*" | grep -q 'xargs -0 fabriek-container'; then
+	## xargs -0 execs fabriek-container with those words, so that is the
 	## argv the machine program actually sees and what a test should assert on.
 	mapfile -d '' -t words < <(cat)
-	words=(cageworks-container "\${words[@]}")
+	words=(fabriek-container "\${words[@]}")
 	printf '%s ' "\${words[@]}" >>"$NIXCAGE_CALLS"
 	printf '\n' >>"$NIXCAGE_CALLS"
 	printf '%s\n' "\${words[@]}" >>"$NIXCAGE_ARGV"
@@ -118,11 +118,11 @@ STUB
 	## factory's own machine directory now, and refuses rather than falling
 	## back to localhost when there is none, so a test that drives a machine
 	## verb has to have one.
-	export CAGEWORKS_MACHINES="$TEST_TEMP_DIR/machines"
-	mkdir -p "$CAGEWORKS_MACHINES/acme"
-	: >"$CAGEWORKS_MACHINES/acme/id_ed25519"
-	echo 22100 >"$CAGEWORKS_MACHINES/acme/port"
-	: >"$CAGEWORKS_MACHINES/acme/known_hosts"
+	export FABRIEK_MACHINES="$TEST_TEMP_DIR/machines"
+	mkdir -p "$FABRIEK_MACHINES/acme"
+	: >"$FABRIEK_MACHINES/acme/id_ed25519"
+	echo 22100 >"$FABRIEK_MACHINES/acme/port"
+	: >"$FABRIEK_MACHINES/acme/known_hosts"
 }
 
 # One line per invocation, for asserting on the shape of a call.

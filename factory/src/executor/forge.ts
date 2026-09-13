@@ -41,7 +41,7 @@ export class ForgeBoard implements Board {
       this.labelIds = new Map(all.map((l) => [l.name, l.id]));
     }
     const id = this.labelIds.get(name);
-    if (id === undefined) throw new Error(`the forge has no label ${name}; cageworks up makes it`);
+    if (id === undefined) throw new Error(`the forge has no label ${name}; fabriek up makes it`);
     return id;
   }
 

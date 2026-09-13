@@ -1,6 +1,6 @@
 ## The machine one factory runs in (ADR-019).
 ##
-## cageworks builds and runs one VM per factory, on Linux and macOS alike, so
+## fabriek builds and runs one VM per factory, on Linux and macOS alike, so
 ## that the isolation a factory gets does not depend on which laptop is open and
 ## so that two factories share no kernel, store or uid space. Inside it, nixcage
 ## is in exactly the situation ADR-003 built it for: an ordinary Linux host
@@ -15,7 +15,7 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
+  cfg = config.fabriek.machine;
 
   ## Where the factory's state lives, unchanged by any of this. ADR-017 puts
   ## that directory on the pool and the storage primitive can only name a
@@ -26,12 +26,12 @@ let
 
   ## The pool is named after the factory, so a disk that ends up attached to
   ## the wrong machine refuses to import rather than being adopted.
-  pool = "cageworks-${cfg.factory}";
+  pool = "fabriek-${cfg.factory}";
 
   ## Found by serial rather than by drive letter, because a drive letter moves
   ## when the volume list changes and the pool would then be created on top of
   ## the store.
-  poolSerial = "cageworks-pool";
+  poolSerial = "fabriek-pool";
   poolDevice = "/dev/disk/by-id/virtio-${poolSerial}";
 
   ## The one way a credential reaches this machine (ADR-025 point 1). The
@@ -43,30 +43,30 @@ let
   ## readable by everything here and an argument would be a secret every uid on
   ## the machine had.
   egressCredential = pkgs.writeShellApplication {
-    name = "cageworks-egress-credential";
+    name = "fabriek-egress-credential";
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
       host="''${1:-}"
       if [ -z "$host" ]; then
-        echo "usage: cageworks-egress-credential <host>" >&2
+        echo "usage: fabriek-egress-credential <host>" >&2
         exit 1
       fi
       ## A host is one name. Anything carrying a slash or a dot-segment would
       ## reach a path, and this runs as root.
       case "$host" in
       */* | . | ..)
-        echo "cageworks: not a host: $host" >&2
+        echo "fabriek: not a host: $host" >&2
         exit 1
         ;;
       esac
       install -d -m 0700 ${stateDir}/egress
-      install -m 0400 -o cageworks-egress -g cageworks-egress \
+      install -m 0400 -o fabriek-egress -g fabriek-egress \
         /dev/stdin ${stateDir}/egress/"$host"
     '';
   };
 in
 {
-  options.cageworks.machine = {
+  options.fabriek.machine = {
     factory = lib.mkOption {
       type = lib.types.str;
       description = "The factory this machine exists to run. Names its pool.";
@@ -93,17 +93,17 @@ in
         The factory's declaration, validated and clamped by the build
         (ADR-040). The bridge's address plan and the bus's users are derived
         from its roles, and the machine program reads it from
-        /etc/cageworks/declaration.json rather than evaluating anything.
+        /etc/fabriek/declaration.json rather than evaluating anything.
       '';
     };
     sshPort = lib.mkOption {
       type = lib.types.port;
-      description = "The host port cageworks reaches this machine on.";
+      description = "The host port fabriek reaches this machine on.";
     };
     authorizedKey = lib.mkOption {
       type = lib.types.str;
       description = ''
-        The one public key that reaches this machine. cageworks owns the way in
+        The one public key that reaches this machine. fabriek owns the way in
         because it owns the VM, and this is that: a key made per factory, so no
         factory holds another factory's way in.
       '';
@@ -152,7 +152,7 @@ in
 
   config = {
     ## The declaration, on the machine as a file (ADR-040).
-    environment.etc."cageworks/declaration.json".text = builtins.toJSON cfg.declaration;
+    environment.etc."fabriek/declaration.json".text = builtins.toJSON cfg.declaration;
 
     ## The VM owns its store. The closure ships read-only and builds land in a
     ## persistent overlay, so nothing of the host's store is shared in and two
@@ -215,7 +215,7 @@ in
     ## one. Derived from the factory's name so that rebuilding a machine does
     ## not change the identity of the pool it imports.
     networking = {
-      hostName = "cageworks-${cfg.factory}";
+      hostName = "fabriek-${cfg.factory}";
       hostId = builtins.substring 0 8 (builtins.hashString "sha256" cfg.factory);
 
       ## This machine has a link-local IPv6 address, no global one and no route,
@@ -235,7 +235,7 @@ in
     ##
     ## The host keys live on the pool rather than on the rootfs. A machine that
     ## generates new ones every boot is a different machine every boot, and
-    ## cageworks, which pins what it connected to, refuses the second one: a
+    ## fabriek, which pins what it connected to, refuses the second one: a
     ## factory would stop and start exactly once.
     services.openssh = {
       enable = true;
@@ -252,7 +252,7 @@ in
     };
     users.users.root.openssh.authorizedKeys.keys = [ cfg.authorizedKey ];
 
-    systemd.services.cageworks-storage = {
+    systemd.services.fabriek-storage = {
       description = "Import or create the pool this factory's state lives on";
       wantedBy = [ "multi-user.target" ];
       after = [ "systemd-modules-load.service" ];
@@ -283,7 +283,7 @@ in
             ## never a device to reformat: zpool create would take every role's
             ## worktree with it.
             if zdb -l ${poolDevice} >/dev/null 2>&1; then
-              echo "cageworks: a pool exists on ${poolDevice} but will not import; refusing to recreate it" >&2
+              echo "fabriek: a pool exists on ${poolDevice} but will not import; refusing to recreate it" >&2
               exit 1
             fi
             ## posixacl and xattr=sa are not tuning. A role reaches the
@@ -356,7 +356,7 @@ in
       pkgs.git
       ## The machine program itself. Every role-, task- and factory- verb the
       ## CLI sends runs here, so this is what "the factory moves in" means.
-      pkgs.cageworks-container
+      pkgs.fabriek-container
     ]
     ++ lib.optionals (cfg.egress != [ ]) [ egressCredential ];
 
@@ -364,9 +364,9 @@ in
     ## the service because the firewall below is written in terms of it: the
     ## rule that lets anything out at all names this uid, so the uid is part of
     ## the machine rather than part of a service that may not have started.
-    users.users.cageworks-egress = {
+    users.users.fabriek-egress = {
       isSystemUser = true;
-      group = "cageworks-egress";
+      group = "fabriek-egress";
       ## Declared rather than allocated, because the rule below has to name it
       ## as a number: nftables resolves a user name when the ruleset is
       ## parsed, and the ruleset is parsed once at build time in a sandbox
@@ -380,7 +380,7 @@ in
       uid = 500;
       description = "Holds this factory's model credential and is the only way out";
     };
-    users.groups.cageworks-egress = { };
+    users.groups.fabriek-egress = { };
 
     ## A name is resolved by whoever wants it, so the rules below reach DNS.
     ##
@@ -410,7 +410,7 @@ in
     ## machine's own processes, of which root and the proxy may leave.
     networking.nftables = {
       enable = true;
-      tables.cageworks-egress = {
+      tables.fabriek-egress = {
         family = "inet";
         content = ''
           chain output {
@@ -419,7 +419,7 @@ in
             ## The machine talking to itself, and to its cages over the
             ## bridge, never leaves.
             oifname "lo" accept
-            oifname "cageworks-*" accept
+            oifname "fabriek-*" accept
 
             ## The far side of a connection something above was allowed to
             ## open.
@@ -436,7 +436,7 @@ in
             ## it may reach is the proxy's allowlist, not this chain's. It is
             ## a number because the ruleset is checked at build time, where
             ## the name resolves to nothing.
-            meta skuid ${toString config.users.users.cageworks-egress.uid} accept
+            meta skuid ${toString config.users.users.fabriek-egress.uid} accept
 
             ## Everything else is dropped, which is every role, and every
             ## build user. A derivation that fetches from the network at build
@@ -449,12 +449,12 @@ in
     ## What the include above reads, made before nginx opens it. The secret
     ## comes off the machine's own state directory, which the operator writes
     ## and no cage can read.
-    systemd.services.cageworks-egress-credentials = lib.mkIf (cfg.egress != [ ]) {
+    systemd.services.fabriek-egress-credentials = lib.mkIf (cfg.egress != [ ]) {
       description = "Compose this factory's credential headers for the egress proxy";
       wantedBy = [ "multi-user.target" ];
       before = [ "nginx.service" ];
       requiredBy = [ "nginx.service" ];
-      after = [ "cageworks-storage.service" ];
+      after = [ "fabriek-storage.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -462,9 +462,9 @@ in
       path = [ pkgs.coreutils ];
       script = ''
         set -eu
-        install -d -m 0750 -o cageworks-egress -g cageworks-egress /run/cageworks-egress
+        install -d -m 0750 -o fabriek-egress -g fabriek-egress /run/fabriek-egress
         ${lib.concatMapStrings (host: ''
-          conf=/run/cageworks-egress/${host}.conf
+          conf=/run/fabriek-egress/${host}.conf
           secret=${stateDir}/egress/${host}
           : >"$conf"
           ${lib.optionalString (cfg.egressHeaders ? ${host}) ''
@@ -473,7 +473,7 @@ in
                 ${lib.escapeShellArg cfg.egressHeaders.${host}} "$(cat "$secret")" >"$conf"
             fi
           ''}
-          chown cageworks-egress:cageworks-egress "$conf"
+          chown fabriek-egress:fabriek-egress "$conf"
           chmod 0400 "$conf"
         '') cfg.egress}
       '';

@@ -10,13 +10,13 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
-	source "$CAGEWORKS_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/schema.sh
-	source "$CAGEWORKS_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
 	# shellcheck source=../../modules/resources.sh
-	source "$CAGEWORKS_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
 	# shellcheck source=../../modules/repo-declaration.sh
-	source "$CAGEWORKS_ROOT/modules/repo-declaration.sh"
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
 }
 
 teardown() {
@@ -59,7 +59,7 @@ JSON
 
 ## Validate the complete declaration with one jq edit applied to it.
 validate_with() {
-	complete_declaration | jq "$1" | cageworks_declaration_validate
+	complete_declaration | jq "$1" | fabriek_declaration_validate
 }
 
 @test "a complete declaration is accepted and comes back as itself" {
@@ -202,8 +202,8 @@ validate_with() {
 ## it without the flake's inputs, which is also why a repository can check its
 ## own declaration cheaply.
 validate_example() {
-	nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
-		cageworks_declaration_validate
+	nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
+		fabriek_declaration_validate
 }
 
 @test "the example repository declares a factory this reader accepts" {
@@ -224,7 +224,7 @@ validate_example() {
 	local defined shell
 	defined="$(nix eval --impure --raw --expr '
 		builtins.concatStringsSep "\n" (builtins.attrNames
-			(builtins.getFlake (toString '"$CAGEWORKS_ROOT"'/examples/factory-project))
+			(builtins.getFlake (toString '"$FABRIEK_ROOT"'/examples/factory-project))
 				.devShells.aarch64-linux)' 2>/dev/null)"
 	[ -n "$defined" ]
 
@@ -232,7 +232,7 @@ validate_example() {
 		[ -n "$shell" ] || continue
 		run printf '%s\n' "$defined"
 		assert_line "$shell"
-	done < <(nix eval --json --file "$CAGEWORKS_ROOT/examples/factory-project/cageworks.nix" |
+	done < <(nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
 		jq -r '[.roles[].shell // empty] | .[]')
 }
 

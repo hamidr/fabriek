@@ -57,7 +57,7 @@ export class CloneGit implements Git {
     await git(this.o.clone, ["push", this.o.forgeUrl, `refs/heads/${branch}:refs/heads/${branch}`], this.helper());
   }
 
-  /** main and refs/cageworks/record to origin, together (ADR-036 point 7). */
+  /** main and refs/fabriek/record to origin, together (ADR-036 point 7). */
   async mirror(): Promise<void> {
     await git(this.o.clone, ["fetch", this.o.forgeUrl, `refs/heads/${this.base}:refs/heads/${this.base}`], this.helper());
     if (this.o.record) {
@@ -68,14 +68,14 @@ export class CloneGit implements Git {
         void tree;
         const written = (await git(this.o.clone, ["write-tree"], { GIT_INDEX_FILE: join(dir, "index") })).trim();
         const commit = (await git(this.o.clone, ["commit-tree", written, "-m", "the record, mirrored"], {
-          GIT_AUTHOR_NAME: "cageworks", GIT_AUTHOR_EMAIL: "cageworks@invalid",
-          GIT_COMMITTER_NAME: "cageworks", GIT_COMMITTER_EMAIL: "cageworks@invalid",
+          GIT_AUTHOR_NAME: "fabriek", GIT_AUTHOR_EMAIL: "fabriek@invalid",
+          GIT_COMMITTER_NAME: "fabriek", GIT_COMMITTER_EMAIL: "fabriek@invalid",
         })).trim();
-        await git(this.o.clone, ["update-ref", "refs/cageworks/record", commit]);
+        await git(this.o.clone, ["update-ref", "refs/fabriek/record", commit]);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
     }
-    await git(this.o.clone, ["push", "origin", `refs/heads/${this.base}:refs/heads/${this.base}`, "+refs/cageworks/record:refs/cageworks/record"]);
+    await git(this.o.clone, ["push", "origin", `refs/heads/${this.base}:refs/heads/${this.base}`, "+refs/fabriek/record:refs/fabriek/record"]);
   }
 }

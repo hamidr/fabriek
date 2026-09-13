@@ -1,4 +1,4 @@
-# cageworks
+# fabriek
 
 A factory of named roles working one git repository, each in a cage of its own.
 
@@ -9,12 +9,12 @@ object database and are partitioned by ref -- a role writes only
 role as files and its outcome leaves as files, so nothing a role writes ever
 becomes part of a command line.
 
-cageworks runs on [nixcage](https://github.com/hamidr/nixcage), which owns the
+fabriek runs on [nixcage](https://github.com/hamidr/nixcage), which owns the
 cages. Everything about isolation, uid mapping, binds, environment selection,
 secrets and storage is nixcage's; everything that exists only because several
 named workers share one repository is here.
 
-The machine is cageworks' own. A factory runs in a NixOS VM of its own on
+The machine is fabriek' own. A factory runs in a NixOS VM of its own on
 Linux and macOS alike, so the isolation a factory gets does not depend on
 which laptop is open and two factories share no kernel, store or uid space
 (ADR-019). Inside it, nixcage is on an ordinary Linux host running cages
@@ -23,9 +23,9 @@ natively.
 ## How it works
 
 ```
-cageworks up acme                  builds and boots the factory's machine from
+fabriek up acme                  builds and boots the factory's machine from
      |                             a lock that pins the repository's commit
-cageworks task file acme ship "Add an importer" "handles empty files"
+fabriek task file acme ship "Add an importer" "handles empty files"
      |
      +-- an issue on the machine's forge, labelled with the first stage
      +-- the decider, a cage of its own, chooses a ready role and asks
@@ -33,9 +33,9 @@ cageworks task file acme ship "Add an importer" "handles empty files"
      +-- the role's cage acks, works, commits on its branch, comments its outcome
      +-- the executor checks the commit and moves the label; the decider goes on
      |
-cageworks factory console acme     one screen: roles, board, live stream, keys
-cageworks factory board acme       Forgejo's UI on a local port, to merge
-cageworks factory mirror acme      merged main and the record reach origin,
+fabriek factory console acme     one screen: roles, board, live stream, keys
+fabriek factory board acme       Forgejo's UI on a local port, to merge
+fabriek factory mirror acme      merged main and the record reach origin,
                                    on your word and never before
 ```
 
@@ -46,15 +46,15 @@ and a cage has no route off the machine.
 
 ## Install
 
-cageworks is two programs. There is no NixOS module to import and no rebuild to
+fabriek is two programs. There is no NixOS module to import and no rebuild to
 run: a repository declares the factory that works it, and the operator keeps one
 file saying what a factory may cost here.
 
-The repository's own flake gains a `cageworks` output. The shortest one that
+The repository's own flake gains a `fabriek` output. The shortest one that
 works:
 
 ```nix
-cageworks = {
+fabriek = {
   name = "acme";
   roles.builder = { command = [ "claude" ]; provides = [ "build" ]; };
   workflows.ship.stages = [ { needs = "build"; } ];
@@ -63,10 +63,10 @@ cageworks = {
 
 It is read from the commit rather than from the working tree, so the factory
 working a repository is the one its history declares. `examples/factory-project`
-is a complete one, with its declaration in `cageworks.nix` beside the devShells
+is a complete one, with its declaration in `fabriek.nix` beside the devShells
 its roles name.
 
-The operator's side is `~/.config/cageworks/config.toml`, the same file on Linux
+The operator's side is `~/.config/fabriek/config.toml`, the same file on Linux
 and on macOS:
 
 ```toml
@@ -80,9 +80,9 @@ concurrency = 4
 path = "/home/me/Src/acme"
 ```
 
-A repository states what it needs and this caps it; cageworks says which field
+A repository states what it needs and this caps it; fabriek says which field
 it clamped rather than sizing down quietly. Both files are closed schemas: a key
-cageworks does not recognise is refused with its own name rather than ignored,
+fabriek does not recognise is refused with its own name rather than ignored,
 which is what stops a repository reaching the machine it is given.
 
 nixcage still needs `principalUidRange` set where it declares your cages, because
@@ -93,18 +93,18 @@ handing numbers out is the only one that can promise never to reissue one.
 
 | Command | Description |
 |---|---|
-| `cageworks up <factory>` | Build and boot the machine that factory runs in |
-| `cageworks down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
-| `cageworks vm status` | The machines on this host, what each is doing, and the port it answers on |
-| `cageworks role <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid |
-| `cageworks role stop <factory> <role>` | End a role's running turn; its task stays with it |
-| `cageworks role steer <factory> <role> <text>` | Speak into a role's running turn |
-| `cageworks task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
-| `cageworks factory console <factory>` | The one face: roles, board, live stream, and the keys |
-| `cageworks factory board <factory>` | Forgejo's UI on a local port, for merging; prints the URL and the login |
-| `cageworks factory watch <factory>` | The factory's bus as JSON lines, for any client |
-| `cageworks factory send <factory> '<json>'` | A command in the decider's vocabulary, from you |
-| `cageworks factory mirror <factory>` | Push merged main and the record to the repository's origin |
+| `fabriek up <factory>` | Build and boot the machine that factory runs in |
+| `fabriek down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
+| `fabriek vm status` | The machines on this host, what each is doing, and the port it answers on |
+| `fabriek role <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid |
+| `fabriek role stop <factory> <role>` | End a role's running turn; its task stays with it |
+| `fabriek role steer <factory> <role> <text>` | Speak into a role's running turn |
+| `fabriek task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
+| `fabriek factory console <factory>` | The one face: roles, board, live stream, and the keys |
+| `fabriek factory board <factory>` | Forgejo's UI on a local port, for merging; prints the URL and the login |
+| `fabriek factory watch <factory>` | The factory's bus as JSON lines, for any client |
+| `fabriek factory send <factory> '<json>'` | A command in the decider's vocabulary, from you |
+| `fabriek factory mirror <factory>` | Push merged main and the record to the repository's origin |
 
 ## How work moves
 
@@ -136,7 +136,7 @@ yet passed.
 
 ```bash
 nix develop
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix build .#factory
 nix develop --command tests/system/journey.sh   # the whole factory on this host, no model

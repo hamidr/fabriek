@@ -69,7 +69,7 @@ each count against `budget.runs`, which answers PRD-005's open question, and
 same as letting it finish, and an operator would pay most where the factory is
 going worst.
 
-**7. The operator's client is theirs, not ours.** cageworks publishes the
+**7. The operator's client is theirs, not ours.** fabriek publishes the
 socket over the key and port a factory's machine already has. What drives it is
 outside this repository, as which agent a role runs already is.
 
@@ -157,7 +157,7 @@ the refs it already carries, in the same commit as the implementation.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix develop --command bats tests/command/seam.bats
 alloy6 exec models/factory-structure.als

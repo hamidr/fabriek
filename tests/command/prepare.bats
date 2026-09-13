@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# What cageworks up makes on a machine after it boots, and makes again
+# What fabriek up makes on a machine after it boots, and makes again
 # without changing anything (ADR-036, roadmap 2.3): a password per bus user,
 # an operator account and token on the forge, the factory's repository, an
 # account and an issue-scoped token per role, a read-only one for the decider,
@@ -19,11 +19,11 @@ setup() {
 	mkdir -p "$STATE" "$STUB_DIR" "$ETC" "$FORGE"
 	PATH="$STUB_DIR:$PATH"
 	export PATH STATE
-	export CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
+	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
 	# Where a push of main to the forge lands here: a bare repository, so no
 	# test waits on an address that is not on this host.
 	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
-	export CAGEWORKS_FORGE_GIT_URL="$TEST_TEMP_DIR/forge.git"
+	export FABRIEK_FORGE_GIT_URL="$TEST_TEMP_DIR/forge.git"
 
 	cat >"$ETC/declaration.json" <<'JSON'
 { "name": "acme",
@@ -32,7 +32,7 @@ setup() {
   "workflows": { "ship": { "stages": [ { "needs": "build" }, { "needs": "review" } ] } } }
 JSON
 	cat >"$ETC/bridge.json" <<'JSON'
-{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24,
+{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "reviewer": "10.77.0.11", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
@@ -113,31 +113,31 @@ teardown() {
 }
 
 @test "given a fresh machine, prepare makes a password for every bus user and applies the ACL" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	for user in builder reviewer decider executor probes; do
 		[ -s "$STATE/bus/$user" ]
 		[ "$(stat -c %a "$STATE/bus/$user")" = 400 ]
 	done
 	run cat "$FORGE/systemctl-calls"
-	assert_output --partial "restart cageworks-bus-acl"
+	assert_output --partial "restart fabriek-bus-acl"
 }
 
 # The executor starts every session, and a session started before its
 # credentials are the role's is one that fails or is deaf. Found on a first
 # boot: the decider logged EACCES on its token until prepare had chowned it.
 @test "prepare marks the machine prepared after the last credential is handed over, and starts the executor on it" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ -f "$STATE/prepared" ]
 	run cat "$FORGE/systemctl-calls"
-	assert_output --partial "restart cageworks-executor"
+	assert_output --partial "restart fabriek-executor"
 	# the mark is the last thing written: after the decider's chown
 	[ "$(tail -1 "$FORGE/chown-calls")" = "60192 $STATE/bus/decider $STATE/forge/decider-token" ]
 }
 
 @test "prepare makes the operator's account and token once, and the repository once" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ -s "$STATE/forge/operator-token" ]
 	run grep -c "admin user create --admin --username operator" "$FORGE/cli-calls"
@@ -147,7 +147,7 @@ teardown() {
 }
 
 @test "every role gets an account, read on the repository, and a write:issue token kept as a file" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	for role in builder reviewer; do
 		[ "$(cat "$STATE/forge/$role-token")" = "token-for-$role" ]
@@ -162,7 +162,7 @@ teardown() {
 }
 
 @test "a role's bus password and forge token belong to the role's uid, so its cage can read them and nothing else can" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run cat "$FORGE/chown-calls"
 	assert_output --partial "60000 $STATE/bus/builder $STATE/forge/builder-token"
@@ -171,10 +171,10 @@ teardown() {
 }
 
 @test "given the repository's origin, prepare files it on the machine for every session the executor starts" {
-	run_cageworks_container factory-prepare acme https://forge.example/acme.git
+	run_fabriek_container factory-prepare acme https://forge.example/acme.git
 	assert_success
 	[ "$(cat "$STATE/origin")" = "https://forge.example/acme.git" ]
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ "$(cat "$STATE/origin")" = "https://forge.example/acme.git" ]
 }
@@ -182,16 +182,16 @@ teardown() {
 # Found on a machine: the CLI's user list came back empty once, prepare tried
 # to create an account that existed, and the whole boot failed on it.
 @test "an account the list could not show is confirmed by the create that finds it there" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	touch "$FORGE/list-fails-once"
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ "$(grep -c '^builder$' "$FORGE/users")" = 1 ]
 }
 
 @test "the decider gets an account and a token that can only read" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run grep -c "generate-access-token --username decider .*--scopes read:issue" "$FORGE/cli-calls"
 	assert_output 1
@@ -201,7 +201,7 @@ teardown() {
 # The decider is a cage like a role's, and its files are bound the same way;
 # found on a machine whose decider logged EACCES on its token every turn.
 @test "the decider's bus password and forge token belong to the decider's uid" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run cat "$FORGE/chown-calls"
 	assert_output --partial "60192 $STATE/bus/decider $STATE/forge/decider-token"
@@ -211,7 +211,7 @@ teardown() {
 # and a label the forge lacks is a refused assign. Found on a host: the first
 # assign of the system journey was refused for the label prepare never made.
 @test "a label exists for every stage's capability, plus the executor's assigning, assigned and blocked, and memory" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run sort "$FORGE/labels"
 	assert_output "assigned
@@ -223,7 +223,7 @@ review"
 }
 
 @test "each role's memory issue is opened as that role, labelled memory and pinned" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run jq -r '.title + " by " + .user.login' "$FORGE/issues"
 	assert_line --index 0 "memory: builder by builder"
@@ -235,14 +235,14 @@ review"
 }
 
 @test "a second prepare changes nothing" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	local users tokens
 	users="$(cat "$FORGE/users")"
 	tokens="$(cat "$STATE/bus/builder" "$STATE/forge/builder-token" "$STATE/forge/operator-token")"
 	: >"$FORGE/cli-calls"
 	: >"$FORGE/api-calls"
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ "$(cat "$FORGE/users")" = "$users" ]
 	[ "$(cat "$STATE/bus/builder" "$STATE/forge/builder-token" "$STATE/forge/operator-token")" = "$tokens" ]
@@ -255,7 +255,7 @@ review"
 }
 
 @test "a token never travels on a command line" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	[ ! -f "$FORGE/leaks" ]
 	run grep -c "token-for" "$FORGE/api-calls"
@@ -263,12 +263,12 @@ review"
 }
 
 @test "a role added to the declaration is made on the next prepare, and nothing else is remade" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	jq '.roles.tester = {command: ["pi"], provides: ["test"]} | .workflows.ship.stages += [{needs: "test"}]' \
 		"$ETC/declaration.json" >"$ETC/d.new" && mv "$ETC/d.new" "$ETC/declaration.json"
 	: >"$FORGE/cli-calls"
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
 	run grep -c "user create" "$FORGE/cli-calls"
 	assert_output 1
@@ -290,7 +290,7 @@ origin_with_record() {
 	printf '%s\n' "$record" >"$work/issues.json"
 	git -C "$work" add issues.json
 	git -C "$work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m record
-	git -C "$work" push -q "$origin" HEAD:refs/cageworks/record
+	git -C "$work" push -q "$origin" HEAD:refs/fabriek/record
 	echo "$origin"
 }
 
@@ -301,7 +301,7 @@ origin_with_record() {
 	  {"number": 2, "title": "ship the login page", "body": "as filed", "state": "open", "labels": [{"name": "build"}], "user": {"login": "operator"}},
 	  {"number": 3, "title": "fix the footer", "body": "done long ago", "state": "closed", "labels": [], "user": {"login": "operator"}}
 	]')"
-	run_cageworks_container factory-prepare acme "$origin"
+	run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 	run jq -r '.title' "$FORGE/issues"
 	assert_output "ship the login page
@@ -317,9 +317,9 @@ memory: reviewer"
 @test "given a board that already has issues, prepare leaves the record on origin alone" {
 	local origin
 	origin="$(origin_with_record '[{"number": 1, "title": "ship the login page", "body": "", "state": "open", "labels": [], "user": {"login": "operator"}}]')"
-	run_cageworks_container factory-prepare acme "$origin"
+	run_fabriek_container factory-prepare acme "$origin"
 	assert_success
-	run_cageworks_container factory-prepare acme "$origin"
+	run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 	run wc -l <"$FORGE/issues"
 	assert_output --regexp '^ *3$'
@@ -328,7 +328,7 @@ memory: reviewer"
 @test "given a record carrying a label the declaration no longer has, prepare says which and restores the rest" {
 	local origin
 	origin="$(origin_with_record '[{"number": 1, "title": "deploy it", "body": "", "state": "open", "labels": [{"name": "deploy"}, {"name": "build"}], "user": {"login": "operator"}}]')"
-	run_cageworks_container factory-prepare acme "$origin"
+	run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 	assert_output --partial "deploy"
 	run jq -r '.title' "$FORGE/issues"
@@ -340,7 +340,7 @@ memory: reviewer"
 @test "given an origin that carries no record, prepare makes a board of nothing but the memory issues" {
 	local origin="$TEST_TEMP_DIR/origin"
 	git init -q --bare "$origin"
-	run_cageworks_container factory-prepare acme "$origin"
+	run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 	run wc -l <"$FORGE/issues"
 	assert_output --regexp '^ *2$'
@@ -352,16 +352,16 @@ memory: reviewer"
 # transport reaches. The operator's account was made with a password nothing
 # kept, so each opening sets a fresh one and says it once.
 @test "factory-board answers the board's address on the bridge and a fresh password for the operator, never the same twice" {
-	run_cageworks_container factory-prepare acme
+	run_fabriek_container factory-prepare acme
 	assert_success
-	run_cageworks_container factory-board acme
+	run_fabriek_container factory-board acme
 	assert_success
 	assert_line --index 0 "10.77.0.1:3000"
 	local first="${lines[1]}"
 	[ "${#first}" -ge 20 ]
 	run grep -c "user change-password --username operator" "$FORGE/cli-calls"
 	assert_output 1
-	run_cageworks_container factory-board acme
+	run_fabriek_container factory-board acme
 	assert_success
 	[ "${lines[1]}" != "$first" ]
 }
@@ -379,7 +379,7 @@ memory: reviewer"
 	git -C "$work" add README
 	git -C "$work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
 	git -C "$work" push -q "$origin" main
-	CAGEWORKS_FORGE_GIT_URL="$forge_git" run_cageworks_container factory-prepare acme "$origin"
+	FABRIEK_FORGE_GIT_URL="$forge_git" run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 	run git -C "$forge_git" rev-parse --verify --quiet refs/heads/main
 	assert_success
@@ -387,6 +387,6 @@ memory: reviewer"
 	run grep -c "token-for" "$FORGE/api-calls"
 	assert_output 0
 	touch "$FORGE/has-main"
-	CAGEWORKS_FORGE_GIT_URL="$TEST_TEMP_DIR/nowhere" run_cageworks_container factory-prepare acme "$origin"
+	FABRIEK_FORGE_GIT_URL="$TEST_TEMP_DIR/nowhere" run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 }

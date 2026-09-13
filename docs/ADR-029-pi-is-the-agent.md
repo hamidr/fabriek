@@ -81,7 +81,7 @@ provided nothing, so the repository contradicted this before the ink was dry
 and the command named a binary no shell had. `pi-coding-agent` is in nixpkgs,
 and it goes in the project's own devShell for the reason ADR-016 gives for a
 specialist's toolchain: what a role has to hand is the project's business, not
-cageworks'.
+fabriek'.
 
 The second half of that is withdrawn by ADR-030. Reasoning from ADR-016 was
 right about a specialist's toolchain and wrong about the agent: a repository
@@ -159,7 +159,7 @@ row means exactly that, and is the row most likely to be out of date first.
 
 ```bash
 docmeta-check docs && docmeta-tracker --check docs
-nix eval --impure --expr '(builtins.getFlake (toString ./examples/factory-project)).cageworks'
+nix eval --impure --expr '(builtins.getFlake (toString ./examples/factory-project)).fabriek'
 nix develop --command bats --recursive tests/
 ```
 

@@ -247,7 +247,7 @@ tests/manual/observe.sh rate 120
 
 # Storage: bytes the journal dataset actually holds, compressed.
 tests/manual/observe.sh storage
-# zfs get -Hp used,logicalused,compressratio cageworks-<factory>/state/journal
+# zfs get -Hp used,logicalused,compressratio fabriek-<factory>/state/journal
 
 # Overhead: a fixed workload with the probes loaded and without them.
 tests/manual/observe.sh overhead
@@ -271,19 +271,19 @@ a declared command wins over anything a caller passes and the check has to run
 one of its own.
 
 The retention window is set from the storage number against
-`cageworks.machine.diskSize`, and is written into the declaration's schema only
+`fabriek.machine.diskSize`, and is written into the declaration's schema only
 once that number exists. Until then the quota is the only bound.
 
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix develop --command bats tests/command/seam.bats
 alloy6 exec models/factory-structure.als
 quint run models/ledger-tap.qnt --invariant=allInvariants --max-steps=60 --max-samples=200000
 docmeta-check docs && docmeta-tracker --check docs
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/observe.sh
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/observe.sh
 ```
 
 The suite asserts what the ledger is rather than what it says: a ledger entry

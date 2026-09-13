@@ -2,27 +2,27 @@
 ## The worktree a factory role works in, and the parts of the repository's git
 ## directory its uid is granted (ADR-010, PRD-003).
 ##
-## Sourced by store path into cageworks-container, alongside names.sh, whose
-## cageworks_name_ok this file relies on. A file rather than an inline
+## Sourced by store path into fabriek-container, alongside names.sh, whose
+## fabriek_name_ok this file relies on. A file rather than an inline
 ## string so shellcheck reads it and bats can source it.
 
 ## Role worktrees live in the state nixcage keeps rather than under a workspace
 ## root: they belong to the supervisor, and putting them beside the operator's
 ## projects would make them enterable by hand as if they were projects.
-cageworks_role_worktree_path() {
+fabriek_role_worktree_path() {
 	local state="$1" factory="$2" role="$3"
-	cageworks_name_ok "$factory" || return 1
-	cageworks_name_ok "$role" || return 1
+	fabriek_name_ok "$factory" || return 1
+	fabriek_name_ok "$role" || return 1
 	echo "$state/worktrees/$factory/$role"
 }
 
 ## A role writes only refs under its own name, so every branch it takes is
 ## constructed here rather than anywhere a role's own string could reach.
 ## Phase 1 has no tasks, so the default is one working branch per role.
-cageworks_role_branch() {
+fabriek_role_branch() {
 	local role="$1" leaf="${2:-work}"
-	cageworks_name_ok "$role" || return 1
-	cageworks_name_ok "$leaf" || return 1
+	fabriek_name_ok "$role" || return 1
+	fabriek_name_ok "$leaf" || return 1
 	echo "$role/$leaf"
 }
 
@@ -30,9 +30,9 @@ cageworks_role_branch() {
 ## directory itself and packed-refs stay unreachable: packed-refs holds ref
 ## values, so a role able to write it could redefine main without ever
 ## touching refs/heads/main.
-cageworks_role_acl_targets() {
+fabriek_role_acl_targets() {
 	local gitdir="$1" role="$2"
-	cageworks_name_ok "$role" || return 1
+	fabriek_name_ok "$role" || return 1
 	echo "$gitdir/objects"
 	echo "$gitdir/refs/heads/$role"
 	echo "$gitdir/logs/refs/heads/$role"
@@ -43,12 +43,12 @@ cageworks_role_acl_targets() {
 ## is measured behaviour: chowning the tree and its administrative directory is
 ## what makes libgit2 open the repository, and the ACLs are what let a foreign
 ## uid write objects and its own refs with no shared group (ADR-010).
-cageworks_role_worktree_ensure() {
+fabriek_role_worktree_ensure() {
 	local state="$1" factory="$2" role="$3" repo="$4" uid="$5" quota="${6:-}"
 
 	local path branch gitdir target
-	path="$(cageworks_role_worktree_path "$state" "$factory" "$role")" || return 1
-	branch="$(cageworks_role_branch "$role")" || return 1
+	path="$(fabriek_role_worktree_path "$state" "$factory" "$role")" || return 1
+	branch="$(fabriek_role_branch "$role")" || return 1
 
 	gitdir="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" || return 1
 
@@ -81,7 +81,7 @@ cageworks_role_worktree_ensure() {
 	while IFS= read -r target; do
 		[ -e "$target" ] || continue
 		setfacl -R -m "u:$uid:rwX" -m "d:u:$uid:rwX" "$target" || return 1
-	done < <(cageworks_role_acl_targets "$gitdir" "$role")
+	done < <(fabriek_role_acl_targets "$gitdir" "$role")
 
 	echo "$path"
 }

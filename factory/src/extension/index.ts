@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { bindActor, fromEnvironment, type Bound } from "./bind.js";
 import type { Agent, Checks } from "./actor.js";
 
-export default function cageworks(pi: ExtensionAPI): void {
+export default function fabriek(pi: ExtensionAPI): void {
   const world = fromEnvironment();
   let context: ExtensionContext | undefined;
   let bound: Bound | undefined;

@@ -1,20 +1,20 @@
 ## Example flake for a repository a factory works.
 ##
-## Two things make it one. It declares the factory itself, as the 'cageworks'
+## Two things make it one. It declares the factory itself, as the 'fabriek'
 ## output (ADR-020), so the team that works this repository travels with it
 ## rather than living in one person's machine configuration. And it defines one
 ## devShell per specialist instead of a single default, because a role declared
 ## with 'shell = "backend-jvm"' enters the shell of that name; a role that names
 ## none enters 'default'.
 ##
-## The declaration is kept in ./cageworks.nix beside this file so that reading
+## The declaration is kept in ./fabriek.nix beside this file so that reading
 ## it costs nothing: anything checking it can evaluate that file alone, without
 ## this flake's inputs.
 ##
 ## flake-parts is used because it makes several per-system shells readable;
 ## plain 'devShells = forAllSystems ...' produces the same attributes.
 {
-  description = "Example repository worked by a cageworks factory";
+  description = "Example repository worked by a fabriek factory";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -29,10 +29,10 @@
         "aarch64-linux"
       ];
 
-      ## Who works this repository. cageworks reads exactly this attribute, out
+      ## Who works this repository. fabriek reads exactly this attribute, out
       ## of the commit rather than the working tree, so an edit here takes
       ## effect when it is committed.
-      flake.cageworks = import ./cageworks.nix;
+      flake.fabriek = import ./fabriek.nix;
 
       perSystem =
         { pkgs, ... }:
@@ -43,7 +43,7 @@
           ## a role declaring shell = "backend-jvm" enters that shell and only
           ## that shell, so anything left in 'default' alone would be invisible
           ## to it. This list is concatenated into each one below, which is the
-          ## whole mechanism -- there is no cageworks field for it, and a field
+          ## whole mechanism -- there is no fabriek field for it, and a field
           ## would resolve package names against a nixpkgs this flake does not
           ## pin.
           ##

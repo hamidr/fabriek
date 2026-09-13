@@ -6,7 +6,7 @@
 ## for through the storage primitive and bounded by recordQuota, because a
 ## record that grows without bound takes every worktree on the pool with it.
 ##
-## Accounts, tokens, labels and the memory issues are cageworks up's to make
+## Accounts, tokens, labels and the memory issues are fabriek up's to make
 ## and to make again without changing anything (ADR-036, roadmap 2.3); this
 ## file only gives them a forge to be made in.
 {
@@ -16,12 +16,12 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
+  cfg = config.fabriek.machine;
   stateDir = "/var/lib/nixcage";
-  plan = builtins.fromJSON config.environment.etc."cageworks/bridge.json".text;
+  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
 in
 {
-  options.cageworks.machine.recordQuota = lib.mkOption {
+  options.fabriek.machine.recordQuota = lib.mkOption {
     type = lib.types.int;
     default = 4096;
     description = ''
@@ -72,11 +72,11 @@ in
     ## Where the record lives, asked for through the primitive rather than
     ## with zfs, and before Forgejo opens it. The forge's uid is allocated by
     ## NixOS, so it is resolved when this runs rather than named.
-    systemd.services.cageworks-record = {
+    systemd.services.fabriek-record = {
       description = "The storage this factory's record lives on";
       wantedBy = [ "multi-user.target" ];
-      requires = [ "cageworks-storage.service" ];
-      after = [ "cageworks-storage.service" ];
+      requires = [ "fabriek-storage.service" ];
+      after = [ "fabriek-storage.service" ];
       before = [ "forgejo.service" ];
       requiredBy = [ "forgejo.service" ];
       serviceConfig = {

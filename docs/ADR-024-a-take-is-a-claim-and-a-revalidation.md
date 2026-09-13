@@ -98,7 +98,7 @@ whole lease, and the lease exists for holders that died, not for holders that
 declined.
 
 **3. Every git-bug invocation retries the repository lock.** No `git-bug` call
-in cageworks runs bare. Each goes through one wrapper that retries on a locked
+in fabriek runs bare. Each goes through one wrapper that retries on a locked
 repository with jittered backoff up to a bounded number of attempts, and
 returns the failure when the attempts run out. This is a work-around for
 somebody else's defect and is written as one.
@@ -248,7 +248,7 @@ unchanged by this document, and the take is temporal rather than structural.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 quint run models/task-claim.qnt --invariant=allInvariants --max-steps=60

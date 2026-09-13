@@ -11,11 +11,11 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
-  plan = builtins.fromJSON config.environment.etc."cageworks/bridge.json".text;
-  extension = "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/extension/index.js";
+  cfg = config.fabriek.machine;
+  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
+  extension = "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/extension/index.js";
   ## Which of pi's built-in providers answers at which allowed endpoint. Only
-  ## the ones cageworks knows; an endpoint outside this table is reachable
+  ## the ones fabriek knows; an endpoint outside this table is reachable
   ## through the proxy but pi is not pointed at it.
   providers = {
     "api.anthropic.com" = "anthropic";
@@ -49,7 +49,7 @@ in
 
     ## Real files, not /etc's usual symlinks: a session binds the directory
     ## and a cage has no /etc/static for a symlink to land in.
-    environment.etc."cageworks/pi/extensions/cageworks/index.ts" = {
+    environment.etc."fabriek/pi/extensions/fabriek/index.ts" = {
       mode = "0444";
       text = ''
         // The loop (ADR-035). Built into the machine; nothing here is the
@@ -61,31 +61,31 @@ in
     ## The decider's loop (ADR-034 point 1), in a directory of its own so a
     ## role's session never loads it. Same models.json: the decider reaches
     ## the model through the same proxy and is counted on its own address.
-    environment.etc."cageworks/pi-decider/extensions/cageworks/index.ts" = {
+    environment.etc."fabriek/pi-decider/extensions/fabriek/index.ts" = {
       mode = "0444";
       text = ''
-        export { default } from "${pkgs.cageworks-factory}/lib/cageworks-factory/dist/decider/index.js";
+        export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
       '';
     };
-    environment.etc."cageworks/pi/settings.json" = settings;
-    environment.etc."cageworks/pi-decider/settings.json" = settings;
-    environment.etc."cageworks/pi-decider/models.json" = {
+    environment.etc."fabriek/pi/settings.json" = settings;
+    environment.etc."fabriek/pi-decider/settings.json" = settings;
+    environment.etc."fabriek/pi-decider/models.json" = {
       mode = "0444";
-      source = config.environment.etc."cageworks/pi/models.json".source;
+      source = config.environment.etc."fabriek/pi/models.json".source;
     };
 
     ## The credential is the proxy's to add; the placeholder only makes pi
     ## consider the provider configured. The path is the proxy's per-host
     ## location, so a request to the provider lands at the proxy and leaves
     ## the machine with the header the operator holds.
-    environment.etc."cageworks/pi/models.json" = {
+    environment.etc."fabriek/pi/models.json" = {
       mode = "0444";
       text = builtins.toJSON {
         providers = lib.mapAttrs' (
           host: provider:
           lib.nameValuePair provider {
             baseUrl = "http://${plan.proxy}/${host}";
-            apiKey = "cageworks";
+            apiKey = "fabriek";
           }
         ) routed;
       };

@@ -57,7 +57,7 @@ another route.
 **5. The decider's prompt has four parts, and one is the repository's.** The
 machine's system prompt (vocabulary, invariants, rules), the declaration as
 data, the board and the `ready` set as data, and one policy file
-`cageworks.nix` names, bound read-only. The repository states priorities in
+`fabriek.nix` names, bound read-only. The repository states priorities in
 words; the worst it can do is bad judgement inside the declared limits.
 
 **6. Testing is a capability a role provides,** assigned like any other

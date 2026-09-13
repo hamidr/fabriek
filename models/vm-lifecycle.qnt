@@ -1,18 +1,18 @@
 // The lifecycle of a factory's own machine, as decided in
-// docs/ADR-019-cageworks-owns-a-factory-vm.md and required by phase 2 of
+// docs/ADR-019-fabriek-owns-a-factory-vm.md and required by phase 2 of
 // docs/PRD-004-a-factory-of-its-own.md, amended for the redesign (ADR-033 to ADR-040)
 // decision 15 (docs/roadmap.md 0.3): the declaration is built into the image,
 // so every edit to it is a rebuild, and what drains before one is the tasks
 // in flight rather than the roles, which are permanent and lose nothing.
 //
-// cageworks builds and runs one NixOS VM per factory. The states are absent,
+// fabriek builds and runs one NixOS VM per factory. The states are absent,
 // built, booting, running and stopping, and two sides interleave across them:
 // the host builds, boots, resizes and stops, while inside the machine role
 // sessions come and go and write to the pool the factory's state lives on.
 //
 // ADR-017 exists because a VM was ended rather than shut down and worktrees
-// came back empty. cageworks now owns the stopping, so the property that
-// matters most here is that nothing cageworks does ends a machine that is
+// came back empty. fabriek now owns the stopping, so the property that
+// matters most here is that nothing fabriek does ends a machine that is
 // mid-write. A stop that cannot complete is reported and the machine keeps
 // running, which is why there is no action in this model that forces one.
 module vmLifecycle {
@@ -67,7 +67,7 @@ module vmLifecycle {
     lostToAbruptHostStop' = false,
   }
 
-  // cageworks up on a factory that has no machine yet: the disk is made and
+  // fabriek up on a factory that has no machine yet: the disk is made and
   // the image is built from the declaration as it stands.
   action build = all {
     vmState == "absent",
@@ -178,7 +178,7 @@ module vmLifecycle {
   }
 
   // The host loses power, or somebody kills the hypervisor. Not something
-  // cageworks does; the residual risk ADR-017 puts ZFS underneath.
+  // fabriek does; the residual risk ADR-017 puts ZFS underneath.
   action abruptHostStop = all {
     up(vmState),
     vmState' = "built",

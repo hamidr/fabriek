@@ -23,7 +23,7 @@ the session starts.
 
 **1. Each factory gets a generated machine flake** under its own state
 directory, whose input is the worked repository, with the rev pinned in that
-factory's own `flake.lock`. `cageworks up` builds from the lock; updating a
+factory's own `flake.lock`. `fabriek up` builds from the lock; updating a
 role is a lock bump and a rebuild. Which declaration a run used is the
 image's identity, and reproducing a run means checking out a lock.
 
@@ -48,7 +48,7 @@ input names the remote.
 
 ## Consequences
 
-`cageworks up` has to be idempotent for everything it creates on the
+`fabriek up` has to be idempotent for everything it creates on the
 machine, because it will be run after every rebuild. A factory cannot change
 its roles without a restart, which is the price of the image being the
 identity. `modules/repo-declaration.sh`'s run-time reader is deleted with the
@@ -57,7 +57,7 @@ identity. `modules/repo-declaration.sh`'s run-time reader is deleted with the
 ## Verification
 
 Machine scenarios (docs/roadmap.md 2.1): a declaration with an unknown key
-fails `cageworks up` at the build with the key named; a role naming a
+fails `fabriek up` at the build with the key named; a role naming a
 devShell the flake lacks fails the build; a session started for a role has
 that devShell's environment without running `nix develop`.
 

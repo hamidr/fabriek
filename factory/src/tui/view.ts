@@ -19,7 +19,7 @@ export function render(s: State, screen: Screen): string {
   const w = Math.max(20, screen.columns);
   const lines: string[] = [];
   lines.push(
-    `cageworks  ${screen.factory}  ${s.routing ? "routing on" : "routing stopped at the soft limit"}  spend ${s.spend["total"] ?? 0} (decider ${s.spend["decider"] ?? 0})`,
+    `fabriek  ${screen.factory}  ${s.routing ? "routing on" : "routing stopped at the soft limit"}  spend ${s.spend["total"] ?? 0} (decider ${s.spend["decider"] ?? 0})`,
   );
   lines.push("");
   lines.push("roles");

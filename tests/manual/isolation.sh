@@ -13,11 +13,11 @@
 ## egress ceiling that allows one host, a credential for it, and a token
 ## ceiling small enough to reach in a handful of requests.
 ##
-##   export CAGEWORKS_PROOF_DIR=/tmp/cageworks-proof
+##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   tests/manual/isolation.sh
 ##
 ## What the machine must offer for these to pass, and where each is decided:
-## a bridge named cageworks-<factory> (2.2); one veth per cage carrying one
+## a bridge named fabriek-<factory> (2.2); one veth per cage carrying one
 ## address (1.1, 2.2); the proxy on the bridge answering /status with a JSON
 ## object of tokens spent per source address (2.2); nftables on the machine
 ## dropping a packet whose source is not the sender's address (2.2).
@@ -26,7 +26,7 @@ F=acme
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 
-bash cageworks up "$F" || exit 1
+bash fabriek up "$F" || exit 1
 wait_ssh || {
 	echo "the machine never answered"
 	exit 1
@@ -37,10 +37,10 @@ a="$(printf '%s\n' "$roles" | sed -n 1p)"
 b="$(printf '%s\n' "$roles" | sed -n 2p)"
 if [ -z "$a" ] || [ -z "$b" ]; then
 	echo "acme declares fewer than two roles, so cage-to-cage cannot be asked"
-	bash cageworks down "$F"
+	bash fabriek down "$F"
 	exit 1
 fi
-bridge="cageworks-$F"
+bridge="fabriek-$F"
 
 ## The executor keeps one session per role, and a cage is one veth and one
 ## address on the bridge under the role's name. A hand session joins the
@@ -62,7 +62,7 @@ spent_by() { sshm curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 
 
 scenario "A cage is on the factory's bridge and nowhere else"
 given "a factory whose machine is up and its actors running"
-check "the executor is running the actors" active "$(sshm systemctl is-active cageworks-executor 2>/dev/null)"
+check "the executor is running the actors" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
 when "a role's cage is entered by hand, beside its actor"
 check "the bridge $bridge exists on the machine" present \
 	"$(sshm ip link show "$bridge" >/dev/null 2>&1 && echo present || echo absent)"
@@ -72,7 +72,7 @@ addr_b="$(addr_of "$b")"
 check "role $a holds one global address" yes "$([ -n "$addr_a" ] && echo yes || echo no)"
 check "role $b holds a different address" yes "$([ -n "$addr_b" ] && [ "$addr_a" != "$addr_b" ] && echo yes || echo no)"
 
-proxy="$(sshm cat /etc/cageworks/bridge.json 2>/dev/null | jq -r .proxy)"
+proxy="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null | jq -r .proxy)"
 check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ] && echo yes || echo no)"
 ## The proxy's location for a model endpoint is the endpoint's name (ADR-037
 ## point 3); a request to the provider lands there and leaves with the
@@ -150,5 +150,5 @@ else
 	check "the proxy answers 429 at the hard limit" 429 "$code"
 fi
 
-bash cageworks down "$F"
+bash fabriek down "$F"
 exit "$fail"

@@ -1,12 +1,12 @@
 // The executor as a service on the machine (ADR-034 point 2). Reads what the
-// build and cageworks up put there, connects to the bus and the board as the
+// build and fabriek up put there, connects to the bus and the board as the
 // executor, reconciles, starts every role's session, and then loops: what
 // actors say on their control streams, what the decider asks on commands,
 // what the operator asks on operator, and what the board shows as outcomes.
 //
-// Files it reads: /etc/cageworks/declaration.json and bridge.json (the
+// Files it reads: /etc/fabriek/declaration.json and bridge.json (the
 // build's), and under the state directory the bus password and forge token
-// cageworks up made for it.
+// fabriek up made for it.
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { BusClient } from "../bus/client.js";
@@ -20,8 +20,8 @@ import { RoleSessions, sessionCommand } from "./sessions.js";
 import { CloneGit } from "./git.js";
 import { spendByRole } from "./spend.js";
 
-const ETC = process.env["CAGEWORKS_ETC"] ?? "/etc/cageworks";
-const STATE = process.env["CAGEWORKS_STATE"] ?? "/var/lib/nixcage";
+const ETC = process.env["FABRIEK_ETC"] ?? "/etc/fabriek";
+const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
 const STREAM_CAP = 10000;
 
 function log(line: string): void {

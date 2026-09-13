@@ -14,7 +14,7 @@ superseded_by: [ADR-035]
 
 PRD-003 made one property structural rather than observed: no run is ever
 started by a cage, because no cage holds the program that starts one. The
-operator types `cageworks task run`, and nothing else in the system can. It is
+operator types `fabriek task run`, and nothing else in the system can. It is
 a strong property and it was cheap, because dispatch was the only autonomy
 anyone wanted to withhold.
 
@@ -109,7 +109,7 @@ own: one agent per role, each reading and acting in sequence.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 ```

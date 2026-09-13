@@ -8,10 +8,10 @@
 
 ## The suffixes a size may carry, and what each multiplies by. Powers of 1024,
 ## which is what every other tool in the path means by G.
-cageworks_size_bytes() {
+fabriek_size_bytes() {
 	local size="${1:-}" number suffix
 	if [[ ! "$size" =~ ^([0-9]+)([KkMmGgTt]?)$ ]]; then
-		echo "cageworks: not a size: $size" >&2
+		echo "fabriek: not a size: $size" >&2
 		return 1
 	fi
 	number="${BASH_REMATCH[1]}"
@@ -28,8 +28,8 @@ cageworks_size_bytes() {
 ## A declared size in MiB, which is what a hypervisor counts memory and disks
 ## in. Rounded down, because handing a machine more than the operator allowed
 ## is the direction that matters.
-cageworks_size_mib() {
+fabriek_size_mib() {
 	local bytes
-	bytes="$(cageworks_size_bytes "$1")" || return 1
+	bytes="$(fabriek_size_bytes "$1")" || return 1
 	echo $((bytes / 1024 / 1024))
 }

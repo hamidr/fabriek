@@ -1,10 +1,10 @@
 ---
 id: ADR-018
-title: The factory becomes cageworks, a separate project that depends on nixcage
+title: The factory becomes fabriek, a separate project that depends on nixcage
 status: superseded
 date: 2026-09-05
 status_date: 2026-09-06
-summary: the factory leaves nixcage to become cageworks, which pins nixcage as a flake input and uses four exported primitives
+summary: the factory leaves nixcage to become fabriek, which pins nixcage as a flake input and uses four exported primitives
 depends_on: [ADR-002, ADR-004, ADR-010, ADR-017]
 supersedes: []
 superseded_by: [ADR-019]
@@ -35,9 +35,9 @@ another factory-shaped special case to the cage.
 
 ## Decision
 
-**1. This repository becomes cageworks. nixcage becomes a dependency.**
+**1. This repository becomes fabriek. nixcage becomes a dependency.**
 nixcage stays at `github:hamidr/nixcage` and continues as its own project.
-cageworks takes it as a flake input pinned in `flake.lock`, from that remote.
+fabriek takes it as a flake input pinned in `flake.lock`, from that remote.
 Not a path input, not a subtree, not vendored: a path input would make the two
 one repository again with extra steps.
 
@@ -45,7 +45,7 @@ one repository again with extra steps.
 Everything such a session needs is nixcage's: isolation and uid mapping, binds,
 environment selection, git worktree resolution, secrets, the VM on macOS,
 storage provisioning. Everything that only exists because several named workers
-share one repository is cageworks': roles, capabilities, tasks, workflows,
+share one repository is fabriek': roles, capabilities, tasks, workflows,
 stage policies, the git-bug record, integration, and the supervisor.
 
 By that test the `nixcage` CLI, `modules/container.nix`, `modules/nixcage.nix`,
@@ -57,29 +57,29 @@ vocabulary stripped. `factory-*.sh`, `workflow-config.sh`, `task-store.sh`,
 `role-guidance.*`, `models/` and `examples/factory-project/` stay. The CLI
 leaves as a file, not as a whole: its `role`, `task` and `factory` verbs are
 what a person does to a factory rather than to a cage, and they stay as the
-`cageworks` CLI of point 4.
+`fabriek` CLI of point 4.
 
 Signing is the one that looks like it belongs upstream and does not. ADR-009
 puts a key in the cage instead of forwarding the agent, and the cage's whole
 part in that is refusing to forward one, which is `--no-agent`. That the key is
 per role, where it lives and what it signs are facts about a role.
 
-**3. nixcage exports four primitives, and cageworks uses nothing else.**
+**3. nixcage exports four primitives, and fabriek uses nothing else.**
 Each is argv on a program, because argv is what `flake.lock` can pin and what a
 test can stub:
 
 - *A parameterized session.* `nixcage-container enter <name> <path> [cmd...]`
   gains `--uid`, `--user`, `--home`, `--bind SRC:DST`, `--bind-ro SRC:DST`,
   `--setenv K=V`, `--shell NAME` and `--no-agent`. Every role-specific special
-  case in `container.nix` becomes one of these flags, passed by cageworks.
+  case in `container.nix` becomes one of these flags, passed by fabriek.
 - *A principal's uid.* `nixcage-container uid <name>` allocates from the range
   nixcage declares, monotonically, never reissuing a number. The word "role"
   leaves it: it allocates for a named principal, and what a role is stays
-  cageworks'.
+  fabriek'.
 - *Owned, bounded storage.* `nixcage-container storage ensure <path> <uid>
   [quota]` gives a dataset where the host has a pool and an ordinary directory
   where it does not (ADR-017). Which of the two it is stays nixcage's decision;
-  that a role's worktree gets one, and with which quota, stays cageworks'.
+  that a role's worktree gets one, and with which quota, stays fabriek'.
 - *A way to reach the cage host.* `nixcage exec [--tty] [--agent] -- <argv...>`
   runs argv as root wherever the cages are: on the invoking machine on Linux,
   and inside the shared VM over its SSH on macOS. Every word is passed through
@@ -87,33 +87,33 @@ test can stub:
 
 The fourth is on the `nixcage` CLI rather than on `nixcage-container`, because
 it is what carries a caller to `nixcage-container` in the first place. Without
-it the other three are only reachable on Linux, and cageworks would have to
+it the other three are only reachable on Linux, and fabriek would have to
 read nixcage's SSH key, port and state layout to reach a macOS VM -- which is
 the coupling this document exists to remove, relocated to a worse place. It
 grants no authority a caller lacks: `nixcage enter` already runs argv in the VM
 as root for anyone who can run the CLI at all.
 
-cageworks writes no nspawn arguments, runs no `zfs`, allocates no uid and opens
+fabriek writes no nspawn arguments, runs no `zfs`, allocates no uid and opens
 no SSH connection itself. When it needs something it cannot express through
 these four, the interface changes in nixcage first.
 
-**4. cageworks ships its own two programs.** `cageworks-container`, installed
-by cageworks' own NixOS module, holds the `task-*`, `role-*` and `factory-*`
-verbs and calls `nixcage-container` as a subprocess. The `cageworks` CLI is
+**4. fabriek ships its own two programs.** `fabriek-container`, installed
+by fabriek' own NixOS module, holds the `task-*`, `role-*` and `factory-*`
+verbs and calls `nixcage-container` as a subprocess. The `fabriek` CLI is
 what an operator types, and holds what `nixcage role`, `nixcage task` and
 `nixcage factory` hold today; it reaches its guest program through
 `nixcage exec` and knows nothing else about how a cage host is reached.
 
 The alternative was for nixcage to export a sourceable shell library that
-cageworks sources by store path, the way `container.nix` sources its modules
+fabriek sources by store path, the way `container.nix` sources its modules
 today. Rejected: that is the current coupling with a flake input added. It
-binds cageworks to nixcage's internal function names, gives the boundary no
+binds fabriek to nixcage's internal function names, gives the boundary no
 version to break at, and lets a renamed helper break a dependant silently.
 
 **5. The option namespace moves wholesale, with no alias.**
-`nixcage.factories.*` and `nixcage.supervisor.*` become `cageworks.factories.*`
-and `cageworks.supervisor.*`, and the rendered declaration moves from
-`/etc/nixcage/factories` to `/etc/cageworks/factories`.
+`nixcage.factories.*` and `nixcage.supervisor.*` become `fabriek.factories.*`
+and `fabriek.supervisor.*`, and the rendered declaration moves from
+`/etc/nixcage/factories` to `/etc/fabriek/factories`.
 `nixcage.workspaceRoots`, `secretEnv`, `git.*`, `storage.dataset`, `vm.*`,
 `authorizedKeys`, `sshPort` and `shareProto` stay where they are. The
 operator's config flake is edited once; no compatibility alias is kept, because
@@ -125,14 +125,14 @@ One option inside `supervisor.*` does not move with the rest.
 allocation nixcage's: a range of the host's uid space is a fact about the
 machine the cages run on, and the program that hands numbers out is the only
 one that can promise never to reissue one. What is left in
-`cageworks.supervisor.*` -- the attempt limit, the run timeout, the
+`fabriek.supervisor.*` -- the attempt limit, the run timeout, the
 concurrency, the quota -- is about work rather than about a machine.
 
 What a role session sees does move, and is forced to. The consequences below
 have nixcage refuse a bind over `/etc/nixcage`, so the guidance a role is given
-becomes `/etc/cageworks/role-guidance.md` and what it is handed at run time
-becomes `/run/cageworks/{task,signing-key,allowed_signers}`. The variables
-naming them follow: `CAGEWORKS_ROLE_GUIDANCE` and `CAGEWORKS_TASK`.
+becomes `/etc/fabriek/role-guidance.md` and what it is handed at run time
+becomes `/run/fabriek/{task,signing-key,allowed_signers}`. The variables
+naming them follow: `FABRIEK_ROLE_GUIDANCE` and `FABRIEK_TASK`.
 `NIXCAGE_SHELL` keeps its name, because `--shell` is nixcage's flag and the
 devShell it selects is read by nixcage's own code.
 
@@ -152,7 +152,7 @@ citing an absent ADR reports `depends_on references unknown ADR-004` and exits
 1. Numbering continues at ADR-018.
 
 **7. The models stay, unchanged.** `factory-structure.als` and
-`factory-lifecycle.qnt` constrain the factory, which is what cageworks keeps.
+`factory-lifecycle.qnt` constrain the factory, which is what fabriek keeps.
 
 ## Consequences
 
@@ -171,7 +171,7 @@ be reasoned about instead of being a side effect of entering a project. It is
 not a shell: argv is passed through word for word, and on macOS every word is
 quoted for the remote shell exactly as `enter` quotes a session command today.
 
-A cageworks change that needs a new nixcage flag becomes two commits in two
+A fabriek change that needs a new nixcage flag becomes two commits in two
 repositories and a lock bump. That cost is the boundary; paying it is how the
 interface stays small. Bisecting a regression across the seam gets harder for
 the same reason.
@@ -179,12 +179,12 @@ the same reason.
 The test suite splits along the same line. `tests/unit/{cache,container_name,
 dev_shell_detection,direnv_session,git_worktree_binds,vm_attr,workspace_root}`
 and `tests/command/{cli_dispatch,enter,down,rm,rm_validation,status,linux_mode,
-macos_enter}` go upstream; the factory tests stay. cageworks' command tests
+macos_enter}` go upstream; the factory tests stay. fabriek' command tests
 stub `nixcage-container` on `PATH` exactly as they stub `ssh` and `sudo` today,
 which makes the seam something the suite asserts on rather than something it
 crosses.
 
-Sequencing is forced: cageworks does not build until nixcage ships the four
+Sequencing is forced: fabriek does not build until nixcage ships the four
 primitives. The exports land and are tagged upstream first, then this
 repository drops the cage files and pins the input.
 
@@ -200,11 +200,11 @@ moves. Should the exported interface change what a role may own or write,
 
 ## Verification
 
-The split is done when these pass in cageworks with nixcage as an input, and
+The split is done when these pass in fabriek with nixcage as an input, and
 not before:
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec models/factory-structure.als
@@ -212,7 +212,7 @@ quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60
 ```
 
 One gate is specific to the seam and is written before the move: a role session
-started through `cageworks-container` produces the same `nixcage-container`
+started through `fabriek-container` produces the same `nixcage-container`
 invocation, flag for flag, as the arguments `container.nix` builds today. The
 stub on `PATH` records its argv, and the recorded line is the assertion. A
 migration that cannot show this has changed what a role session is while

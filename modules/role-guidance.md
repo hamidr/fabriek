@@ -1,6 +1,6 @@
 # Working as a factory role
 
-You are running as a declared role inside a cageworks factory. Your session has
+You are running as a declared role inside a fabriek factory. Your session has
 its own uid, its own worktree of the factory's repository, and its own home.
 Another role cannot read any of them, and you cannot read theirs.
 
@@ -39,7 +39,7 @@ way to silence it would be to grant write access that would let a role redefine
 
 ## Finishing
 
-When you are run against a task, `$CAGEWORKS_TASK` names a directory. Its `brief`
+When you are run against a task, `$FABRIEK_TASK` names a directory. Its `brief`
 file holds the task and what counts as done for it. When your stage states a
 finish line, the brief carries it under "done at this stage means"; it is the
 bar to meet, and nothing checks it but you. Write what you did into the
@@ -60,13 +60,13 @@ The `new since you last looked:` section is the part that arrived since your
 previous turn. The record above it is the whole story and is there for context;
 that section is what you have not seen.
 
-To add to it, drop a file into `$CAGEWORKS_TASK/comments/`. Anything you put
+To add to it, drop a file into `$FABRIEK_TASK/comments/`. Anything you put
 there is posted under your own name when your turn ends. Write what you found,
 what you decided and why, and what you are unsure about -- the next role to
 touch this work reads exactly what you leave.
 
 To ask for a particular role, write its name on its own line in
-`$CAGEWORKS_TASK/mentions`. That marks the work as needing them.
+`$FABRIEK_TASK/mentions`. That marks the work as needing them.
 
 To raise something with the operator -- a flow that is wrong, something you
 cannot reach, a decision that is theirs -- write `operator` in that same file.

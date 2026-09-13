@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 ## Handing a role session its guidance (PRD-003).
 ##
-## Sourced by store path into cageworks-container beside names.sh. A file
+## Sourced by store path into fabriek-container beside names.sh. A file
 ## rather than an inline string so shellcheck reads it and bats can source it.
 
 ## The options that put the guidance inside a role's session, one argv word
@@ -11,13 +11,13 @@
 ## Read-only, and not under /etc/nixcage: nixcage refuses a bind over its own
 ## configuration, and a caller that could replace it would be choosing what
 ## every later session runs (ADR-018).
-cageworks_role_guidance_args() {
+fabriek_role_guidance_args() {
 	local guidance="$1" role="${2:-}"
 	[ -n "$role" ] || return 0
-	cageworks_name_ok "$role" || return 1
-	local dst=/etc/cageworks/role-guidance.md
+	fabriek_name_ok "$role" || return 1
+	local dst=/etc/fabriek/role-guidance.md
 	echo "--bind-ro"
 	echo "$guidance:$dst"
 	echo "--setenv"
-	echo "CAGEWORKS_ROLE_GUIDANCE=$dst"
+	echo "FABRIEK_ROLE_GUIDANCE=$dst"
 }

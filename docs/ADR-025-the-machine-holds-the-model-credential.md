@@ -74,7 +74,7 @@ would be a number to allocate, record, and keep stable across a change to the
 allowlist, and a path is none of those.
 
 Which variable tells an agent where the proxy is stays the repository's
-business, as which agent a role runs already is. cageworks gives a session the
+business, as which agent a role runs already is. fabriek gives a session the
 proxy's address and the declaration's own command turns that into whatever the
 agent it runs expects.
 
@@ -278,14 +278,14 @@ intersection with a fail-closed default, which is cheap to test and was.
 ## Verification
 
 ```bash
-nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
+nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 alloy6 exec -f models/egress-authority.als
 ```
 
 ```bash
-CAGEWORKS_PROOF_DIR=/tmp/cageworks-proof tests/manual/egress.sh
+FABRIEK_PROOF_DIR=/tmp/fabriek-proof tests/manual/egress.sh
 ```
 
 The firewall is asserted on a machine rather than in a unit test, because a

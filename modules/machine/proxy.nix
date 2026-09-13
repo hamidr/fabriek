@@ -21,11 +21,11 @@
   ...
 }:
 let
-  cfg = config.cageworks.machine;
-  plan = builtins.fromJSON config.environment.etc."cageworks/bridge.json".text;
+  cfg = config.fabriek.machine;
+  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
 in
 {
-  options.cageworks.machine.tokenCeiling = lib.mkOption {
+  options.fabriek.machine.tokenCeiling = lib.mkOption {
     type = lib.types.int;
     default = 0;
     description = ''
@@ -39,12 +39,12 @@ in
     ## node can drive it with the API's own bodies (spend.test.mjs); on the
     ## machine it is read from /etc, where njs has no import path trouble
     ## with an absolute file.
-    environment.etc."cageworks/spend.js".text = builtins.readFile ./spend.js;
+    environment.etc."fabriek/spend.js".text = builtins.readFile ./spend.js;
 
     services.nginx = {
       enable = true;
-      user = "cageworks-egress";
-      group = "cageworks-egress";
+      user = "fabriek-egress";
+      group = "fabriek-egress";
       recommendedProxySettings = true;
       additionalModules = [ pkgs.nginxModules.njs ];
 
@@ -52,11 +52,11 @@ in
       ## point 4). No $http_ and no $sent_http_: a request header is where
       ## the credential is.
       commonHttpConfig = ''
-        js_import spend from /etc/cageworks/spend.js;
+        js_import spend from /etc/fabriek/spend.js;
         js_shared_dict_zone zone=spend:256k;
         js_set $spend_over spend.over;
 
-        log_format cageworks_egress
+        log_format fabriek_egress
           '$remote_addr $request $status $upstream_status '
           'req=$request_length resp=$body_bytes_sent '
           'time=$request_time upstream=$upstream_response_time '
@@ -65,7 +65,7 @@ in
           'ratelimit_tokens=$upstream_http_anthropic_ratelimit_tokens_remaining';
       '';
 
-      virtualHosts."cageworks-egress" = {
+      virtualHosts."fabriek-egress" = {
         listen = [
           {
             addr = plan.host;
@@ -74,8 +74,8 @@ in
         ];
         extraConfig = ''
           set $spend_ceiling ${toString cfg.tokenCeiling};
-          access_log syslog:server=unix:/dev/log,tag=cageworks_egress,nohostname cageworks_egress;
-          error_log syslog:server=unix:/dev/log,tag=cageworks_egress,nohostname;
+          access_log syslog:server=unix:/dev/log,tag=fabriek_egress,nohostname fabriek_egress;
+          error_log syslog:server=unix:/dev/log,tag=fabriek_egress,nohostname;
 
           location = /status {
             js_content spend.status;
@@ -95,7 +95,7 @@ in
             proxy_buffering off;
             proxy_set_header Accept-Encoding "";
             js_body_filter spend.count;
-            include /run/cageworks-egress/${host}.conf;
+            include /run/fabriek-egress/${host}.conf;
           }
         '') cfg.egress;
       };

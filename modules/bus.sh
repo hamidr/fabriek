@@ -6,31 +6,31 @@
 ## after they change so a new role's user appears without a reboot. The
 ## users are the declaration's roles plus the three the machine provides.
 ##
-## Sourced by store path into cageworks-container beside names.sh.
+## Sourced by store path into fabriek-container beside names.sh.
 
-cageworks_bus_dir() { printf '%s/bus\n' "$1"; }
+fabriek_bus_dir() { printf '%s/bus\n' "$1"; }
 
 ## Every user the bus has, given the declaration file.
-cageworks_bus_users() {
+fabriek_bus_users() {
 	local declaration="$1"
 	jq -r '.roles | keys[]' "$declaration"
 	printf '%s\n' decider executor probes
 }
 
 ## A password, once.
-cageworks_bus_ensure_password() {
+fabriek_bus_ensure_password() {
 	local state="$1" user="$2" file
-	cageworks_name_ok "$user" || return 1
-	file="$(cageworks_bus_dir "$state")/$user"
+	fabriek_name_ok "$user" || return 1
+	file="$(fabriek_bus_dir "$state")/$user"
 	[ -s "$file" ] && return 0
 	mkdir -p "$(dirname "$file")"
 	chmod 0700 "$(dirname "$file")"
-	(umask 077 && cageworks_secret >"$file.new") && mv "$file.new" "$file"
+	(umask 077 && fabriek_secret >"$file.new") && mv "$file.new" "$file"
 	chmod 0400 "$file"
 }
 
 ## The stream verbs an actor may speak, and nothing else.
-CAGEWORKS_BUS_STREAM_VERBS="+xadd +xread +xrange +xrevrange +xlen +xinfo +ping"
+FABRIEK_BUS_STREAM_VERBS="+xadd +xread +xrange +xrevrange +xlen +xinfo +ping"
 
 ## What one user may touch, as ACL rules (ADR-033 point 3). %R~ is read-only
 ## on a key pattern and %W~ write-only, which is the whole point: attribution
@@ -38,13 +38,13 @@ CAGEWORKS_BUS_STREAM_VERBS="+xadd +xread +xrange +xrevrange +xlen +xinfo +ping"
 ## its mailbox and every findings stream, and writes its own control, findings
 ## and events streams; the decider reads everything and writes only commands;
 ## the probes write one stream; the executor holds the bus.
-cageworks_bus_rules() {
+fabriek_bus_rules() {
 	local user="$1"
 	case "$user" in
-	decider) printf '%s\n' "resetkeys resetchannels nocommands $CAGEWORKS_BUS_STREAM_VERBS %R~* %W~commands" ;;
+	decider) printf '%s\n' "resetkeys resetchannels nocommands $FABRIEK_BUS_STREAM_VERBS %R~* %W~commands" ;;
 	executor) printf '%s\n' "resetkeys resetchannels allcommands allkeys allchannels" ;;
 	probes) printf '%s\n' "resetkeys resetchannels nocommands +xadd +ping %W~probes" ;;
-	*) printf '%s\n' "resetkeys resetchannels nocommands $CAGEWORKS_BUS_STREAM_VERBS %R~mailbox:$user %W~control:$user %W~findings:$user %R~findings:* %W~events:$user" ;;
+	*) printf '%s\n' "resetkeys resetchannels nocommands $FABRIEK_BUS_STREAM_VERBS %R~mailbox:$user %W~control:$user %W~findings:$user %R~findings:* %W~events:$user" ;;
 	esac
 }
 
@@ -55,13 +55,13 @@ cageworks_bus_rules() {
 ## NOAUTH, so the script speaks as the executor, whose password reaches
 ## valkey-cli through its environment and not argv.
 ##
-## cageworks_bus_apply <state> <plan.json> <declaration.json>
-cageworks_bus_apply() {
+## fabriek_bus_apply <state> <plan.json> <declaration.json>
+fabriek_bus_apply() {
 	local state="$1" plan="$2" declaration="$3"
 	local host port dir
 	host="$(jq -r '.valkey | split(":")[0]' "$plan")"
 	port="$(jq -r '.valkey | split(":")[1]' "$plan")"
-	dir="$(cageworks_bus_dir "$state")"
+	dir="$(fabriek_bus_dir "$state")"
 	local -a as=()
 	local _i
 	for _i in $(seq 1 30); do
@@ -70,7 +70,7 @@ cageworks_bus_apply() {
 	done
 	if valkey-cli -h "$host" -p "$port" ping 2>&1 | grep -q NOAUTH; then
 		if [ ! -s "$dir/executor" ]; then
-			echo "cageworks: the bus's default user is off and there is no executor password at $dir/executor" >&2
+			echo "fabriek: the bus's default user is off and there is no executor password at $dir/executor" >&2
 			return 1
 		fi
 		export VALKEYCLI_AUTH
@@ -80,10 +80,10 @@ cageworks_bus_apply() {
 	local user rules
 	while IFS= read -r user; do
 		[ -s "$dir/$user" ] || continue
-		rules="$(cageworks_bus_rules "$user")"
+		rules="$(fabriek_bus_rules "$user")"
 		# shellcheck disable=SC2086  # the rules are ACL words, split on purpose
 		valkey-cli -h "$host" -p "$port" ${as[@]+"${as[@]}"} \
 			ACL SETUSER "$user" on ">$(cat "$dir/$user")" $rules | grep -q OK || return 1
-	done < <(cageworks_bus_users "$declaration")
+	done < <(fabriek_bus_users "$declaration")
 	valkey-cli -h "$host" -p "$port" ${as[@]+"${as[@]}"} ACL SETUSER default off | grep -q OK
 }

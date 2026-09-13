@@ -17,7 +17,7 @@
 ## ceiling. The last one is a permission rather than an amount, and it is in
 ## this table for the same reason the others are: so that a field cannot exist
 ## for a declaration and not for the operator.
-cageworks_resource_fields() {
+fabriek_resource_fields() {
 	printf '%s\t%s\n' \
 		memory size \
 		cores count \
@@ -32,24 +32,24 @@ cageworks_resource_fields() {
 
 ## The same table as a JSON array, for the schemas that need to say which keys
 ## they allow.
-cageworks_resource_field_names_json() {
-	cageworks_resource_fields | cut -f1 | jq -Rrn '[inputs] | tojson'
+fabriek_resource_field_names_json() {
+	fabriek_resource_fields | cut -f1 | jq -Rrn '[inputs] | tojson'
 }
 
 ## A declared value as a number that can be compared. A size becomes bytes; a
 ## count is already one. Anything else is a mistake in whichever declaration it
 ## came from, and is named rather than read as zero.
-cageworks_resource_magnitude() {
+fabriek_resource_magnitude() {
 	local kind="$1" value="$2" where="$3"
 	case "$kind" in
 	size)
-		cageworks_size_bytes "$value" 2>/dev/null && return 0
-		echo "cageworks: $where is not a size: $value" >&2
+		fabriek_size_bytes "$value" 2>/dev/null && return 0
+		echo "fabriek: $where is not a size: $value" >&2
 		return 1
 		;;
 	*)
 		if [[ ! "$value" =~ ^[0-9]+$ ]]; then
-			echo "cageworks: $where is not a count: $value" >&2
+			echo "fabriek: $where is not a count: $value" >&2
 			return 1
 		fi
 		printf '%s\n' "$value"
@@ -65,12 +65,12 @@ cageworks_resource_magnitude() {
 ## A field the factory did not ask for stays unasked: a ceiling is a limit
 ## rather than a default. A field the operator set no ceiling for is left as
 ## the factory asked for it, because a ceiling nobody set is not one.
-cageworks_resources_clamp() {
+fabriek_resources_clamp() {
 	local caps_file="$1" declaration caps field kind asked ceiling asked_n ceiling_n
 	declaration="$(cat)"
 
 	if [ ! -f "$caps_file" ]; then
-		echo "cageworks: no ceilings to clamp against: $caps_file" >&2
+		echo "fabriek: no ceilings to clamp against: $caps_file" >&2
 		return 1
 	fi
 	caps="$(cat "$caps_file")"
@@ -78,7 +78,7 @@ cageworks_resources_clamp() {
 	while IFS=$'\t' read -r field kind; do
 		if [ "$kind" = set ]; then
 			declaration="$(printf '%s' "$declaration" |
-				cageworks_resources_intersect "$field" "$caps")" || return 1
+				fabriek_resources_intersect "$field" "$caps")" || return 1
 			continue
 		fi
 
@@ -86,16 +86,16 @@ cageworks_resources_clamp() {
 		[ -n "$asked" ] || continue
 		ceiling="$(printf '%s' "$caps" | jq -r --arg f "$field" '.[$f] // empty')"
 
-		asked_n="$(cageworks_resource_magnitude "$kind" "$asked" "$field")" || return 1
+		asked_n="$(fabriek_resource_magnitude "$kind" "$asked" "$field")" || return 1
 		[ -n "$ceiling" ] || continue
-		ceiling_n="$(cageworks_resource_magnitude "$kind" "$ceiling" "the ceiling for $field")" || return 1
+		ceiling_n="$(fabriek_resource_magnitude "$kind" "$ceiling" "the ceiling for $field")" || return 1
 
 		[ "$asked_n" -gt "$ceiling_n" ] || continue
-		echo "cageworks: $field asked for $asked and this host allows $ceiling; clamped to $ceiling" >&2
+		echo "fabriek: $field asked for $asked and this host allows $ceiling; clamped to $ceiling" >&2
 		declaration="$(printf '%s' "$declaration" |
 			jq --arg f "$field" --argjson v "$(printf '%s' "$caps" | jq --arg f "$field" '.[$f]')" \
 				'.resources[$f] = $v')"
-	done < <(cageworks_resource_fields)
+	done < <(fabriek_resource_fields)
 
 	printf '%s\n' "$declaration"
 }
@@ -113,7 +113,7 @@ cageworks_resources_clamp() {
 ##
 ## A factory that asked for nothing is left asking for nothing either way: a
 ## ceiling is a limit and never a default.
-cageworks_resources_intersect() {
+fabriek_resources_intersect() {
 	local field="$1" caps_file_json="$2" declaration asked allowed kept dropped
 	declaration="$(cat)"
 
@@ -123,19 +123,19 @@ cageworks_resources_intersect() {
 		return 0
 	}
 	if [ "$(printf '%s' "$asked" | jq -r 'type')" != array ]; then
-		echo "cageworks: $field must be a list of endpoints" >&2
+		echo "fabriek: $field must be a list of endpoints" >&2
 		return 1
 	fi
 
 	allowed="$(printf '%s' "$caps_file_json" | jq -c --arg f "$field" '.[$f] // []')"
 	if [ "$(printf '%s' "$allowed" | jq -r 'type')" != array ]; then
-		echo "cageworks: the ceiling for $field is not a list of endpoints" >&2
+		echo "fabriek: the ceiling for $field is not a list of endpoints" >&2
 		return 1
 	fi
 	kept="$(jq -cn --argjson a "$asked" --argjson c "$allowed" '$a - ($a - $c)')"
 	dropped="$(jq -rn --argjson a "$asked" --argjson c "$allowed" '($a - $c) | join(", ")')"
 	if [ -n "$dropped" ]; then
-		echo "cageworks: $field asked for $dropped, which this host does not allow; dropped" >&2
+		echo "fabriek: $field asked for $dropped, which this host does not allow; dropped" >&2
 	fi
 
 	printf '%s' "$declaration" |

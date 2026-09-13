@@ -5,15 +5,15 @@
 ## that acts on it. A title or a body is a file on the machine, never a word
 ## the executor re-reads off argv.
 ##
-## Sourced by store path into cageworks-container beside names.sh and bus.sh.
+## Sourced by store path into fabriek-container beside names.sh and bus.sh.
 
-## cageworks_operator_send <state> <plan.json> <json>
-cageworks_operator_send() {
+## fabriek_operator_send <state> <plan.json> <json>
+fabriek_operator_send() {
 	local state="$1" plan="$2" json="$3"
 	local password host port
-	password="$(cageworks_bus_dir "$state")/executor"
+	password="$(fabriek_bus_dir "$state")/executor"
 	if [ ! -s "$password" ]; then
-		echo "cageworks: the executor has no bus password at $password; run cageworks up" >&2
+		echo "fabriek: the executor has no bus password at $password; run fabriek up" >&2
 		return 1
 	fi
 	host="$(jq -r '.valkey | split(":")[0]' "$plan")"
@@ -27,7 +27,7 @@ cageworks_operator_send() {
 
 ## Where a filed goal's title and body are kept for the executor to read: a
 ## directory of the operator's, one per filing, under the state directory.
-cageworks_operator_filed() {
+fabriek_operator_filed() {
 	local state="$1" dir
 	dir="$state/filed/$(date +%s)-$$"
 	mkdir -p "$dir"

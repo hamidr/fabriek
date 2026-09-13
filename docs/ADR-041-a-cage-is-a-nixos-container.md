@@ -47,7 +47,7 @@ address, its veth and its uid block are declared where its name is.
 **2. What was a session's argv becomes the container's configuration.** The
 role's profile is the container's `environment.systemPackages` alongside pi
 and the floor; the guidance, the credentials and pi's directory are
-`bindMounts` read-only; the `CAGEWORKS_*` environment is the unit's. The
+`bindMounts` read-only; the `FABRIEK_*` environment is the unit's. The
 worktree is a `bindMounts` entry onto the role's dataset. Nothing is composed
 at session start, so `seam.bats` asserts the generated container
 configuration instead of an argv.
@@ -62,7 +62,7 @@ home and its key on the pool are owned by it; a number derived from the
 role's position in the declaration would move when a role is added before
 it in the alphabet, and every file the displaced role owns would belong to
 a stranger, which is the class of loss ADR-017 exists to prevent. So
-`cageworks up` allocates a base per role and for the decider the first time
+`fabriek up` allocates a base per role and for the decider the first time
 it sees the name, never reissues it, and keeps the table in the machine's
 `local.json` beside the port and the key, written by rename; `lib.factory`
 declares each container's `privateUsers` from that table. A machine that

@@ -1,4 +1,4 @@
-## The two programs cageworks ships, built from the scripts at the repository
+## The two programs fabriek ships, built from the scripts at the repository
 ## root rather than from strings inside a Nix expression.
 ##
 ## Both are ordinary shell files so that shellcheck reads them and the bats
@@ -10,7 +10,7 @@ let
   ## Everything the machine program sources, plus the guidance it binds into a
   ## role's session. One directory so the program needs a single path rather
   ## than one per file.
-  lib' = pkgs.runCommand "cageworks-lib" { } ''
+  lib' = pkgs.runCommand "fabriek-lib" { } ''
     mkdir -p $out
     cp ${../modules/names.sh} $out/names.sh
     cp ${../modules/role-worktree.sh} $out/role-worktree.sh
@@ -37,17 +37,17 @@ let
   ## nixcage-container, which is on the same machine and installed by nixcage's
   ## own module, so nothing is pinned here beyond what runs beside it.
   container = pkgs.stdenv.mkDerivation {
-    pname = "cageworks-container";
+    pname = "fabriek-container";
     version = "1.0.0";
-    src = ../cageworks-container;
+    src = ../fabriek-container;
     dontUnpack = true;
     nativeBuildInputs = [ pkgs.makeWrapper ];
     buildInputs = [ pkgs.bash ];
     installPhase = ''
       mkdir -p $out/bin
-      substitute $src $out/bin/cageworks-container --replace-fail '@lib@' '${lib'}'
-      chmod +x $out/bin/cageworks-container
-      wrapProgram $out/bin/cageworks-container \
+      substitute $src $out/bin/fabriek-container --replace-fail '@lib@' '${lib'}'
+      chmod +x $out/bin/fabriek-container
+      wrapProgram $out/bin/fabriek-container \
         --prefix PATH : ${
           pkgs.lib.makeBinPath (
             with pkgs;
@@ -79,19 +79,19 @@ let
   ## carries a command to the machine the cages are on, and which the operator
   ## has installed already because it is what declares their cages.
   cli = pkgs.stdenv.mkDerivation {
-    pname = "cageworks";
+    pname = "fabriek";
     version = "1.0.0";
-    src = ../cageworks;
+    src = ../fabriek;
     dontUnpack = true;
     nativeBuildInputs = [ pkgs.makeWrapper ];
     buildInputs = [ pkgs.bash ];
     installPhase = ''
       mkdir -p $out/bin
-      substitute $src $out/bin/cageworks \
+      substitute $src $out/bin/fabriek \
         --replace-fail '@lib@' '${lib'}' \
         --replace-fail '@self@' '${self}'
-      chmod +x $out/bin/cageworks
-      wrapProgram $out/bin/cageworks \
+      chmod +x $out/bin/fabriek
+      wrapProgram $out/bin/fabriek \
         --prefix PATH : ${
           pkgs.lib.makeBinPath (
             with pkgs;
@@ -102,7 +102,7 @@ let
               ## dependency rather than two: nix is already what reads a
               ## repository's declaration (ADR-020).
               nix
-              ## A key per factory's machine, made here because cageworks owns
+              ## A key per factory's machine, made here because fabriek owns
               ## the way into a machine it built (ADR-019).
               openssh
               ## The TUI (ADR-039 point 3), which factory console execs.

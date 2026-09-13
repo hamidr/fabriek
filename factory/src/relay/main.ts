@@ -9,8 +9,8 @@ import { readDeclaration } from "../declaration.js";
 import { streamsFor } from "./format.js";
 import { tail } from "./tail.js";
 
-const ETC = process.env["CAGEWORKS_ETC"] ?? "/etc/cageworks";
-const STATE = process.env["CAGEWORKS_STATE"] ?? "/var/lib/nixcage";
+const ETC = process.env["FABRIEK_ETC"] ?? "/etc/fabriek";
+const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
 
 async function main(): Promise<void> {
   const from = process.argv.includes("--from") ? (process.argv[process.argv.indexOf("--from") + 1] ?? "$") : "$";

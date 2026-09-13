@@ -13,9 +13,9 @@ setup() {
 	ETC="$TEST_TEMP_DIR/etc"
 	mkdir -p "$STATE/bus" "$STUB_DIR" "$ETC"
 	PATH="$STUB_DIR:$PATH"
-	export PATH STATE CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
+	export PATH STATE FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
 	cat >"$ETC/bridge.json" <<'JSON'
-{ "bridge": "cageworks-acme", "host": "10.77.0.1", "prefix": 24,
+{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "reviewer": "10.77.0.11", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
@@ -45,7 +45,7 @@ teardown() {
 }
 
 publish() {
-	bash "$CAGEWORKS_CONTAINER_BIN" probes-publish acme
+	bash "$FABRIEK_CONTAINER_BIN" probes-publish acme
 }
 
 @test "given a bus password, each kernel line is one entry on the probes stream with its uid, its role and the line" {
