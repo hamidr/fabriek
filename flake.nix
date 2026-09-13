@@ -121,6 +121,10 @@
       ## One factory's machine from the repository it works, which is what a
       ## generated machine flake calls (ADR-040). The declaration is validated
       ## and clamped in a build, and each role's devShell is realised there.
+      ## What a role can be: the shipped catalogue and a repository's own,
+      ## composed into one derivation per role (ADR-042).
+      flake.lib.catalogue = import ./modules/catalogue.nix { inherit (inputs) self; };
+
       flake.lib.factory = import ./modules/factory.nix {
         inherit (inputs)
           nixpkgs
