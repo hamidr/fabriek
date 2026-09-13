@@ -66,12 +66,16 @@ A change to what a role session is shows up there as a diff.
   (`src/decider`), the relay (`src/relay`), the TUI (`src/tui`) and the two
   scripted stand-ins for pi (`src/fake-actor`, `src/fake-decider`), so the
   vocabulary (`src/vocabulary.ts`), the bus messages (`src/messages.ts`) and
-  the thread's attempt lines (`src/thread.ts`) are defined once. No runtime dependency and no npm: built with `tsc`, tested
+  the thread's attempt lines (`src/thread.ts`) are defined once. `src/bus`
+  and `src/forge` are the two adapters (RESP over a socket, Forgejo over
+  HTTP); `src/declaration.ts` reads the declaration the build put on the
+  machine. No runtime dependency and no npm: built with `tsc`, tested
   with node's own runner, pi's types linked in from the pi in the closure
   (`factory/default.nix`).
 - `modules/names.sh`: the names fabriek accepts, checked where they are
   declared. A role name is also its cage's, and nspawn names the veth after
   the cage, so it is at most twelve characters; `decider` is reserved.
+  `factory/src/names.ts` mirrors it: a change to the alphabet lands in both.
 - `modules/*.sh`: what the two programs source by store path.
   `machine-spec.sh` composes a machine's spec inside the build;
   `machine-plan.sh` reads the plan and the profiles the build put on the
@@ -91,7 +95,8 @@ A change to what a role session is shows up there as a diff.
   factory, and one module per service: `bridge.nix` (the private network and
   its two rules), `board.nix` (Forgejo), `bus.nix` (Valkey and its ACL),
   `proxy.nix` (the counting proxy), `probes.nix`, `floor.nix` (pi and the
-  loops), `executor.nix`.
+  loops), `executor.nix`. `machine/spend.js` is the proxy's njs token
+  counter, driven by `spend.test.mjs` through `tests/unit/proxy_spend.bats`.
 - `modules/role-guidance.md`: what every role is told about working in a
   cage, bound read-only into a role session.
 - `modules/package.nix`: the two programs, wrapped with the module directory
@@ -116,22 +121,31 @@ A change to what a role session is shows up there as a diff.
 ```bash
 nix develop                          # bash, jq, shellcheck, bats, git, node
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
-nix develop --command bats --recursive tests/       # ~310 scenarios, minutes
+nix develop --command bats --recursive tests/       # ~340 scenarios, minutes
 nix develop --command bats -f "one invocation" tests/command/seam.bats
-nix build .#factory                  # compiles and runs its 125 scenarios
+nix build .#factory                  # compiles and runs its ~145 scenarios
 nix develop --command bash -c 'cd factory && npm test'
+nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ \
+  && node --test --test-name-pattern="refuses" dist/vocabulary.test.js'   # one TS scenario
+nix fmt                              # nixfmt-rfc-style, Nix files only
 nix develop --command tests/system/journey.sh              # the factory on this host, ~4 minutes
 FABRIEK_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
 ```
 
+Run `nix develop` from the repository root: its shellHook puts the root on
+`PATH` and links `factory/node_modules` relative to `$PWD`, and bats finds
+bats-support and bats-assert only through the `BATS_LIB_PATH` it exports.
+
 There is no build step for the shell programs; both run directly. The
-TypeScript package is built with `tsc` and nothing else.
+TypeScript package is built with `tsc` and nothing else; a test file is run
+by its compiled path under `factory/dist`.
 
 `tests/unit/` sources a shell module and calls its functions. `tests/command/`
 drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
-the forge, `operator.bats` stubs `valkey-cli`; `factory_flake.bats` and
-`machine_services.bats` evaluate `lib.factory` for real. The package's tests
+the forge, `operator.bats`, `bus_acl.bats` and `probes.bats` stub `valkey-cli`;
+`factory_flake.bats` and `machine_services.bats` evaluate `lib.factory` for
+real. The package's tests
 drive each core against fakes of its interfaces and each adapter against a
 local fake server. Every test name reads as a scenario.
 
@@ -201,3 +215,5 @@ the TUI's forge-side views, and the three real-machine proofs are open.
 - ADR-001 through ADR-008 describe code that now lives in nixcage. They are
   historical here: a change to cage behaviour is proposed in nixcage's
   repository, not in this tracker. Numbering continues at ADR-018.
+- `SPEC.md` is nixcage's specification, kept from before ADR-018 for the
+  same reason ADR-001 through ADR-008 are: historical, not this program's.
