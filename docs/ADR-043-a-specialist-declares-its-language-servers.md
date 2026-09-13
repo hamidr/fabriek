@@ -1,7 +1,7 @@
 ---
 id: ADR-043
 title: A specialist declares its language servers, and pi-lsp starts them
-status: proposed
+status: implemented
 date: 2026-09-13
 status_date: 2026-09-13
 summary: language-server tools come from the pi-lsp extension in the floor, configured per role from what its specialists declare
@@ -141,7 +141,9 @@ duplicate refused. `machine_services.bats` asserts the per-role pi
 directory's build links `lsp.json` and writes the `pi-lsp` re-export.
 `seam.bats` asserts `PI_AGENT_DIR`.
 
-On a machine, `tests/manual/specialist.sh` gains a scenario: in the
-example's backend cage, write a Java file with an unused import and read
-the diagnostics `pi-lsp` appended in the session transcript. Not run as of
-this document's date.
+On a machine, `tests/manual/specialist.sh` has the scenario: in the
+example's backend cage, `PI_AGENT_DIR` is the pi directory, `lsp.json`
+there names `jdtls` for Java files, its binary exists, the extension is
+beside the loop; with a model, a Java file written with an unused import
+gets diagnostics appended in the transcript. Not run as of this
+document's date (`docs/roadmap.md` 6.2).

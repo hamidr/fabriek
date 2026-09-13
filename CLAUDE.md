@@ -80,7 +80,8 @@ A change to what a role session is shows up there as a diff.
   composes them into one derivation per role at the machine build, and
   `floor.nix` puts the result where pi reads it. A repository may add a
   catalogue of its own with the same layout. Adding a specialist is adding
-  a directory.
+  a directory. A specialist's `lsp` servers reach the `pi-lsp` extension
+  (`modules/pi-lsp/`, built from npm with a lockfile of ours, ADR-043).
 - `modules/names.sh`: the names fabriek accepts, checked where they are
   declared. A role name is also its cage's, and nspawn names the veth after
   the cage, so it is at most twelve characters; `decider` is reserved.

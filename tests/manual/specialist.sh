@@ -36,6 +36,18 @@ check "the java skill is where pi discovers skills" "yes" \
 check "the loop is beside them" "yes" \
 	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/fabriek/index.ts" && echo yes')"
 
+scenario "The language server the specialist declared is where pi-lsp reads it"
+when "the session reads lsp.json from the directory pi-lsp is pointed at"
+check "PI_AGENT_DIR is the pi directory" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test "$PI_AGENT_DIR" = "$PI_CODING_AGENT_DIR" && echo yes')"
+check "jdtls is declared for java files" "jdtls" \
+	"$(in_cage "$ROLE" sh -c 'jq -r ".servers[] | select(.include[0] == \"**/*.java\") | .id" "$PI_AGENT_DIR/lsp.json"')"
+check "its binary exists in the cage" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test -x "$(jq -r ".servers[0].bin" "$PI_AGENT_DIR/lsp.json")" && echo yes')"
+check "the extension is beside the loop" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/pi-lsp/index.ts" && echo yes')"
+gated "diagnostics appended after a write" "needs a model: write a Java file with an unused import through pi and read the diagnostics in the session transcript"
+
 scenario "pi itself lists the skill in its system prompt"
 gated "jvm-profile in the system prompt" "pi 0.84.4 has no flag that prints its skills; read the session's first system message in the role's ~/.pi/sessions"
 

@@ -269,6 +269,9 @@ One package, built through the flake, tests in its own runner.
   skills (ADR-042). Everything else of ADR-042 is asserted on this host by
   `catalogue.bats`, `factory_flake.bats`, `machine_services.bats` and
   `seam.bats`. Not run as of 2026-09-13.
+- 6.2 The same proof's language-server scenario (ADR-043): lsp.json where
+  pi-lsp reads it, the binary in the cage, and with a model, diagnostics
+  appended after a write. Not run as of 2026-09-13.
 
 ## Where the log's open items landed (its section 6)
 
