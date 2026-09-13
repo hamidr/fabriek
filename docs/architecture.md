@@ -67,6 +67,15 @@ TUI. It is built by the flake with `tsc` and tested with node's own runner;
 pi's types are linked in from the pi in the closure. `nix build .#factory`
 runs its 97 scenarios.
 
+**`catalogue/`** is what a role can be (ADR-042): one directory per
+specialist (`PROMPT.md` and a `default.nix` naming its tools, its parents
+and its skills as values) and one per skill (`SKILL.md` in the Agent Skills
+format and a `default.nix` naming its tools). A repository may carry a
+second one with the same layout, named by `catalogue` in its `fabriek.nix`.
+A role names its specialists in `fabriek.nix` and nothing else; `command`
+defaults to pi. `modules/catalogue.nix` reads both, flattens what a role
+names once per name, parents first, and builds one derivation per role.
+
 ## The machine
 
 `fabriek up <factory>` writes a flake under the machine's directory whose
@@ -76,8 +85,10 @@ systems, the operator's ceilings and which header carries which endpoint's
 credential (`machine_flake` in `fabriek`). `lib.factory`
 (`modules/factory.nix`) validates and clamps the declaration inside a
 derivation by the same shell modules the CLI uses (`modules/machine-spec.sh`),
-realises each role's devShell inputs into a profile, bakes the decider's
-policy file, and hands the spec to `modules/vm.nix`. A bad declaration fails
+composes each role's specialists from the catalogues into one derivation
+(`modules/catalogue.nix`, ADR-042) and realises it with the role's devShell
+inputs into a profile, bakes the decider's policy file, and hands the spec
+to `modules/vm.nix`. A bad declaration fails
 the build with its own message; what the clamp changed rides in the spec and
 is printed by `up`.
 
@@ -102,9 +113,12 @@ The machine (`modules/machine/default.nix` and `modules/machine/`):
   `fabriek-container probes-publish` (`modules/probes.sh`), which names
   the role each uid belongs to by the uid primitive, to a capped `probes`
   stream, written as a user that can write nothing else (ADR-038).
-- `floor.nix`: pi on every cage, the extension and the decider's loop under
-  `/etc/fabriek/pi` and `/etc/fabriek/pi-decider` with a `models.json`
-  pointing pi at the proxy (ADR-030, ADR-035).
+- `floor.nix`: pi on every cage; one pi directory per role under
+  `/etc/fabriek/roles/<role>/pi`, a store path carrying the loop, a
+  `models.json` pointing pi at the proxy, and from the role's profile the
+  `APPEND_SYSTEM.md` and `skills/` of its specialists; the decider's loop
+  under `/etc/fabriek/pi-decider` as real files (ADR-030, ADR-035,
+  ADR-042).
 - `executor.nix`: the `fabriek-executor` unit, as root, restarted always.
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
@@ -134,10 +148,11 @@ that holds it, so a hand beside an actor takes no second veth),
 `--no-nix-daemon`, the profile on
 `NIXCAGE_PATH_PREFIX` when the build realised one, then `--auth-sock` (by
 hand) or `--no-agent` (supervised), the guidance bind, the task bind if
-given, the signing binds, and for a supervised run the actor's part: pi's
-directory bound at `PI_CODING_AGENT_DIR`, the bus password and forge token
-bound read-only, and the `FABRIEK_*` environment naming the role, its
-capabilities, the bus, the forge, the repository and the proxy. The cage is
+given, the signing binds, and for a supervised run the actor's part: the
+role's own pi directory bound at `PI_CODING_AGENT_DIR`, the bus password
+and forge token bound read-only, and the `FABRIEK_*` environment naming the
+role, its capabilities, its specialists, the bus, the forge, the repository
+and the proxy. The cage is
 named after the role, because nspawn names its veth after the cage, and a
 role name is at most twelve characters. The decider's session is the same
 line with the machine's own loop, the declaration and the policy bound in,

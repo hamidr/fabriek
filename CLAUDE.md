@@ -72,6 +72,15 @@ A change to what a role session is shows up there as a diff.
   machine. No runtime dependency and no npm: built with `tsc`, tested
   with node's own runner, pi's types linked in from the pi in the closure
   (`factory/default.nix`).
+- `catalogue/`: what a role can be (ADR-042). `specialists/<name>/` is a
+  `PROMPT.md` and a `default.nix` (a function of `pkgs`, `specialists`,
+  `skills`) naming tools, parents and skills as values; `skills/<name>/` is
+  a `SKILL.md` in the Agent Skills format and a `default.nix` naming its
+  tools. A role names specialists in `fabriek.nix`; `modules/catalogue.nix`
+  composes them into one derivation per role at the machine build, and
+  `floor.nix` puts the result where pi reads it. A repository may add a
+  catalogue of its own with the same layout. Adding a specialist is adding
+  a directory.
 - `modules/names.sh`: the names fabriek accepts, checked where they are
   declared. A role name is also its cage's, and nspawn names the veth after
   the cage, so it is at most twelve characters; `decider` is reserved.
@@ -90,6 +99,8 @@ A change to what a role session is shows up there as a diff.
 - `modules/factory.nix`: `lib.factory`, one factory's machine from the
   repository it works and the facts only the host knows (ADR-040). Validation
   and the clamp run inside a derivation by the same shell modules.
+  `modules/catalogue.nix`: `lib.catalogue`, the specialists and skills of
+  every catalogue and `compose` for one role (ADR-042).
 - `modules/vm.nix`, `modules/machine/default.nix`, `modules/machine/*.nix`: the machine
   (ADR-019): nixcage's host module inside it, a ZFS pool named after the
   factory, and one module per service: `bridge.nix` (the private network and
@@ -109,8 +120,8 @@ A change to what a role session is shows up there as a diff.
   with the refusals along the way and the bus ACL asked with DRYRUN.
 - `tests/manual/`: what cannot be a bats test because it needs a machine.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
-  success criterion; `stop-and-start.sh` is PRD-004 phase 2's; `lib.sh` is
-  what they share.
+  success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
+  `specialist.sh` is ADR-042's; `lib.sh` is what they share.
 - `models/vm-lifecycle.qnt`: the machine's lifecycle, the one model kept.
 - `examples/factory-project/`: a repository worked by a factory.
 - `docs/`: ADRs, PRDs, the generated TRACKER.md, `architecture.md`,
@@ -123,6 +134,7 @@ nix develop                          # bash, jq, shellcheck, bats, git, node
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/       # ~340 scenarios, minutes
 nix develop --command bats -f "one invocation" tests/command/seam.bats
+nix develop --command bats tests/command/catalogue.bats      # the catalogue, evaluated and built for real
 nix build .#factory                  # compiles and runs its ~145 scenarios
 nix develop --command bash -c 'cd factory && npm test'
 nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ \
@@ -145,7 +157,8 @@ drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
 the forge, `operator.bats`, `bus_acl.bats` and `probes.bats` stub `valkey-cli`;
 `factory_flake.bats` and `machine_services.bats` evaluate `lib.factory` for
-real. The package's tests
+real, and `catalogue.bats` evaluates and builds `lib.catalogue` for real.
+The package's tests
 drive each core against fakes of its interfaces and each adapter against a
 local fake server. Every test name reads as a scenario.
 

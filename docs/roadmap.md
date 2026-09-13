@@ -261,6 +261,15 @@ One package, built through the flake, tests in its own runner.
   to merge with the gate written down rather than hold the branch for a
   credential.
 
+## After the merge
+
+- 6.1 `tests/manual/specialist.sh` passes on a real machine: in the
+  example's backend cage, java on PATH with the floor under it, the
+  specialists' prompt where pi appends it, the skill where pi discovers
+  skills (ADR-042). Everything else of ADR-042 is asserted on this host by
+  `catalogue.bats`, `factory_flake.bats`, `machine_services.bats` and
+  `seam.bats`. Not run as of 2026-09-13.
+
 ## Where the log's open items landed (its section 6)
 
 Relay shape: 3.5. Record export format and re-import: 3.3, with re-import

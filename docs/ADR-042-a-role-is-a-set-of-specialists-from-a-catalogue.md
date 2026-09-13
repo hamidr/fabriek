@@ -1,7 +1,7 @@
 ---
 id: ADR-042
 title: A role is a set of specialists from a catalogue, and a specialist is a directory
-status: proposed
+status: implemented
 date: 2026-09-13
 status_date: 2026-09-13
 summary: a role names specialists; each is a directory of prompt, tools and skills, composed at build and read by pi in the cage
@@ -157,32 +157,39 @@ gets exactly what it wrote; nothing is appended to a declared command.
 ## Verification
 
 Behaviour first, in the runner each component has (`docs/roadmap.md`,
-Method).
+Method); every scenario below was written and seen failing before the code
+that passes it.
 
 ```bash
-nix develop --command bats tests/unit/catalogue.bats
+nix develop --command bats tests/command/catalogue.bats
+nix develop --command bats tests/unit/repo_declaration.bats tests/unit/factory_config.bats
 nix develop --command bats tests/command/factory_flake.bats
 nix develop --command bats tests/command/machine_services.bats
 nix develop --command bats -f "one invocation" tests/command/seam.bats
 nix build .#factory
-nix develop --command tests/system/journey.sh
+nix develop --command bats --recursive tests/
 docmeta-check docs && docmeta-tracker --check docs
 ```
 
-`tests/unit/catalogue.bats` drives `modules/catalogue.sh` on fixture
-directories: each refusal in point 6, the diamond flattening once, the order
-of point 4, and the concatenated prompt. `factory_flake.bats` evaluates
-`lib.factory` for real on a fixture repository naming specialists and reads
-`bin/`, `share/fabriek/specialist/skills/<name>/SKILL.md` and
-`APPEND_SYSTEM.md` out of the profile. `seam.bats` asserts the actor line's
-bind word. `actor.test.ts` asserts the brief's line is present with
-specialists and absent without.
+`tests/command/catalogue.bats` drives `lib.catalogue` for real over the
+shipped catalogue and one each scenario writes: each refusal in point 6,
+the diamond flattening once, the order of point 4, and the built
+derivation's prompt, skills and `bin/`. `factory_flake.bats` evaluates
+`lib.factory` on a fixture repository naming specialists and one carrying
+its own catalogue. `machine_services.bats` asserts one pi directory per
+role from the store and the shared one gone; `seam.bats` asserts the actor
+line's bind word and `FABRIEK_SPECIALISTS`. `actor.test.ts` asserts the
+brief's line is present with specialists and absent without.
 
 On a machine, what matters is what a session can see rather than what a
 module declared, as with the floor:
 
 ```bash
-FABRIEK_PROOF_DIR=/tmp/proof tests/manual/observe.sh specialist
-# in a cage of a role naming java: jdk on PATH, the skill listed by pi,
-# and APPEND_SYSTEM.md in the system prompt
+FABRIEK_PROOF_DIR=/tmp/proof tests/manual/specialist.sh
+# in the example's backend cage: java on PATH with the floor under it,
+# APPEND_SYSTEM.md opening with "## developer", jvm-profile/SKILL.md where
+# pi discovers skills, the loop beside them
 ```
+
+That proof has not been run on a machine as of this document's date; the
+roadmap carries it beside the other real-machine proofs.
