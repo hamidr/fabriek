@@ -95,6 +95,18 @@ describe("a bus client", () => {
     bus.close();
   });
 
+  it("lastId is the newest entry's id on a stream, and 0-0 on a stream that has none", async () => {
+    const fake = await fakeValkey((cmd) =>
+      cmd[0] === "XREVRANGE" && cmd[1] === "control:builder" ? "*1\r\n*2\r\n$3\r\n9-0\r\n*2\r\n$4\r\nkind\r\n$5\r\nready\r\n" : cmd[0] === "XREVRANGE" ? "*0\r\n" : "+OK\r\n",
+    );
+    fakes.push(fake);
+    const bus = await BusClient.connect({ host: "127.0.0.1", port: fake.port, user: "u", password: "p" });
+    assert.equal(await bus.lastId("control:builder"), "9-0");
+    assert.equal(await bus.lastId("control:reviewer"), "0-0");
+    assert.deepEqual(fake.asked[1], ["XREVRANGE", "control:builder", "+", "-", "COUNT", "1"]);
+    bus.close();
+  });
+
   it("when the server answers an error, the call rejects with it", async () => {
     const fake = await fakeValkey((cmd) => (cmd[0] === "AUTH" ? "+OK\r\n" : "-NOPERM this user has no permissions\r\n"));
     fakes.push(fake);

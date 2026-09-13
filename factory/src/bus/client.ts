@@ -108,6 +108,12 @@ export class BusClient {
     return rawEntries(await this.call(words));
   }
 
+  /** The newest entry's id, or 0-0 when the stream is empty: where a reader starts so nothing written before its first read is missed. */
+  async lastId(stream: string): Promise<string> {
+    const entries = rawEntries(await this.call(["XREVRANGE", stream, "+", "-", "COUNT", "1"]));
+    return entries[0]?.id ?? "0-0";
+  }
+
   close(): void {
     this.closed = true;
     this.socket.destroy();

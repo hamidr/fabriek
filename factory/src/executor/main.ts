@@ -83,6 +83,11 @@ async function main(): Promise<void> {
 
   await executor.reconcile();
   log("reconciled");
+  // Read from where each stream is now, and only then start the sessions:
+  // an actor's ready that lands before the first read would be missed by
+  // "$", and a role never heard ready is never assigned. Found on a host,
+  // where a scripted actor is ready in milliseconds.
+  for (const k of Object.keys(streams)) streams[k] = await client.lastId(k);
   for (const r of roles) await sessions.start(r);
   await sessions.start("decider");
   log(`sessions started for ${roles.join(", ")} and the decider`);
@@ -91,8 +96,10 @@ async function main(): Promise<void> {
   for (;;) {
     try {
       if (client.closed) {
+        // Read on from the ids already held: a bus that restarted is empty
+        // and hands out later ids, so nothing an actor re-announces is
+        // missed, and nothing old is heard twice.
         client = await connect();
-        for (const k of Object.keys(streams)) streams[k] = "$";
         log("bus reconnected");
       }
       const batches = await client.xreadMany(streams, 2000);
