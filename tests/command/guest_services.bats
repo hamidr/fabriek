@@ -140,23 +140,9 @@ machine_text() {
 	assert_output --partial '--save ""'
 	run machine_text 'c.systemd.services.cageworks-bus-acl.script'
 	assert_success
-	assert_output --partial 'ACL SETUSER default off'
-	# Off last, or the script's own SETUSERs are refused as unauthenticated;
-	# on a second run it speaks as the executor. Found on a machine.
-	[ "$(grep -n 'SETUSER default off' <<<"$output" | cut -d: -f1)" -gt "$(grep -n 'SETUSER executor' <<<"$output" | cut -d: -f1)" ]
-	assert_output --partial '--user executor --no-auth-warning'
-	refute_output --partial '--pass'
-	assert_output --partial 'resetkeys resetchannels nocommands'
-	assert_output --partial '%R~mailbox:builder'
-	assert_output --partial '%W~findings:builder'
-	assert_output --partial '%R~findings:*'
-	assert_output --partial '%W~control:builder'
-	assert_output --partial 'SETUSER decider'
-	assert_output --partial '%W~commands'
-	assert_output --partial 'SETUSER executor'
-	assert_output --partial 'SETUSER probes'
-	assert_output --partial '%W~probes'
-	refute_output --partial 'SETUSER builder on >'
+	# The rules and the order they are applied in are the guest program's
+	# (tests/command/bus_acl.bats); the machine only runs it with the bus up.
+	assert_output --partial 'cageworks-container bus-acl acme'
 }
 
 @test "the proxy listens on the bridge, counts tokens per source address, and refuses at the ceiling" {

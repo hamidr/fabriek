@@ -92,8 +92,9 @@ The guest (`modules/vm-guest.nix` and `modules/guest/`):
   its tmpfiles rules re-run after the mount; a `forgejo` wrapper for the
   guest program (ADR-036).
 - `bus.nix`: Valkey on the bridge, no persistence; `cageworks-bus-acl`
-  applies default-deny users from password files under the state
-  directory, read and write patterns kept apart per role (ADR-033).
+  runs `cageworks-container bus-acl`, whose rules (`modules/bus.sh`) make
+  default-deny users from password files under the state directory, read
+  and write patterns kept apart per role (ADR-033).
 - `proxy.nix`: nginx with njs on the bridge, injecting the credential per
   allowed host, counting tokens per source address in memory, answering
   `/status`, refusing with 429 at `tokenCeiling` (ADR-037).

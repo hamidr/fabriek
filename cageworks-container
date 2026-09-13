@@ -119,6 +119,7 @@ usage: cageworks-container
   factory-roles <factory>
   factory-board <factory>
   probes-publish <factory>
+  bus-acl <factory>
 USAGE
 }
 
@@ -574,6 +575,16 @@ cmd_factory_board() {
 	printf '%s\n' "$password"
 }
 
+## Who may say what on the bus, applied from the password files prepare
+## wrote (ADR-033 point 3). The machine's ACL unit runs this at boot and
+## prepare restarts that unit after writing a new password.
+cmd_bus_acl() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container bus-acl <factory>"
+	cageworks_bus_apply "$STATE_DIR" "$CAGEWORKS_ETC/bridge.json" "$(factory_declaration "$factory")" ||
+		die "could not apply the bus ACL"
+}
+
 ## The kernel's lines, from bpftrace on stdin, onto the bus with the role
 ## each uid belongs to (ADR-038 point 3).
 cmd_probes_publish() {
@@ -602,6 +613,7 @@ main() {
 	factory-watch) cmd_factory_watch "$@" ;;
 	factory-board) cmd_factory_board "$@" ;;
 	probes-publish) cmd_probes_publish "$@" ;;
+	bus-acl) cmd_bus_acl "$@" ;;
 	role-steer) cmd_role_steer "$@" ;;
 	factory-send) cmd_factory_send "$@" ;;
 	factory-roles) cmd_factory_roles "$@" ;;
