@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { keepWatching } from "./watch.js";
+import { keepWatching, watchArgs } from "./watch.js";
 
 function child() {
   const stdout = new PassThrough();
@@ -75,5 +75,9 @@ describe("keeping a watch", () => {
     c.say("good");
     await tick();
     assert.deepEqual(lines, ["good"]);
+  });
+
+  it("given a factory, then the watch asks for everything the bus still holds, so the board is on screen at open and not at the next tick", () => {
+    assert.deepEqual(watchArgs("acme"), ["factory", "watch", "acme", "--from", "0-0"]);
   });
 });

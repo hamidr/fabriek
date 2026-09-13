@@ -193,8 +193,11 @@ it over ssh. When the bus goes away the relay waits, connects again and
 reads on from the last id it printed (`relay/tail.ts`). The TUI
 (`factory/src/tui/`) folds those lines into one state, renders roles,
 board, commands, findings and spend, and writes through the CLI: file,
-steer, stop, retry, block, push, mirror. A watch that ends is started
-again after a pause and the picture begins over (`tui/watch.ts`). Merging is a click in
+steer, stop, retry, block, push, mirror. The watch asks from `0-0`, so
+what the bus still holds is replayed and the board, which reaches the TUI
+only as the executor's periodic event, is on screen at open. A watch that
+ends is started again after a pause and the picture begins over
+(`tui/watch.ts`). Merging is a click in
 Forgejo's UI; nothing merges by verb.
 
 ## The invariants

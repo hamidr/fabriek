@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fold, initial, type State } from "./model.js";
 import { render } from "./view.js";
-import { keepWatching } from "./watch.js";
+import { keepWatching, watchArgs } from "./watch.js";
 import { parseLine } from "../relay/format.js";
 
 const ESC = String.fromCharCode(27);
@@ -107,7 +107,7 @@ function paint(): void {
 }
 
 keepWatching({
-  spawn: () => spawn(cli, ["factory", "watch", factory], { stdio: ["ignore", "pipe", "inherit"] }),
+  spawn: () => spawn(cli, watchArgs(factory), { stdio: ["ignore", "pipe", "inherit"] }),
   onStart: () => {
     state = initial(roles);
   },
