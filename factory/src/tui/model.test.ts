@@ -60,6 +60,13 @@ describe("the TUI's model", () => {
     assert.deepEqual(s.spend, { builder: 120, decider: 0, total: 120 });
   });
 
+  it("a probe line is kept with the role the machine named, and with nothing before it when the machine named none", () => {
+    let s = after([{ stream: "probes", id: "1-0", fields: { uid: "60000", role: "builder", event: "exec uid=60000 pid=1 comm=git" } }]);
+    assert.deepEqual(s.probes, ["builder  exec uid=60000 pid=1 comm=git"]);
+    s = fold(s, { stream: "probes", id: "2-0", fields: { uid: "999", role: "", event: "exec uid=999 pid=2 comm=forgejo" } });
+    assert.equal(s.probes[1], "exec uid=999 pid=2 comm=forgejo");
+  });
+
   it("every fixture line folds without throwing, whatever it carries", () => {
     assert.doesNotThrow(() => after(fixtures));
   });

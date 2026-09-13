@@ -44,7 +44,13 @@ export function render(s: State, screen: Screen): string {
   lines.push("findings");
   for (const f of s.findings.slice(-5)) lines.push(`  ${f.role}: ${f.text}`);
   lines.push("");
-  lines.push(KEYS);
-  const cut = lines.map((l) => fit(l, w));
-  return cut.slice(0, Math.max(1, screen.rows)).join("\n");
+  lines.push("probes");
+  for (const p of s.probes.slice(-3)) lines.push(`  ${p}`);
+  lines.push("");
+  // The keys are the last row whatever the height; what is cut is above them.
+  const rows = Math.max(2, screen.rows);
+  const cut = lines.map((l) => fit(l, w)).slice(0, rows - 1);
+  while (cut.length < rows - 1) cut.push("");
+  cut.push(fit(KEYS, w));
+  return cut.join("\n");
 }

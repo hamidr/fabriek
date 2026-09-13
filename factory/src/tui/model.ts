@@ -99,8 +99,11 @@ export function fold(s: State, line: Line): State {
       return { ...s, commands: keep(s.commands, { by: "decider", text: describeCommand(tryJson(line.fields["json"])) }) };
     case "operator":
       return { ...s, commands: keep(s.commands, { by: "operator", text: describeCommand(tryJson(line.fields["json"])) }) };
-    case "probes":
-      return { ...s, probes: keep(s.probes, line.fields["event"] ?? "") };
+    case "probes": {
+      // The role is the machine's word on whose uid it was; none means no role's.
+      const who = line.fields["role"] ? `${line.fields["role"]}  ` : "";
+      return { ...s, probes: keep(s.probes, `${who}${line.fields["event"] ?? ""}`) };
+    }
     case "mailbox": {
       const m = tryJson(JSON.stringify(line.fields)) as Record<string, string> | null;
       if (m?.["kind"] === "assignment") return withRole(role, { ...view(role), last: `assigned #${m["issue"]}` });

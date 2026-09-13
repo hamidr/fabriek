@@ -33,6 +33,17 @@ describe("the TUI's view", () => {
     assert.match(out, /reviewer +unknown +0/);
   });
 
+  it("shows the last kernel lines under probes, and keeps the keys on the last row when the screen is short", () => {
+    let s = initial(["builder"]);
+    for (let i = 0; i < 5; i++) s = fold(s, { stream: "probes", id: `${i}-0`, fields: { uid: "60000", role: "builder", event: `exec uid=60000 pid=${i} comm=git` } });
+    const out = render(s, { columns: 80, rows: 14, factory: "acme" });
+    const lines = out.split("\n");
+    assert.equal(lines.length, 14);
+    assert.match(lines.at(-1) ?? "", /q quit/);
+    const tall = render(s, { columns: 80, rows: 40, factory: "acme" });
+    assert.match(tall, /probes\n  builder  exec uid=60000 pid=2 comm=git\n  builder  exec uid=60000 pid=3 comm=git\n  builder  exec uid=60000 pid=4 comm=git/);
+  });
+
   it("never renders wider than the terminal", () => {
     let s = initial(["builder"]);
     s = fold(s, { stream: "findings:builder", id: "1-0", fields: { kind: "finding", text: "x".repeat(300) } });
