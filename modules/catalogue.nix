@@ -146,7 +146,9 @@ let
       ) order;
       skillLines = lib.concatMapStrings (s: "${s.name}\t${s.src}\n") skills;
     in
-    pkgs.runCommand "fabriek-specialist-${role}"
+    ## Forced here so that a name no catalogue has fails on any touch of
+    ## the derivation, and not only when something reads the list.
+    builtins.seq order pkgs.runCommand "fabriek-specialist-${role}"
       {
         inherit prompt toolLines skillLines;
         passAsFile = [

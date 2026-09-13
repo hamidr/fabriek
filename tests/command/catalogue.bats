@@ -73,8 +73,11 @@ catalogue_build() {
 	assert_output --partial '"ruff"'
 }
 
+# Asked through .name, which nothing in the composition depends on: the
+# refusal has to come on any touch of the derivation, not only on the
+# attributes that happen to read the list.
 @test "a role naming a specialist no catalogue has is refused naming the role and what is offered" {
-	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "rust" ]; }).order'
+	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "rust" ]; }).name'
 	assert_failure
 	assert_output --partial "role backend names specialist rust"
 	assert_output --partial "offers: architect, developer"
