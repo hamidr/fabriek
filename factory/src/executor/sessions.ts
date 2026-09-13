@@ -13,6 +13,17 @@ export interface SessionsOptions {
   log?: (line: string) => void;
 }
 
+/**
+ * The program a session is started with: the guest program, unless
+ * CAGEWORKS_SESSION_COMMAND names another, which is how a harness runs the
+ * factory on a host with scripted actors in place of cages. The line after
+ * the program is the same either way.
+ */
+export function sessionCommand(env: Record<string, string | undefined>): string[] {
+  const words = (env["CAGEWORKS_SESSION_COMMAND"] ?? "").split(/\s+/).filter(Boolean);
+  return words.length ? words : ["cageworks-container"];
+}
+
 export class RoleSessions implements Sessions {
   private readonly children = new Map<string, ChildProcess>();
   private readonly wanted = new Set<string>();

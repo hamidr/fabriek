@@ -16,7 +16,7 @@ import { parseMessage, toFields, type Message } from "../messages.js";
 import { parseCommand } from "../vocabulary.js";
 import { Executor, type Bus, type Spend } from "./core.js";
 import { ForgeBoard } from "./forge.js";
-import { RoleSessions } from "./sessions.js";
+import { RoleSessions, sessionCommand } from "./sessions.js";
 import { CloneGit } from "./git.js";
 import { spendByRole } from "./spend.js";
 
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
       return (await this.counts())["total"] ?? 0;
     },
   };
-  const sessions = new RoleSessions({ factory, log });
+  const sessions = new RoleSessions({ factory, log, command: sessionCommand(process.env) });
   const git = new CloneGit({
     clone: `${STATE}/factories/${factory}`,
     forgeUrl: `http://${plan.forgejo}/${repository}.git`,
