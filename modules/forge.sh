@@ -139,3 +139,63 @@ cageworks_forge_ensure_memory() {
 		"$(jq -cn --argjson id "${label_id:-0}" '{labels: [$id]}')" >/dev/null
 	cageworks_forge_api "$base" "$operator" POST "/repos/$owner/$name/issues/$number/pin" >/dev/null || true
 }
+
+## The record as origin holds it: issues.json on refs/cageworks/record, what
+## mirror exported (ADR-036 point 7). Fetched into a repository made for the
+## purpose, because prepare runs before the factory's clone need exist.
+## Prints nothing when origin carries no record; fails only when origin
+## cannot be asked at all.
+cageworks_record_read() {
+	local origin="$1" tmp
+	tmp="$(mktemp -d)"
+	local status=0
+	if git init -q "$tmp" &&
+		GIT_TERMINAL_PROMPT=0 git -C "$tmp" fetch -q --depth 1 "$origin" refs/cageworks/record 2>/dev/null; then
+		git -C "$tmp" show FETCH_HEAD:issues.json || status=1
+	elif ! GIT_TERMINAL_PROMPT=0 git ls-remote -q "$origin" >/dev/null 2>&1; then
+		status=1
+	fi
+	rm -rf "$tmp"
+	return "$status"
+}
+
+## The record's issues, opened again on a board that has none. In number
+## order, so that what was filed first is filed first again; the numbers
+## themselves are the forge's and are not promised. Memory issues are left
+## out, because each is opened as its role and prepare does that itself.
+## A label the declaration no longer has is named and dropped, and the
+## issue keeps the rest; the record is not edited to fit.
+cageworks_forge_restore_record() {
+	local base="$1" token="$2" owner="$3" name="$4" record="$5"
+	local labels number issue title body state wanted ids unknown
+	labels="$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/labels")" || return 1
+	while IFS= read -r issue; do
+		[ -n "$issue" ] || continue
+		title="$(jq -r '.title' <<<"$issue")"
+		body="$(jq -r '.body // ""' <<<"$issue")"
+		state="$(jq -r '.state' <<<"$issue")"
+		number="$(cageworks_forge_api "$base" "$token" POST "/repos/$owner/$name/issues" \
+			"$(jq -cn --arg t "$title" --arg b "$body" '{title: $t, body: $b}')" | jq -r .number)" || return 1
+		[ -n "$number" ] || return 1
+		wanted="$(jq -c '[.labels[].name]' <<<"$issue")"
+		ids="$(jq -c --argjson w "$wanted" '[.[] | select(.name as $n | $w | index($n)) | .id]' <<<"$labels")"
+		unknown="$(jq -r --argjson w "$wanted" '[.[].name] as $have | $w[] | . as $l | select(($have | index($l)) == null)' <<<"$labels")"
+		[ -z "$unknown" ] || printf 'cageworks: the record labels "%s" with %s, which the declaration no longer has\n' \
+			"$title" "$(paste -sd, - <<<"$unknown")" >&2
+		if [ "$ids" != "[]" ]; then
+			cageworks_forge_api "$base" "$token" POST "/repos/$owner/$name/issues/$number/labels" \
+				"$(jq -cn --argjson l "$ids" '{labels: $l}')" >/dev/null || return 1
+		fi
+		if [ "$state" = "closed" ]; then
+			cageworks_forge_api "$base" "$token" PATCH "/repos/$owner/$name/issues/$number" \
+				'{"state":"closed"}' >/dev/null || return 1
+		fi
+	done < <(jq -c 'sort_by(.number) | .[] | select(([.labels[].name] | index("memory")) == null)' <<<"$record")
+}
+
+## Whether the board has any issue at all, memory ones included.
+cageworks_forge_board_empty() {
+	local base="$1" token="$2" owner="$3" name="$4"
+	[ "$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/issues?state=all&type=issues&limit=1" |
+		jq -r 'length')" = "0" ]
+}

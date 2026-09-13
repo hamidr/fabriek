@@ -168,7 +168,7 @@ asks in six verbs. **The relay and the TUI** (`factory/src/relay`,
 
 ### What is not built
 
-`docs/roadmap.md` keeps the list beside each item. The record's re-import,
+`docs/roadmap.md` keeps the list beside each item. The record's comments,
 the TUI's forge-side views, and the three real-machine proofs are open.
 
 ## Conventions

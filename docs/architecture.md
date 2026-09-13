@@ -170,8 +170,11 @@ user, starts every role's session and the decider's through the guest
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend to `events:executor`.
 `mirror` fetches `main` from the forge, writes the issues as
-`refs/cageworks/record`, and pushes both to origin; nothing reads the record
-back yet.
+`refs/cageworks/record`, and pushes both to origin. `factory-prepare` reads
+it back on a machine whose board is empty (`cageworks_forge_restore_record`):
+each issue opened again in number order with its labels and state, memory
+issues excepted, a label the declaration lost named and dropped. The export
+carries no comments, so neither does the restored board.
 
 ## The decider
 
@@ -212,7 +215,8 @@ CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
 
 ## Not built, and known gaps
 
-- The record's re-import on a fresh machine.
+- The record's comments: the export is the issue list, so a restored board
+  has the issues and not what was said under them.
 - The TUI's memory view and pull request list, which are the forge's and
   not on the bus.
 - The spend count lives in the proxy's memory and starts at zero when it

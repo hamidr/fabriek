@@ -425,6 +425,24 @@ cmd_factory_prepare() {
 			die "could not make the label $label"
 	done < <(jq -r '[.workflows[].stages[].needs] + ["blocked", "memory"] | unique | .[]' "$declaration")
 
+	## A board with nothing on it is a fresh machine, and origin may carry
+	## the record of the one before (ADR-036 point 7). Restored before the
+	## memory issues so that the board is the record's and then the roles'.
+	## An origin that cannot be reached is said and not fatal: the clone
+	## will say it again, and a factory with no record is still a factory.
+	if cageworks_forge_board_empty "$base" "$operator" "$owner" "$factory"; then
+		local origin_url record
+		origin_url="$(factory_repository "$factory" 2>/dev/null)" || origin_url=""
+		if [ -n "$origin_url" ]; then
+			if record="$(cageworks_record_read "$origin_url")"; then
+				[ -z "$record" ] || cageworks_forge_restore_record "$base" "$operator" "$owner" "$factory" "$record" ||
+					die "could not restore the record from $origin_url"
+			else
+				echo "cageworks-container: could not ask $origin_url for the record; the board starts empty" >&2
+			fi
+		fi
+	fi
+
 	local role
 	while IFS= read -r role; do
 		cageworks_forge_ensure_user "$role" "$role@$factory.invalid" ||

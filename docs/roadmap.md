@@ -115,8 +115,12 @@ Two commits in two repositories and a lock bump each (ADR-018).
   machine holds its credential, with `modules/forge.sh` and `modules/bus.sh`
   behind it and `tests/command/prepare.bats` driving a stubbed forge twice.
   A stage's label is its capability's name. The record's re-import from
-  `refs/cageworks/record` is not here: it needs the export format 3.3
-  decides, and is listed there.
+  `refs/cageworks/record` landed 2026-09-13: on a board with no issue at
+  all, prepare reads `issues.json` off origin and opens each issue again in
+  number order with its labels and state, memory issues excepted (each is
+  opened as its role), naming a label the declaration no longer has. The
+  numbers are the forge's and not promised; comments are not in the export
+  and so not restored.
 - 2.4 `tests/manual/isolation.sh` passes: no route off the machine, no
   cage-to-cage, spoofed source dropped, spend on the right address.
   Done 2026-09-12 on a machine, after seven findings it forced: the loop
@@ -176,9 +180,8 @@ One package, built through the flake, tests in its own runner.
   board and the spend to `events:executor` for the relay. The operator
   writes through it: `task-file`, `role-stop`, `role-steer`,
   `factory-mirror` and `factory-send` put one entry on the `operator`
-  stream as the executor's bus user, title and body as files. The record's
-  re-import stays open: the export is `issues.json` on
-  `refs/cageworks/record` and nothing reads it back yet.
+  stream as the executor's bus user, title and body as files. The export is
+  `issues.json` on `refs/cageworks/record`; prepare reads it back (2.3).
 - 3.4 Decider: a cage like any other, prompt from the four parts of
   decision 41, read token on Forgejo, typed commands out. Exit: a recorded
   board produces a valid `assign` and an invalid one is refused upstream.

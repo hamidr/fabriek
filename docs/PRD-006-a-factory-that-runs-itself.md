@@ -162,7 +162,8 @@ this document is the product that re-derivation describes.
 
 - The relay's exact JSONL shape (3.5).
 - The record export format and whether it is re-imported on a fresh
-  machine (2.3, 3.3).
+  machine (2.3, 3.3). Decided: `issues.json` on `refs/cageworks/record`,
+  read back by prepare onto an empty board; comments are not exported.
 - The `probes` stream's cap and whether the proxy's metadata log joins the
   bus (2.2).
 - Whether a non-Forgejo origin accepts `refs/cageworks/record` (5.1).

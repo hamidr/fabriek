@@ -75,11 +75,12 @@ case "\$method \$path" in
 "GET /repos/operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
 "POST /user/repos") touch "$FORGE/repo"; echo '{"name":"acme"}' ;;
 "PUT /repos/operator/acme/collaborators/"*) echo "\${path##*/}" >>"$FORGE/collaborators" ;;
-"GET /repos/operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs | {name: .}]' <"$FORGE/labels" || echo '[]' ;;
+"GET /repos/operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs] | to_entries | map({id: (.key + 1), name: .value})' <"$FORGE/labels" || echo '[]' ;;
 "POST /repos/operator/acme/labels") jq -r .name <<<"\$body" >>"$FORGE/labels"; echo '{"id":1}' ;;
 "GET /repos/operator/acme/issues"*) [ -f "$FORGE/issues" ] && jq -Rn '[inputs | fromjson]' <"$FORGE/issues" || echo '[]' ;;
-"POST /repos/operator/acme/issues") n=\$(( \$(wc -l <"$FORGE/issues" 2>/dev/null || echo 0) + 1 )); jq -c --argjson n "\$n" '. + {number: \$n, labels: [], user: {login: (.title | sub("memory: "; ""))}}' <<<"\$body" >>"$FORGE/issues"; echo "{\"number\": \$n}" ;;
-"POST /repos/operator/acme/issues/"*"/labels") echo "\$path" >>"$FORGE/labelled" ;;
+"POST /repos/operator/acme/issues") n=\$(( \$( [ -f "$FORGE/issues" ] && wc -l <"$FORGE/issues" || echo 0 ) + 1 )); jq -c --argjson n "\$n" '. + {number: \$n, labels: [], user: {login: (.title | sub("memory: "; ""))}}' <<<"\$body" >>"$FORGE/issues"; echo "{\"number\": \$n}" ;;
+"POST /repos/operator/acme/issues/"*"/labels") echo "\$path \$(jq -c .labels <<<"\$body")" >>"$FORGE/labelled" ;;
+"PATCH /repos/operator/acme/issues/"*) echo "\$path \$body" >>"$FORGE/patched" ;;
 "POST /repos/operator/acme/issues/"*"/pin") echo "\$path" >>"$FORGE/pinned" ;;
 *) echo "unstubbed: \$method \$path" >&2; exit 1 ;;
 esac
@@ -266,4 +267,71 @@ review"
 	assert_output --partial test
 	run wc -l <"$FORGE/issues"
 	assert_output --regexp '^ *3$'
+}
+
+# The record on origin (ADR-036 point 7): what mirror exported, read back on
+# a machine whose board is empty. Memory issues are not restored, because
+# each is opened as its role and prepare does that itself.
+origin_with_record() {
+	local record="$1" origin="$TEST_TEMP_DIR/origin" work="$TEST_TEMP_DIR/record-work"
+	git init -q --bare "$origin"
+	git init -q "$work"
+	printf '%s\n' "$record" >"$work/issues.json"
+	git -C "$work" add issues.json
+	git -C "$work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m record
+	git -C "$work" push -q "$origin" HEAD:refs/cageworks/record
+	echo "$origin"
+}
+
+@test "given an empty board and a record on origin, prepare restores the record's issues with their labels and state, memory issues excepted" {
+	local origin
+	origin="$(origin_with_record '[
+	  {"number": 1, "title": "memory: builder", "body": "", "state": "open", "labels": [{"name": "memory"}], "user": {"login": "builder"}},
+	  {"number": 2, "title": "ship the login page", "body": "as filed", "state": "open", "labels": [{"name": "build"}], "user": {"login": "operator"}},
+	  {"number": 3, "title": "fix the footer", "body": "done long ago", "state": "closed", "labels": [], "user": {"login": "operator"}}
+	]')"
+	run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	run jq -r '.title' "$FORGE/issues"
+	assert_output "ship the login page
+fix the footer
+memory: builder
+memory: reviewer"
+	run grep -c "issues/1/labels \[2\]" "$FORGE/labelled"
+	assert_output 1
+	run cat "$FORGE/patched"
+	assert_output '/repos/operator/acme/issues/2 {"state":"closed"}'
+}
+
+@test "given a board that already has issues, prepare leaves the record on origin alone" {
+	local origin
+	origin="$(origin_with_record '[{"number": 1, "title": "ship the login page", "body": "", "state": "open", "labels": [], "user": {"login": "operator"}}]')"
+	run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	run wc -l <"$FORGE/issues"
+	assert_output --regexp '^ *3$'
+}
+
+@test "given a record carrying a label the declaration no longer has, prepare says which and restores the rest" {
+	local origin
+	origin="$(origin_with_record '[{"number": 1, "title": "deploy it", "body": "", "state": "open", "labels": [{"name": "deploy"}, {"name": "build"}], "user": {"login": "operator"}}]')"
+	run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	assert_output --partial "deploy"
+	run jq -r '.title' "$FORGE/issues"
+	assert_line --index 0 "deploy it"
+	run grep -c "issues/1/labels \[2\]" "$FORGE/labelled"
+	assert_output 1
+}
+
+@test "given an origin that carries no record, prepare makes a board of nothing but the memory issues" {
+	local origin="$TEST_TEMP_DIR/origin"
+	git init -q --bare "$origin"
+	run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	run wc -l <"$FORGE/issues"
+	assert_output --regexp '^ *2$'
+	[ ! -f "$FORGE/patched" ]
 }

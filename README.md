@@ -125,9 +125,10 @@ claim the executor checks against its own board.
 
 ## What is not here yet
 
-`docs/roadmap.md` keeps the list. The record is exported to origin and not yet
-read back on a fresh machine; the TUI shows what the bus carries and not yet
-the forge's own views; the real-machine proofs have not yet passed.
+`docs/roadmap.md` keeps the list. The record is exported to origin and read
+back on a fresh machine without its comments; the TUI shows what the bus
+carries and not yet the forge's own views; the real-machine proofs have not
+yet passed.
 
 ## Development
 
