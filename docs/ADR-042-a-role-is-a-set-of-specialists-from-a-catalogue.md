@@ -56,18 +56,22 @@ repository's own build environment, resolved against the repository's pin.
 ```
 catalogue/
   skills/<name>/SKILL.md          the Agent Skills standard: frontmatter and body
-  skills/<name>/skill.nix         { tools = [ "python3Packages.django" ]; }
+  skills/<name>/default.nix       { pkgs, ... }: { tools = [ pkgs.maven ]; src = ./.; }
   specialists/<name>/PROMPT.md    what this specialist is told
-  specialists/<name>/specialist.nix
-                                  { extends = [ "developer" ]; tools = [ "jdk21" ];
-                                    skills = [ "jvm-profile" ]; }
+  specialists/<name>/default.nix  { pkgs, specialists, skills, ... }:
+                                  { extends = [ specialists.python ];
+                                    tools = [ pkgs.python3Packages.django ];
+                                    skills = [ skills.django-migrate ];
+                                    prompt = ./PROMPT.md; }
 ```
 
-The directory name is the name. The two `.nix` files are pure data like
-`fabriek.nix`: no inputs, no `pkgs`, evaluable alone, dumped to JSON and
-validated by one jq program against a closed schema. `tools` are nixpkgs
-attribute paths as strings, resolved against fabriek's pin. A key outside the
-schema is refused by name.
+The directory name is the name. Each `default.nix` is a function of `pkgs`,
+fabriek's own pin, and of `specialists` and `skills`, the entries of every
+catalogue, so a specialist extends another by value and a tool is a
+package, not a string naming one. A misspelt package or parent fails
+evaluation with Nix's own message naming the attribute. A key outside
+`extends`, `tools`, `skills`, `prompt` (or `tools`, `src` for a skill) is
+refused by name in the composer.
 
 **3. Two catalogues, one convention.** fabriek ships `catalogue/` in its own
 tree and builds it into the image. A repository may declare `catalogue =
@@ -106,8 +110,8 @@ after the role's name: `Your specialists: java, python.` A role naming none
 gets no line.
 
 **8. ADR-031 point 3 gets its answer.** Wanting a tool is still a consult;
-what the consult changes is a `skill.nix`, a `specialist.nix`, or the
-repository's own catalogue, and the tool arrives at the next session as
+what the consult changes is a skill's or a specialist's `default.nix`, or
+the repository's own catalogue, and the tool arrives at the next session as
 that document says.
 
 **9. `command` defaults to `[ "pi" "--mode" "rpc" ]`.** ADR-029 fixed the
@@ -123,14 +127,14 @@ and the repository's `flake.nix` keeps only `flake.fabriek = import
 ./fabriek.nix;` beside its own devShells.
 
 A skill is the standard's format and nothing more, so the same directory
-loads in pi, Claude Code and Codex. The `skill.nix` beside it is the one
-fabriek-specific file, and it is data.
+loads in pi, Claude Code and Codex. The `default.nix` beside it is the one
+fabriek-specific file.
 
 Specialists are pinned by fabriek, so adding a tool to one is a fabriek
 change and a machine rebuild, exactly as the floor is. That is the trade
 against ADR-030 point 7 stated in the context: the kit follows the machine's
-pin so that a directory can name a package without a flake around it. A
-project's own dependencies do not move; they stay in its devShell.
+pin so that a directory can name a package by value without a flake around
+it. A project's own dependencies do not move; they stay in its devShell.
 
 Prompt order is declaration order and nothing smarter. A role naming
 `[ "java" "python" ]` reads Java first. Two specialists that contradict each
