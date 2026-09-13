@@ -11,7 +11,7 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	HOST="$(nix eval --impure --raw --expr 'builtins.currentSystem')"
-	GUEST="${HOST%%-*}-linux"
+	MACHINE="${HOST%%-*}-linux"
 	REPO="$TEST_TEMP_DIR/acme"
 	mkdir -p "$REPO"
 	git init -q "$REPO"
@@ -34,7 +34,7 @@ NIX
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
 	cat >"$TEST_TEMP_DIR/local.json" <<JSON
-{ "factory": "acme", "system": "$GUEST", "hostSystem": "$HOST",
+{ "factory": "acme", "system": "$MACHINE", "hostSystem": "$HOST",
   "sshPort": 2222, "authorizedKey": "ssh-ed25519 AAAA acme",
   "caps": { "memory": "16G", "cores": 8, "recordQuota": "8G", "tokens": 1000000,
             "egress": ["api.anthropic.com"] },
@@ -140,7 +140,7 @@ machine_text() {
 	assert_output --partial '--save ""'
 	run machine_text 'c.systemd.services.cageworks-bus-acl.script'
 	assert_success
-	# The rules and the order they are applied in are the guest program's
+	# The rules and the order they are applied in are the machine program's
 	# (tests/command/bus_acl.bats); the machine only runs it with the bus up.
 	assert_output --partial 'cageworks-container bus-acl acme'
 }
@@ -164,7 +164,7 @@ machine_text() {
 	assert_output --partial 'remote_addr'
 }
 
-@test "the probes go through the guest program, which names the role each uid belongs to" {
+@test "the probes go through the machine program, which names the role each uid belongs to" {
 	run machine_text 'c.systemd.services.cageworks-probes.script'
 	assert_success
 	assert_output --partial 'bpftrace'

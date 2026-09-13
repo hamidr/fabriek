@@ -26,7 +26,7 @@ let
   lib = nixpkgs.lib;
   facts = builtins.fromJSON (builtins.readFile local);
   hostPkgs = nixpkgs.legacyPackages.${facts.hostSystem};
-  guestPkgs = nixpkgs.legacyPackages.${facts.system};
+  machinePkgs = nixpkgs.legacyPackages.${facts.system};
 
   declaration =
     project.cageworks
@@ -90,7 +90,7 @@ let
     ## evaluation, where the message names the role, and not at the first
     ## build that happens to realise the profile.
     builtins.seq inputs (
-      guestPkgs.buildEnv {
+      machinePkgs.buildEnv {
         name = "cageworks-role-${name}";
         paths = inputs;
         ignoreCollisions = true;
@@ -99,7 +99,7 @@ let
   profiles = builtins.mapAttrs profileOf (spec.declaration.roles or { });
 
   ## What the machine carries of all this beyond the spec: one profile per
-  ## role. The declaration itself rides in the spec and vm-guest.nix writes
+  ## role. The declaration itself rides in the spec and machine/default.nix writes
   ## it to the machine as a file.
   ## The decider's policy (ADR-034 point 5): one file the declaration names,
   ## read out of the pinned repository at build time, so the policy a run used

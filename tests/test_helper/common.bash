@@ -67,7 +67,7 @@ CAGEWORKS_ROOT="$NIXCAGE_ROOT"
 CAGEWORKS_CONTAINER_BIN="${CAGEWORKS_ROOT}/cageworks-container"
 CAGEWORKS_BIN="${CAGEWORKS_ROOT}/cageworks"
 
-# Run the guest program as a command. It is a real script rather than a Nix
+# Run the machine program as a command. It is a real script rather than a Nix
 # string so the suite can drive it directly, which is what makes the seam
 # something a test asserts on rather than something it crosses.
 run_cageworks_container() {
@@ -79,7 +79,7 @@ run_cageworks() {
 	run bash "$CAGEWORKS_BIN" "$@"
 }
 
-# The transport, stubbed. cageworks reaches its guest program over the ssh port
+# The transport, stubbed. cageworks reaches its machine program over the ssh port
 # and key it allocated the factory's own machine (ADR-019), and knows nothing
 # else about where the cages are, so this is the whole of what the CLI tests
 # have to stand in for.
@@ -98,25 +98,25 @@ stub_nixcage() {
 	cat >"$STUB_DIR/ssh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$SSH_FLAGS"
-## Only a guest command carries argv on stdin; anything else is a machine
-## verb reaching the same host and says nothing about the guest program.
+## Only a machine command carries argv on stdin; anything else is a machine
+## verb reaching the same host and says nothing about the machine program.
 if printf '%s' "\$*" | grep -q 'xargs -0 cageworks-container'; then
 	## xargs -0 execs cageworks-container with those words, so that is the
-	## argv the guest program actually sees and what a test should assert on.
+	## argv the machine program actually sees and what a test should assert on.
 	mapfile -d '' -t words < <(cat)
 	words=(cageworks-container "\${words[@]}")
 	printf '%s ' "\${words[@]}" >>"$NIXCAGE_CALLS"
 	printf '\n' >>"$NIXCAGE_CALLS"
 	printf '%s\n' "\${words[@]}" >>"$NIXCAGE_ARGV"
-	## What the guest program would have printed, when a test says so.
-	if [ -f "$TEST_TEMP_DIR/guest-answer" ]; then cat "$TEST_TEMP_DIR/guest-answer"; fi
+	## What the machine program would have printed, when a test says so.
+	if [ -f "$TEST_TEMP_DIR/machine-answer" ]; then cat "$TEST_TEMP_DIR/machine-answer"; fi
 fi
 STUB
 	chmod +x "$STUB_DIR/ssh"
 
 	## A machine to reach. The CLI takes the key and the port from the
 	## factory's own machine directory now, and refuses rather than falling
-	## back to localhost when there is none, so a test that drives a guest
+	## back to localhost when there is none, so a test that drives a machine
 	## verb has to have one.
 	export CAGEWORKS_MACHINES="$TEST_TEMP_DIR/machines"
 	mkdir -p "$CAGEWORKS_MACHINES/acme"

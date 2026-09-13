@@ -2,7 +2,7 @@
 ##
 ## No persistence, because state that matters is on the board. One ACL user
 ## per actor, default-deny and then the handful of stream verbs it needs; the
-## rules are the guest program's (modules/bus.sh), applied here at boot and
+## rules are the machine program's (modules/bus.sh), applied here at boot and
 ## on request, from the password files cageworks up writes (roadmap 2.3). A
 ## user whose file is absent is not created, which is what a factory that has
 ## never been brought up looks like.

@@ -62,10 +62,10 @@ printf '%s\n' "\$*" >>"$SSH_CALLS"
 if printf '%s' "\$*" | grep -q 'cageworks-egress-credential'; then
 	cat >>"$TEST_TEMP_DIR/ssh-stdin"
 fi
-# A guest verb arrives NUL-separated on stdin for xargs; kept as words.
+# A machine verb arrives NUL-separated on stdin for xargs; kept as words.
 if printf '%s' "\$*" | grep -q 'xargs -0 cageworks-container'; then
-	tr '\0' ' ' >>"$TEST_TEMP_DIR/guest-verbs"
-	echo >>"$TEST_TEMP_DIR/guest-verbs"
+	tr '\0' ' ' >>"$TEST_TEMP_DIR/machine-verbs"
+	echo >>"$TEST_TEMP_DIR/machine-verbs"
 fi
 [ -f "$TEST_TEMP_DIR/refuse-shutdown" ] && exit 1
 # Only a shutdown stops the machine. Every other command is one run on a
@@ -180,7 +180,7 @@ EOF
 	assert_line --index 0 acme
 	assert_line --index 1 "$(cat "$CAGEWORKS_MACHINES/acme/port")"
 	assert_line --index 2 "$(cat "$CAGEWORKS_MACHINES/acme/id_ed25519.pub")"
-	# The guest is Linux whatever the operator is on, and the runner that
+	# The machine is Linux whatever the operator is on, and the runner that
 	# starts it is built for the operator's own host.
 	assert_line --index 3 --regexp '^(aarch64|x86_64)-linux$'
 	assert_line --index 4 --regexp '^(aarch64|x86_64)-(linux|darwin)$'
@@ -228,7 +228,7 @@ EOF
 @test "once the machine answers and holds its credential, up prepares the factory on it" {
 	run_cageworks up acme
 	assert_success
-	run cat "$TEST_TEMP_DIR/guest-verbs"
+	run cat "$TEST_TEMP_DIR/machine-verbs"
 	assert_output --partial "factory-prepare acme"
 	# After the credential, because the forge and the bus are up by then and
 	# a prepare that ran first would be a prepare against nothing.
@@ -262,8 +262,8 @@ EOF
 }
 
 # ADR-017 exists because a VM was ended rather than shut down. cageworks owns
-# the stopping now, so it asks the guest and waits rather than killing it.
-@test "stopping asks the guest to shut down, and waits for it" {
+# the stopping now, so it asks the machine and waits rather than killing it.
+@test "stopping asks the machine to shut down, and waits for it" {
 	run_cageworks up acme
 	assert_success
 	local pid
@@ -282,7 +282,7 @@ EOF
 
 # A stop that cannot complete is reported and the machine keeps running. There
 # is no path here that ends one anyway.
-@test "a guest that will not shut down is reported, and is left running" {
+@test "a machine that will not shut down is reported, and is left running" {
 	run_cageworks up acme
 	assert_success
 	local pid

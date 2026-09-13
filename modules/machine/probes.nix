@@ -7,7 +7,7 @@
 ##
 ## Each line goes to the bus as one entry on a capped stream, written by a
 ## user that can write that stream and nothing else, so the third source stays
-## independent of every role; the guest program does the writing, naming the
+## independent of every role; the machine program does the writing, naming the
 ## role each uid belongs to (modules/probes.sh). Nothing persists it: the
 ## operator watches it live, and a machine with no bus password yet logs to
 ## its own journal.

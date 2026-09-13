@@ -317,7 +317,7 @@ machine_commands() {
 # A sibling of worktrees/ under the state directory, so no role's name reaches
 # it and no role's quota is what bounds it.
 
-# microvm.nix gives this guest a tmpfs root, so a ledger that is not put
+# microvm.nix gives this machine a tmpfs root, so a ledger that is not put
 # somewhere on purpose ends at the next stop.
 
 # The namespace listens at sockets.target and the pool is imported at
@@ -584,10 +584,10 @@ machine_container_packages() {
 }
 
 # PRD-004 phase 3 is called "the factory moves in", and this is what moving in
-# means: the guest program that holds every role-, task- and factory- verb has
+# means: the machine program that holds every role-, task- and factory- verb has
 # to be on the machine those verbs run on. Without it the CLI reaches a machine
 # that answers "cageworks-container: command not found" to everything.
-@test "the machine carries the guest program the CLI talks to" {
+@test "the machine carries the machine program the CLI talks to" {
 	run nix eval --raw --impure --expr '
     let
       flake = builtins.getFlake (toString '"$CAGEWORKS_ROOT"');

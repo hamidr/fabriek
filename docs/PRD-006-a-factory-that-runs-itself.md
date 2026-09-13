@@ -112,7 +112,7 @@ this document is the product that re-derivation describes.
   work (ADR-033).
 - A caged decider chooses; an uncaged executor validates every verb against
   the declaration and acts (ADR-034).
-- A task is an issue on the in-guest Forgejo, its stage a label; a role
+- A task is an issue on Forgejo on the machine, its stage a label; a role
   comments its outcome and the executor moves the stage (ADR-036).
 - An actor that cannot finish blocks in place and says so; the operator can
   see who is blocked on whom.
@@ -178,7 +178,7 @@ carries per-item status and this one the count.
    fail for the right reason.
 2. **nixcage interface.** Roadmap phase 1: the bridge and address option,
    the no-daemon option, the lock bump, `seam.bats` green on the new line.
-3. **The machine.** Roadmap phase 2: the generated flake, the guest
+3. **The machine.** Roadmap phase 2: the generated flake, the machine
    services, an idempotent `up`, isolation and stop-and-start passing.
 4. **The TypeScript package.** Roadmap phase 3: types and validators, the
    extension, the executor, the decider, the relay.

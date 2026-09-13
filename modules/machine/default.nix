@@ -92,7 +92,7 @@ in
       description = ''
         The factory's declaration, validated and clamped by the build
         (ADR-040). The bridge's address plan and the bus's users are derived
-        from its roles, and the guest program reads it from
+        from its roles, and the machine program reads it from
         /etc/cageworks/declaration.json rather than evaluating anything.
       '';
     };
@@ -141,13 +141,13 @@ in
   };
 
   imports = [
-    ./guest/bridge.nix
-    ./guest/board.nix
-    ./guest/bus.nix
-    ./guest/proxy.nix
-    ./guest/probes.nix
-    ./guest/floor.nix
-    ./guest/executor.nix
+    ./bridge.nix
+    ./board.nix
+    ./bus.nix
+    ./proxy.nix
+    ./probes.nix
+    ./floor.nix
+    ./executor.nix
   ];
 
   config = {
@@ -354,7 +354,7 @@ in
     ## is about.
     environment.systemPackages = [
       pkgs.git
-      ## The guest program itself. Every role-, task- and factory- verb the
+      ## The machine program itself. Every role-, task- and factory- verb the
       ## CLI sends runs here, so this is what "the factory moves in" means.
       pkgs.cageworks-container
     ]

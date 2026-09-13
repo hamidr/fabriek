@@ -33,7 +33,7 @@ in
   };
 
   config = {
-    ## The forge's CLI, as the guest program runs it: as the forge's own user
+    ## The forge's CLI, as the machine program runs it: as the forge's own user
     ## and against its configuration, which is how an account is made when
     ## registration is off and how a token is minted without a login.
     environment.systemPackages = [

@@ -77,7 +77,7 @@ teardown() {
 	assert_output --partial "Unknown command"
 }
 
-@test "every guest command goes to the factory's own machine and nowhere else" {
+@test "every machine command goes to the factory's own machine and nowhere else" {
 	# The transport is the only thing cageworks knows about where the cages
 	# are, and a second way to reach them would be a second thing to keep
 	# true. It used to be nixcage exec, which reaches the shared VM of the
@@ -90,11 +90,11 @@ teardown() {
 	assert_output "0"
 }
 
-# A guest verb carries a task's acceptance and a role's outcome, and ssh joins
+# A machine verb carries a task's acceptance and a role's outcome, and ssh joins
 # argv into one string for a remote shell. Sending the words NUL-separated and
 # splitting them with xargs -0 on the far side keeps what nixcage exec gave for
 # free: nothing is quoted for a remote shell and nothing is ever re-split.
-@test "a guest command's words survive the transport as words" {
+@test "a machine command's words survive the transport as words" {
 	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -cE \"printf '%s\\\\0'\""
 	refute_output "0"
 	run bash -c "grep -vE '^[[:space:]]*#' '$CAGEWORKS_BIN' | grep -c 'xargs -0 cageworks-container'"

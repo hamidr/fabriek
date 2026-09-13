@@ -1,5 +1,5 @@
 ## The executor (ADR-034 point 2): uncaged, holds every credential, decides
-## nothing. One unit, as root, because it starts sessions through the guest
+## nothing. One unit, as root, because it starts sessions through the machine
 ## program and reads the tokens cageworks up made. It is restarted when it
 ## dies, and reconciles the board on every start before routing anything
 ## (ADR-033 point 4).
@@ -10,7 +10,7 @@
 }:
 {
   config = {
-    ## The relay, for the guest program's factory-watch (ADR-039 point 2).
+    ## The relay, for the machine program's factory-watch (ADR-039 point 2).
     environment.systemPackages = [ pkgs.cageworks-factory ];
 
     systemd.services.cageworks-executor = {

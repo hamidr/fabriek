@@ -15,7 +15,7 @@ teardown() {
 	teardown_temp_dir
 }
 
-@test "role runs the guest role-enter with the factory and the role" {
+@test "role runs the machine role-enter with the factory and the role" {
 	run_cageworks role acme builder -- true
 	assert_success
 	run nixcage_calls
@@ -32,7 +32,7 @@ teardown() {
 	refute_output --partial "workspace root"
 }
 
-@test "a session command reaches the guest as the words it was written as" {
+@test "a session command reaches the machine as the words it was written as" {
 	run_cageworks role acme builder -- sh -c "echo one two"
 	assert_success
 	run nixcage_argv
@@ -52,7 +52,7 @@ teardown() {
 	run nixcage_calls
 	assert_output --partial "cageworks-container role-enter --agent acme builder"
 	## And the transport forwards the operator's own agent, which is a
-	## different thing from the flag the guest program reads: one says which
+	## different thing from the flag the machine program reads: one says which
 	## socket to sign through, the other carries it across the connection.
 	run ssh_flags
 	assert_output --partial " -A"
@@ -77,7 +77,7 @@ teardown() {
 	refute_output --partial "--agent"
 }
 
-@test "the agent flag precedes the factory, or the guest reads it as the command" {
+@test "the agent flag precedes the factory, or the machine reads it as the command" {
 	touch "$TEST_TEMP_DIR/agent.sock"
 	export SSH_AUTH_SOCK="$TEST_TEMP_DIR/agent.sock"
 	run_cageworks role acme builder -- true
@@ -88,7 +88,7 @@ teardown() {
 
 @test "an interactive session asks for a terminal and a commanded one does not" {
 	# A terminal is the transport's to ask for now: ssh -t rather than a flag
-	# the guest program reads, so it is asserted where it is actually passed.
+	# the machine program reads, so it is asserted where it is actually passed.
 	run_cageworks role acme builder
 	run ssh_flags
 	assert_output --partial " -t"
@@ -105,9 +105,9 @@ teardown() {
 }
 
 # ADR-032. The machine clones the repository's own remote, so what reaches the
-# guest is a URL both sides can fetch and never a path that means something
+# machine is a URL both sides can fetch and never a path that means something
 # only on this host. A factory's machine cannot open /Users/somebody/src/acme.
-@test "the repository named to the guest is an origin, not a path on this host" {
+@test "the repository named to the machine is an origin, not a path on this host" {
 	local repo="$TEST_TEMP_DIR/checkout"
 	git init -q "$repo"
 	git -C "$repo" remote add origin https://example.invalid/acme.git

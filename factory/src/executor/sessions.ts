@@ -1,20 +1,20 @@
 // A role's session, started and restarted by the executor (ADR-035 point 4
 // as amended): one process per task, so an exit after an outcome is the next
-// process's start. The line that composes the session is the guest
+// process's start. The line that composes the session is the machine
 // program's, and seam.bats asserts it; this only runs it.
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Sessions } from "./core.js";
 
 export interface SessionsOptions {
   factory: string;
-  /** argv prefix; the guest program by default. Tests substitute a script. */
+  /** argv prefix; the machine program by default. Tests substitute a script. */
   command?: string[];
   restartDelayMs?: number;
   log?: (line: string) => void;
 }
 
 /**
- * The program a session is started with: the guest program, unless
+ * The program a session is started with: the machine program, unless
  * CAGEWORKS_SESSION_COMMAND names another, which is how a harness runs the
  * factory on a host with scripted actors in place of cages. The line after
  * the program is the same either way.

@@ -6,14 +6,14 @@
 ## operator: how many cores it has and what port it answers on are not facts
 ## this repository can know.
 ##
-## The guest is nixpkgs, microvm.nix, nixcage's host module and cageworks' own,
+## The machine is nixpkgs, microvm.nix, nixcage's host module and cageworks' own,
 ## which is what ADR-019 point 2 decides. Inside the VM nixcage is in exactly
 ## the situation ADR-003 built it for.
 {
   nixpkgs,
   microvm,
   nixcage,
-  ## This repository itself, so the machine can carry the guest program built
+  ## This repository itself, so the machine can carry the machine program built
   ## from it. Every role-, task- and factory- verb lives in that program and
   ## runs on the machine, so a machine without it answers "command not found"
   ## to the whole CLI (PRD-004 phase 3).
@@ -25,7 +25,7 @@ nixpkgs.lib.nixosSystem {
   modules = [
     microvm.nixosModules.microvm
     nixcage.nixosModules.host
-    ./vm-guest.nix
+    ./machine
     ## Built from the same package.nix the flake's own overlay imports, so
     ## there is one description of the program even though there are two places
     ## that ask for it. Referring to the flake's overlay attribute from inside
@@ -44,7 +44,7 @@ nixpkgs.lib.nixosSystem {
         })
       ];
     }
-    ## The guest is always Linux and the operator may not be. What starts a
+    ## The machine is always Linux and the operator may not be. What starts a
     ## machine is a script that runs on the operator's host, so on macOS it has
     ## to be built from that host's packages: a runner made of Linux coreutils
     ## reaches for chattr and mkfs.ext4 and stops there.

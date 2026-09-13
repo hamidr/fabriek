@@ -3,8 +3,8 @@
 #
 # What an operator types. It files goals, reads back what is there, enters a
 # role by hand, and hands the factory's work to the operator's own repository.
-# None of it knows where the cages are: every guest command goes over ssh to
-# the machine cageworks built for that factory, and guest() is the only thing
+# None of it knows where the cages are: every machine command goes over ssh to
+# the machine cageworks built for that factory, and machine() is the only thing
 # here that touches the transport (ADR-018, ADR-019).
 
 set -euo pipefail
@@ -12,7 +12,7 @@ set -euo pipefail
 CAGEWORKS_VERSION="1.0.0"
 
 ## What the operator's side reads: their own ceilings and the register of
-## factories on this machine (ADR-020). The guest program has its own copy of
+## factories on this machine (ADR-020). The machine program has its own copy of
 ## the modules it needs; these are the ones that only make sense where the
 ## operator's config lives, which is here and never in a cage.
 CAGEWORKS_LIB="${CAGEWORKS_LIB:-@lib@}"
@@ -54,15 +54,15 @@ log_err()  { echo -e "${RED}[cageworks]${NC} $*" >&2; }
 ## machine goes through it, so it is the one thing a test has to stand in for.
 NIX="${CAGEWORKS_NIX:-nix}"
 
-## Run a guest command on the factory's own machine and return its output.
+## Run a machine command on the factory's own machine and return its output.
 ##
 ## The words are sent NUL-separated and split by xargs -0 on the far side, so
 ## the remote command is three fixed words and nothing a caller passed is ever
 ## quoted for a remote shell or re-split. ssh would otherwise join argv into one
 ## string, and a task's acceptance or a role's outcome would be part of it.
 ##
-## Which machine is read off the verb's own first argument: every guest verb
-## takes the factory there, which is the guest program's dispatch convention
+## Which machine is read off the verb's own first argument: every machine verb
+## takes the factory there, which is the machine program's dispatch convention
 ## rather than a coincidence of these call sites.
 ## The ssh arguments that reach one factory's machine, into the array named.
 ## Captured before the loop, because a failure inside a process substitution
@@ -87,9 +87,9 @@ free_local_port() {
   return 1
 }
 
-guest() {
+machine() {
   local factory="${2:-}"
-  [[ -n "$factory" ]] || { log_err "no factory named for guest command ${1:-}"; return 1; }
+  [[ -n "$factory" ]] || { log_err "no factory named for machine command ${1:-}"; return 1; }
 
   local -a ssh_args=()
   machine_ssh_args "$factory" ssh_args || return 1
@@ -112,7 +112,7 @@ cmd_task() {
       log_err "usage: cageworks task file <factory> <workflow> <title> [body]"
       exit 1
     fi
-    guest task-file "$factory" "$workflow" "$title" "$body"
+    machine task-file "$factory" "$workflow" "$title" "$body"
     ;;
   *)
     log_err "usage: cageworks task file <factory> <workflow> <title> [body]"
@@ -134,7 +134,7 @@ cmd_role() {
       log_err "usage: cageworks role stop <factory> <role>"
       exit 1
     fi
-    guest role-stop "$factory" "$role"
+    machine role-stop "$factory" "$role"
     return
   fi
   ## 'role steer <factory> <role> <text>' speaks into a running turn; the
@@ -145,7 +145,7 @@ cmd_role() {
       log_err "usage: cageworks role steer <factory> <role> <text>"
       exit 1
     fi
-    guest role-steer "$factory" "$role" "$text"
+    machine role-steer "$factory" "$role" "$text"
     return
   fi
 
@@ -181,7 +181,7 @@ cmd_role() {
   ## checkout is. Read here rather than declared a second time, because two
   ## places naming one remote are two places that can disagree.
   ##
-  ## The guest needs it the first time only, since after that its clone records
+  ## The machine needs it the first time only, since after that its clone records
   ## where it was cloned from.
   local repository=()
   local origin
@@ -193,7 +193,7 @@ cmd_role() {
   local -a ssh_args=()
   machine_ssh_args "$factory" ssh_args || exit 1
 
-  ## Same NUL framing as guest(), for the same reason: a session command is
+  ## Same NUL framing as machine(), for the same reason: a session command is
   ## words the declaration wrote and nothing re-splits them on the way.
   printf '%s\0' role-enter ${use_agent[@]+"${use_agent[@]}"} \
     ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@" |
@@ -201,21 +201,21 @@ cmd_role() {
       xargs -0 cageworks-container
 }
 
-## The guest is always Linux, whatever the operator is on. A machine that
-## reported the host's system would build a darwin guest and fail late.
+## The machine is always Linux, whatever the operator is on. A machine that
+## reported the host's system would build a darwin machine and fail late.
 host_system() {
   nix eval --impure --raw --expr 'builtins.currentSystem'
 }
 
-## The guest is always Linux, whatever the operator is on.
-guest_system() {
+## The machine is always Linux, whatever the operator is on.
+machine_system() {
   local host
   host="$(host_system)" || return 1
   case "$host" in
   aarch64-*) echo "aarch64-linux" ;;
   x86_64-*) echo "x86_64-linux" ;;
   *)
-    log_err "no Linux guest for $host"
+    log_err "no Linux machine for $host"
     return 1
     ;;
   esac
@@ -264,7 +264,7 @@ machine_flake() {
   creds="$(cageworks_operator_credentials "$config")" || return 1
   jq -n \
     --arg factory "$factory" \
-    --arg system "$(guest_system)" \
+    --arg system "$(machine_system)" \
     --arg hostSystem "$(host_system)" \
     --argjson port "$(cat "$dir/port")" \
     --arg key "$(cat "$dir/id_ed25519.pub")" \
@@ -368,7 +368,7 @@ cmd_up() {
   ## What the machine needs to have before a factory can run on it, made
   ## once and confirmed on every up (ADR-036). On the machine, because that
   ## is where the forge and the bus are.
-  guest factory-prepare "$factory" "$(factory_origin "$factory")" || {
+  machine factory-prepare "$factory" "$(factory_origin "$factory")" || {
     log_err "could not prepare the factory on $factory's machine"
     exit 1
   }
@@ -435,7 +435,7 @@ give_credentials() {
   fi
 }
 
-## Stop a factory's machine by shutting its guest down. A stop that cannot
+## Stop a factory's machine by shutting it down. A stop that cannot
 ## complete is reported and the machine keeps running: ADR-017 exists because
 ## one was ended rather than shut down, and cageworks owns the stopping now.
 cmd_down() {
@@ -516,12 +516,12 @@ cmd_factory() {
   mirror)
     ## Merged main and the record leave the machine on the operator's word
     ## and never before (ADR-036 point 7).
-    guest factory-mirror "$factory"
+    machine factory-mirror "$factory"
     ;;
   watch)
     ## The bus as JSONL on stdout, relayed over the machine's ssh port; what
     ## the TUI reads, and what any other client would (ADR-039 point 2).
-    guest factory-watch "$factory" "${@:3}"
+    machine factory-watch "$factory" "${@:3}"
     ;;
   send)
     ## A command in the decider's vocabulary, from the operator, validated by
@@ -531,7 +531,7 @@ cmd_factory() {
       log_err "usage: cageworks factory send <factory> '<json command>'"
       exit 1
     fi
-    guest factory-send "$factory" "$json"
+    machine factory-send "$factory" "$json"
     ;;
   board)
     ## Merging is a click in Forgejo's UI and has no verb (ADR-036), and the
@@ -540,7 +540,7 @@ cmd_factory() {
     ## verb uses, and held until interrupted. The machine says the address
     ## and sets the operator's password fresh, so nothing here guesses one.
     local answer addr password port
-    answer="$(guest factory-board "$factory")" || exit 1
+    answer="$(machine factory-board "$factory")" || exit 1
     addr="$(sed -n 1p <<<"$answer")"
     password="$(sed -n 2p <<<"$answer")"
     [[ -n "$addr" && -n "$password" ]] || { log_err "$factory did not say where its board is"; exit 1; }
@@ -557,7 +557,7 @@ cmd_factory() {
     ## Its roles come from the machine's declaration, over the same transport
     ## that carries the relay.
     local roles
-    roles="$(guest factory-roles "$factory")" || exit 1
+    roles="$(machine factory-roles "$factory")" || exit 1
     # shellcheck disable=SC2086  # roles are one word each by construction
     exec cageworks-tui "$factory" $roles
     ;;

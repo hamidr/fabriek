@@ -52,10 +52,10 @@ A change to what a role session is shows up there as a diff.
 
 - `cageworks`: the operator's launcher: `up`, `down`, `vm status`, `role`,
   `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console|board`.
-  Reaches the guest program over ssh to the factory's own machine, argv
+  Reaches the machine program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
-- `cageworks-container`: the guest program. Composes a role session
+- `cageworks-container`: the machine program. Composes a role session
   (`role-enter`, `role-worktree`), prepares the factory on the machine
   (`factory-prepare`), and writes the operator's interventions to the bus
   (`task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
@@ -86,7 +86,7 @@ A change to what a role session is shows up there as a diff.
 - `modules/factory.nix`: `lib.factory`, one factory's machine from the
   repository it works and the facts only the host knows (ADR-040). Validation
   and the clamp run inside a derivation by the same shell modules.
-- `modules/vm.nix`, `modules/vm-guest.nix`, `modules/guest/*.nix`: the machine
+- `modules/vm.nix`, `modules/machine/default.nix`, `modules/machine/*.nix`: the machine
   (ADR-019): nixcage's host module inside it, a ZFS pool named after the
   factory, and one module per service: `bridge.nix` (the private network and
   its two rules), `board.nix` (Forgejo), `bus.nix` (Valkey and its ACL),
@@ -97,7 +97,7 @@ A change to what a role session is shows up there as a diff.
 - `modules/package.nix`: the two programs, wrapped with the module directory
   they source and the tools they run.
 - `tests/system/journey.sh`: the whole factory on this host with no cage
-  and no model: Valkey and a forge for real on localhost, the real guest
+  and no model: Valkey and a forge for real on localhost, the real machine
   program, executor and relay, and the scripted actor and decider
   (`factory/src/fake-actor`, `factory/src/fake-decider`) where the cages
   would run pi. PRD-006's journey from a filed goal to a mirrored record,
@@ -131,7 +131,7 @@ TypeScript package is built with `tsc` and nothing else.
 drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
 the forge, `operator.bats` stubs `valkey-cli`; `factory_flake.bats` and
-`guest_services.bats` evaluate `lib.factory` for real. The package's tests
+`machine_services.bats` evaluate `lib.factory` for real. The package's tests
 drive each core against fakes of its interfaces and each adapter against a
 local fake server. Every test name reads as a scenario.
 
@@ -184,7 +184,7 @@ the TUI's forge-side views, and the three real-machine proofs are open.
 
 - `cageworks_*` prefix for shell-module functions, `cmd_*` for command
   handlers.
-- Guest-side logic goes in `cageworks-container` or a `modules/*.sh` file it
+- Machine-side logic goes in `cageworks-container` or a `modules/*.sh` file it
   sources, never inline in a command string.
 - A declared command is argv, one word per element, never a shell line: the
   declaration is data and nothing in it is re-split on the way.

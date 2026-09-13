@@ -53,9 +53,9 @@ argv NUL-framed through `xargs -0`.
 `vm status`, `role <factory> <role>` to enter by hand, `role stop`, `role
 steer`, `task file`, `factory mirror`, `factory watch`, `factory send`,
 `factory console`, `factory board`. Every verb but the machine's own goes to
-the guest over ssh.
+the machine over ssh.
 
-**`cageworks-container`** (bash) is the guest program: `role-enter`,
+**`cageworks-container`** (bash) is the machine program: `role-enter`,
 `role-worktree`, `factory-prepare`, and the operator's interventions
 `task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
 `factory-watch`, `factory-roles`. It composes sessions and writes the
@@ -81,7 +81,7 @@ policy file, and hands the spec to `modules/vm.nix`. A bad declaration fails
 the build with its own message; what the clamp changed rides in the spec and
 is printed by `up`.
 
-The guest (`modules/vm-guest.nix` and `modules/guest/`):
+The machine (`modules/machine/default.nix` and `modules/machine/`):
 
 - `bridge.nix`: `cageworks-<factory>` at 10.77.0.1/24, configured without
   carrier; the decider at .2, roles at .10 onward in declaration order;
@@ -90,7 +90,7 @@ The guest (`modules/vm-guest.nix` and `modules/guest/`):
   claims, and drops cage to cage (ADR-037).
 - `board.nix`: Forgejo on the bridge, on a dataset bounded by `recordQuota`,
   its tmpfiles rules re-run after the mount; a `forgejo` wrapper for the
-  guest program (ADR-036).
+  machine program (ADR-036).
 - `bus.nix`: Valkey on the bridge, no persistence; `cageworks-bus-acl`
   runs `cageworks-container bus-acl`, whose rules (`modules/bus.sh`) make
   default-deny users from password files under the state directory, read
@@ -109,7 +109,7 @@ The guest (`modules/vm-guest.nix` and `modules/guest/`):
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
 root and the proxy may leave. The clamped declaration is at
-`/etc/cageworks/declaration.json`; the guest program reads it there and
+`/etc/cageworks/declaration.json`; the machine program reads it there and
 evaluates nothing.
 
 ## Prepare
@@ -172,7 +172,7 @@ began, closes at the last stage, labels `blocked`, frees the role on
 failed; counts attempts per stage; stops routing at ninety percent of the
 ceiling. It reads the control streams from where they are before it
 starts the sessions, so no ready is missed. `main.ts` connects as the executor's bus
-user, starts every role's session and the decider's through the guest
+user, starts every role's session and the decider's through the machine
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend, named by role from the
 plan, to `events:executor`.
@@ -256,4 +256,4 @@ machine is the cage, the bridge, the proxy's count and pi.
   Everything after the assignment is proved on this host by
   `tests/system/journey.sh` with scripted actors, on Gitea on a Mac.
 - Which model a session starts on is the machine's choice, a table in
-  `modules/guest/floor.nix`; a declaration cannot name one.
+  `modules/machine/floor.nix`; a declaration cannot name one.

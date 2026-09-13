@@ -9,8 +9,8 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	stub_nixcage
-	# What the guest program answers to factory-board: the address, then the password.
-	printf '10.77.0.1:3000\nsecret-of-the-day\n' >"$TEST_TEMP_DIR/guest-answer"
+	# What the machine program answers to factory-board: the address, then the password.
+	printf '10.77.0.1:3000\nsecret-of-the-day\n' >"$TEST_TEMP_DIR/machine-answer"
 }
 
 teardown() {

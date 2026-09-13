@@ -37,7 +37,7 @@ The tool itself is a single Bash script. The flake provides a `devShell` with
 - Linux x86_64 / aarch64 (KVM required)
 - macOS aarch64 / x86_64 (Hypervisor.framework required)
 
-The guest is always Linux. On macOS hosts the runner is a Darwin-native qemu
+The machine is always Linux. On macOS hosts the runner is a Darwin-native qemu
 (`microvm.vmHostPackages`), set in the user's config flake template.
 
 ## 3. Configuration
@@ -124,7 +124,7 @@ Both `enter cmd...` and `enter -- cmd...` are accepted.
 - **Store**: the VM owns its store. The system closure ships read-only in the
   VM image; builds land in a writable overlay (`microvm.writableStoreOverlay`)
   backed by the persistent volume `nixcage-store.img`. The host store is never
-  shared into the guest.
+  shared into the machine.
 - **Data volume**: `nixcage-data.img` mounted at `/var/lib/nixcage` holds the
   age key, container skeletons, and per-project homes.
 - **Workspace roots**: each root is a microvm share mounted at its identical

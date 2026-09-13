@@ -47,7 +47,7 @@
             ## The TypeScript half: executor, extension, decider, relay, TUI.
             factory = factory.package;
           }
-          ## The guest program runs on the machine the cages are on, which on
+          ## The machine program runs on the machine the cages are on, which on
           ## macOS is the VM and never this one. It is not offered here at
           ## all: it needs setfacl, and acl does not build on darwin.
           // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {

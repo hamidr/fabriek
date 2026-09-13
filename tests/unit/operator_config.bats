@@ -181,7 +181,7 @@ TOML
 }
 
 # ADR-025 point 2: the credential is the operator's, and it says which header
-# carries it for which endpoint. The path is here and never reaches the guest:
+# carries it for which endpoint. The path is here and never reaches the machine:
 # the machine reads its secret from its own state directory, so nothing about
 # where the operator keeps theirs is built into anything.
 

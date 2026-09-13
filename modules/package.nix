@@ -7,7 +7,7 @@
 ## stubs nixcage-container on PATH and records the argv it was given.
 { pkgs, self }:
 let
-  ## Everything the guest program sources, plus the guidance it binds into a
+  ## Everything the machine program sources, plus the guidance it binds into a
   ## role's session. One directory so the program needs a single path rather
   ## than one per file.
   lib' = pkgs.runCommand "cageworks-lib" { } ''
@@ -33,7 +33,7 @@ let
     cp ${../modules/role-guidance.md} $out/role-guidance.md
   '';
 
-  ## The guest program, on the machine the cages are on. It calls
+  ## The machine program, on the machine the cages are on. It calls
   ## nixcage-container, which is on the same machine and installed by nixcage's
   ## own module, so nothing is pinned here beyond what runs beside it.
   container = pkgs.stdenv.mkDerivation {
@@ -65,7 +65,7 @@ let
               jq
               ## Preparing the forge and speaking to the executor: the
               ## forge's API, the bus, and the forge's own CLI on the
-              ## machine's path (guest/board.nix wraps it).
+              ## machine's path (machine/board.nix wraps it).
               curl
               valkey
               "/run/current-system/sw"

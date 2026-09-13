@@ -89,15 +89,15 @@ Two commits in two repositories and a lock bump each (ADR-018).
   `lib.factory` realises each role's devShell inputs into a profile at
   `/etc/cageworks/roles/<role>/profile` (its `buildInputs`, not
   `print-dev-env`: there is no shell to run a hook in). The clamped
-  declaration lands at `/etc/cageworks/declaration.json`; the guest program
+  declaration lands at `/etc/cageworks/declaration.json`; the machine program
   starts reading it there in 4.1, when the executor does (3.3). 450 tests
   green.
-- 2.2 Guest services: Forgejo on a `recordQuota` dataset; Valkey with no
+- 2.2 Machine services: Forgejo on a `recordQuota` dataset; Valkey with no
   persistence and ACL users set at boot from per-role secrets; the bridge
   with the two rules; the proxy on the bridge address counting tokens per
   source address against the soft and hard limits; probes publishing to the
   `probes` stream. Done 2026-09-12 on the branch, one module per service
-  under `modules/guest/`, evaluated by `tests/command/guest_services.bats`.
+  under `modules/machine/`, evaluated by `tests/command/machine_services.bats`.
   Decided here: the `probes` stream is capped at 10000 entries; the proxy's
   metadata log stays in the machine's journald, on the default namespace;
   the proxy counts with njs in nginx's memory, so a restart is a spend
@@ -162,7 +162,7 @@ One package, built through the flake, tests in its own runner.
   fake. A fresh session is a fresh process (ADR-035 point 4 amended), the
   outcome is a `report_outcome` tool the agent calls, memory an
   `update_memory` tool. The machine carries the extension and a
-  `models.json` under `/etc/cageworks/pi` (`guest/floor.nix`), and a
+  `models.json` under `/etc/cageworks/pi` (`machine/floor.nix`), and a
   supervised session is handed them with its two credentials and its
   environment (`seam.bats`).
 - 3.3 Executor: reconciliation on start against `assigning` rows; the six
@@ -205,7 +205,7 @@ One package, built through the flake, tests in its own runner.
   `integrate.sh`, `journal.sh`, `factory-clone.sh`, the `role`, `task` and
   `factory` verbs they served, herdr and `--pane`, `journalQuota`. Done
   2026-09-12 on the branch, pulled forward into 3.3 because a dispatch test
-  couples the CLI's verbs to the guest's. `factory-clone.sh` stays: the
+  couples the CLI's verbs to the machine's. `factory-clone.sh` stays: the
   machine still clones origin and cuts worktrees from it. The CLI gained
   `role steer`, `factory send` and `factory console`.
 - 4.2 TUI on the operator's host: roles and state, stages as label columns,
@@ -251,7 +251,7 @@ One package, built through the flake, tests in its own runner.
   what it would have said about the new design is said by scenarios
   instead (the Method section): the executor's on the board rows and the
   capability checks, `seam.bats` on the ref partition and the session,
-  `guest_services.bats` on the bridge rules and the bus ACLs,
+  `machine_services.bats` on the bridge rules and the bus ACLs,
   `prepare.bats` on the tokens and the memory issues.
 - 5.3 `docs/architecture.md` rewritten from the branch; `CLAUDE.md` follows.
   Done 2026-09-12, `README.md` with them.

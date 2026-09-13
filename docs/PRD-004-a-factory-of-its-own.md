@@ -168,12 +168,12 @@ one platform out of two by the project that does not own it.
 - Hardware virtualisation is required wherever a factory runs: KVM on Linux,
   Hypervisor.framework on macOS. Before this document each platform needed only
   one of the two.
-- macOS still needs a Linux builder to build the guest, as it does today for
+- macOS still needs a Linux builder to build the machine, as it does today for
   nixcage's own VM.
 - The operator's path contains no `nixos-rebuild`. Anything that would need one
   is out of scope by construction.
-- The guest is nixcage in the situation ADR-003 built for it, a Linux host
-  running cages natively. Nothing in the guest is written to work only under a
+- The machine is nixcage in the situation ADR-003 built for it, a Linux host
+  running cages natively. Nothing in the machine is written to work only under a
   hypervisor.
 - One repository per factory, as PRD-003 has it. Two repositories are two
   factories, and now two machines.
@@ -217,7 +217,7 @@ one platform out of two by the project that does not own it.
 - **How does the repository reach the machine?** ADR-011 has roles work a clone
   the supervisor syncs with the operator's checkout. Whether that checkout is
   shared into the machine or fetched over the machine's own transport is not
-  settled, and the two differ in what the guest can see of the host.
+  settled, and the two differ in what the machine can see of the host.
 - **Where do secrets come from?** `secretEnv` resolves against the host's
   sops-nix today. A machine cageworks built has no such host, and nothing here
   says what replaces it.
@@ -250,15 +250,15 @@ deleted before the thing replacing it exists.
    the runner's own closure is 3.2 GiB.
 
    Four faults were found by running it and none by reading it. The runner was
-   built for the guest's system rather than the host's, so on macOS it reached
+   built for the machine's system rather than the host's, so on macOS it reached
    for chattr and stopped. A machine ended with the command that started it,
    twice: backgrounding is not detaching, and setsid refuses when the caller
-   already leads a process group. The guest generated SSH host keys on the
+   already leads a process group. The machine generated SSH host keys on the
    rootfs, so it was a different machine every boot and cageworks refused the
    second one. And a successful shutdown looked like a refusal, because
    powering off takes the connection down with it.
 3. **The factory moves in.** The transport, the clone on the machine's own pool,
-   worktrees as datasets, and the three primitives called inside the guest.
+   worktrees as datasets, and the three primitives called inside the machine.
    `cageworks role` and `cageworks task run` work against the machine on both
    platforms, and the recorded role-session invocation is unchanged. The
    transport of the previous arrangement stops being used here.
@@ -279,8 +279,8 @@ deleted before the thing replacing it exists.
 
    Four faults were found by running it and none by reading it, and all four
    were invisible to a suite of 431 passing tests, because the suite drives the
-   guest program with the transport stubbed and the machine had been built and
-   booted without either meeting the other. The guest program was not installed
+   machine program with the transport stubbed and the machine had been built and
+   booted without either meeting the other. The machine program was not installed
    on the machine at all, so a factory answered "cageworks-container: command
    not found" to every verb the CLI sends. The machine's nix refused
    `nix-command` and `flakes`, so no declaration could be read and no role
@@ -317,7 +317,7 @@ deleted before the thing replacing it exists.
 The Formal Modeling Gate fires once, on the machine's lifecycle, and
 `models/vm-lifecycle.qnt` is written and run before phase 2 is implemented.
 Absent, built, booting, running, stale and stopping is more than three states,
-and the host and the guest interleave across them: a boot can fail after the
+and the host and the machine interleave across them: a boot can fail after the
 disk exists, a stop can race a session, a resize can arrive while roles hold
 worktrees. The invariant that matters is that no path reaches a state where the
 disk is being written and the machine is being ended.

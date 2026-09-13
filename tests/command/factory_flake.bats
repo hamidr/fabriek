@@ -9,15 +9,15 @@ load ../test_helper/common
 setup() {
 	setup_temp_dir
 	HOST="$(nix eval --impure --raw --expr 'builtins.currentSystem')"
-	GUEST="${HOST%%-*}-linux"
+	MACHINE="${HOST%%-*}-linux"
 	REPO="$TEST_TEMP_DIR/acme"
 	mkdir -p "$REPO"
 	git init -q "$REPO"
 	git -C "$REPO" config user.name factory
 	git -C "$REPO" config user.email factory@invalid
-	declare_flake "devShells.$GUEST.backend = { buildInputs = [ ]; };"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; };"
 	cat >"$TEST_TEMP_DIR/local.json" <<JSON
-{ "factory": "acme", "system": "$GUEST", "hostSystem": "$HOST",
+{ "factory": "acme", "system": "$MACHINE", "hostSystem": "$HOST",
   "sshPort": 2222, "authorizedKey": "ssh-ed25519 AAAA acme",
   "caps": { "memory": "16G", "cores": 2, "egress": ["api.anthropic.com"] },
   "credentials": { "api.anthropic.com": "x-api-key" } }
@@ -90,7 +90,7 @@ factory_eval() {
 # whose every role lacked the tools its shell named. What a cage runs is
 # the bin output.
 @test "a role's profile is made of its tools' bin outputs, not the dev outputs stdenv hands a shell" {
-	declare_flake "devShells.$GUEST.backend = { nativeBuildInputs = [ {
+	declare_flake "devShells.$MACHINE.backend = { nativeBuildInputs = [ {
 	    outPath = \"/nix/store/00000000000000000000000000000000-curl-dev\";
 	    outputSpecified = true;
 	    bin = { outPath = \"/nix/store/00000000000000000000000000000000-curl-bin\"; };
@@ -118,13 +118,13 @@ factory_eval() {
 }
 
 @test "when the declaration carries a key cageworks does not know, the build fails by that key's name" {
-	declare_flake "devShells.$GUEST.backend = { buildInputs = [ ]; }; cageworks.roles.builder.colour = \"blue\";"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; cageworks.roles.builder.colour = \"blue\";"
 	run factory_eval '.spec.factory'
 	assert_failure
 	assert_output --partial "colour"
 }
 
-@test "the machine carries the clamped declaration as a file the guest reads instead of evaluating" {
+@test "the machine carries the clamped declaration as a file the machine reads instead of evaluating" {
 	run factory_eval '.config.environment.etc."cageworks/declaration.json".text'
 	assert_success
 	run jq -r '.resources.cores, (.resources.egress | length)' <<<"$(printf '%s' "$output" | jq -r .)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ## The factory as a system, on this host, with no cage and no model: the bus
-## and the forge for real on localhost, the real guest program preparing
+## and the forge for real on localhost, the real machine program preparing
 ## them, the real executor routing, the real relay printing, and where a
 ## cage would run pi, a scripted actor and a scripted decider that speak the
 ## same protocol through the same bindings (factory/src/fake-actor,
@@ -73,7 +73,7 @@ JSON
 
 ## What the machine has and this host does not: the uid primitive, whose
 ## answer here is this user; systemd, whose restart of the ACL unit is the
-## guest verb itself and whose restart of the executor is this script's;
+## machine verb itself and whose restart of the executor is this script's;
 ## and forgejo as the wrapper the machine installs, over whichever forge
 ## the devShell carries.
 cat >"$BIN/nixcage-container" <<STUB
@@ -146,7 +146,7 @@ forge_up() { curl -s -o /dev/null -w '%{http_code}' "$forge/version"; }
 check "the forge answers" 200 "$(eventually 60 200 forge_up)"
 check "the bus answers" PONG "$(valkey-cli -p "$VALKEY_PORT" ping 2>/dev/null)"
 
-scenario "The guest program prepares the factory on them"
+scenario "The machine program prepares the factory on them"
 when "factory-prepare runs as cageworks up would run it"
 check "prepare succeeds" "$F: prepared" "$(cageworks-container factory-prepare "$F" "$ORIGIN" 2>"$LOG/prepare" | tail -1)"
 api() {

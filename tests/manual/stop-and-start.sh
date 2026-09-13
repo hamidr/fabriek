@@ -36,7 +36,7 @@ wait_ssh() { for i in $(seq 1 120); do sshm true 2>/dev/null && { echo "$i"; ret
 echo "initial boot wait: $(wait_ssh)s"
 
 # Work in flight: 300 files on the pool, and a manifest of what they were.
-# shellcheck disable=SC2016  # runs in the guest, expands there
+# shellcheck disable=SC2016  # runs in the machine, expands there
 sshm 'set -e; rm -rf /var/lib/nixcage/proof; mkdir -p /var/lib/nixcage/proof
   for i in $(seq 1 300); do head -c 20000 /dev/urandom > /var/lib/nixcage/proof/f$i; done
   cd /var/lib/nixcage/proof && sha256sum f* > /var/lib/nixcage/manifest.sha256
@@ -45,7 +45,7 @@ sshm 'set -e; rm -rf /var/lib/nixcage/proof; mkdir -p /var/lib/nixcage/proof
 # One issue on the record, opened before the first stop. It is opened through
 # the forge rather than written into a file, because what is being checked is
 # that the board came back and not that a file did (roadmap 2.5).
-# shellcheck disable=SC2016  # runs in the guest, expands there
+# shellcheck disable=SC2016  # runs in the machine, expands there
 sshm 'set -e
   mountpoint -q /var/lib/nixcage/forgejo
   t="$(cat /var/lib/nixcage/forge/operator-token)"
@@ -69,7 +69,7 @@ for cycle in $(seq 1 10); do
   if ! sshm 'mountpoint -q /var/lib/nixcage/forgejo' 2>/dev/null; then
     echo "cycle $cycle: THE RECORD IS NOT ON THE POOL"; exit 1
   fi
-  # shellcheck disable=SC2016  # runs in the guest, expands there
+  # shellcheck disable=SC2016  # runs in the machine, expands there
   record=$(sshm 'for _ in $(seq 1 60); do curl -sf http://10.77.0.1:3000/api/v1/version >/dev/null && break; sleep 1; done
     curl -sf -H "Authorization: token $(cat /var/lib/nixcage/forge/operator-token)" \
       "http://10.77.0.1:3000/api/v1/repos/operator/acme/issues?state=all&type=issues" | grep -c "stop-and-start proof issue"')

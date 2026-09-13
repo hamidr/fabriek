@@ -7,7 +7,7 @@
 //
 // cageworks builds and runs one NixOS VM per factory. The states are absent,
 // built, booting, running and stopping, and two sides interleave across them:
-// the host builds, boots, resizes and stops, while inside the guest role
+// the host builds, boots, resizes and stops, while inside the machine role
 // sessions come and go and write to the pool the factory's state lives on.
 //
 // ADR-017 exists because a VM was ended rather than shut down and worktrees
@@ -157,7 +157,7 @@ module vmLifecycle {
     holdGens, holdGuest, holdWitness,
   }
 
-  // The stop cannot complete because the guest is still busy. PRD-004 requires
+  // The stop cannot complete because the machine is still busy. PRD-004 requires
   // this to be reported rather than forced, so the machine goes back to
   // running and there is no action here that ends it anyway.
   action stopBlocked = all {

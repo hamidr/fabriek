@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# The guest program's own surface. It is what the CLI reaches over nixcage's
+# The machine program's own surface. It is what the CLI reaches over nixcage's
 # transport, so a verb the CLI sends and this does not dispatch fails inside
 # the VM with a usage message nobody typed.
 
@@ -29,24 +29,24 @@ teardown() {
 	assert_output --partial "usage: cageworks-container"
 }
 
-@test "every verb the operator's CLI sends is one the guest dispatches" {
+@test "every verb the operator's CLI sends is one the machine dispatches" {
 	# Derived from both files rather than listed here, so a verb added to one
 	# and not the other fails at the seam instead of inside the VM.
 	local sent dispatched
-	sent="$(grep -oE 'cageworks-container [a-z-]+|guest "?(factory-\$sub|[a-z-]+)"?' "$CAGEWORKS_BIN" |
+	sent="$(grep -oE 'cageworks-container [a-z-]+|machine "?(factory-\$sub|[a-z-]+)"?' "$CAGEWORKS_BIN" |
 		grep -oE '[a-z]+-[a-z-]+' | grep -v '^cageworks-container$' | sort -u)"
 	dispatched="$(grep -oE "^$(printf '\t')[a-z-]+\)" "$CAGEWORKS_CONTAINER_BIN" |
 		tr -d "$(printf '\t')" | tr -d ')' | sort -u)"
 	[ -n "$sent" ]
 	for verb in $sent; do
 		[[ "$dispatched" == *"$verb"* ]] || {
-			echo "the guest does not dispatch: $verb"
+			echo "the machine does not dispatch: $verb"
 			return 1
 		}
 	done
 }
 
-@test "every verb the guest dispatches is in its usage" {
+@test "every verb the machine dispatches is in its usage" {
 	# The usage is the only description of this surface anything sees at run
 	# time, and the CLI is not the only caller: a person on the machine the
 	# cages are on can type it too.

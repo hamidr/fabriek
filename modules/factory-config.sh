@@ -6,7 +6,7 @@
 ## one JSON value now, and take it as a file rather than as text so that
 ## nothing a repository wrote ever becomes an argument. What changed is where
 ## the answers come from; what each of these answers did not change, which is
-## why the guest program's call sites look the same as they did.
+## why the machine program's call sites look the same as they did.
 ##
 ## Sourced by store path into cageworks-container beside names.sh, whose
 ## cageworks_name_ok and cageworks_shell_name_ok this file relies on.

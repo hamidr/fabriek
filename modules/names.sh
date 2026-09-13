@@ -68,5 +68,5 @@ cageworks_header_name_ok() {
 ## (ADR-034 point 1). Its cage, its bus user and its forge account all carry
 ## this name, so a repository declaring a role of the same name would collide
 ## with it; the declaration's validation refuses that.
-# shellcheck disable=SC2034  # read by the guest program and its modules
+# shellcheck disable=SC2034  # read by the machine program and its modules
 CAGEWORKS_DECIDER=decider

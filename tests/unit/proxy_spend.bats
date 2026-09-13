@@ -6,6 +6,6 @@
 load ../test_helper/common
 
 @test "the counting filter's scenarios pass under node with the API's own bodies" {
-	run node --test "$CAGEWORKS_ROOT/modules/guest/spend.test.mjs"
+	run node --test "$CAGEWORKS_ROOT/modules/machine/spend.test.mjs"
 	assert_success
 }
