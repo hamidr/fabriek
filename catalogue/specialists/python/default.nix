@@ -26,5 +26,20 @@
       };
     }
   ];
+  ## What the loop's test-first guard watches (ADR-044).
+  tests = {
+    files = [
+      "**/test_*.py"
+      "**/*_test.py"
+      "**/conftest.py"
+      "tests/**"
+    ];
+    source = [ "**/*.py" ];
+    command = [
+      "pytest"
+      "python -m pytest"
+      "uv run pytest"
+    ];
+  };
   prompt = ./PROMPT.md;
 }

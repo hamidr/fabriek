@@ -28,5 +28,25 @@
       };
     }
   ];
+  tests = {
+    files = [
+      "**/*.test.ts"
+      "**/*.test.tsx"
+      "**/*.spec.ts"
+      "**/*.spec.tsx"
+      "**/__tests__/**"
+    ];
+    source = [
+      "**/*.ts"
+      "**/*.tsx"
+    ];
+    command = [
+      "pnpm test"
+      "pnpm vitest"
+      "pnpm jest"
+      "npx vitest"
+      "npx jest"
+    ];
+  };
   prompt = ./PROMPT.md;
 }

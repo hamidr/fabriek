@@ -30,5 +30,21 @@
       startupTimeoutMs = 90000;
     }
   ];
+  tests = {
+    files = [ "**/src/test/**" ];
+    source = [ "**/src/main/**" ];
+    command = [
+      "mvn test"
+      "mvn verify"
+      "mvn -q test"
+      "mvn -q verify"
+      "./mvnw test"
+      "./mvnw verify"
+      "./mvnw -q test"
+      "./mvnw -q verify"
+      "gradle test"
+      "./gradlew test"
+    ];
+  };
   prompt = ./PROMPT.md;
 }

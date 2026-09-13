@@ -53,5 +53,13 @@
       };
     }
   ];
+  ## Any sbt invocation counts as a run: the sbt-build skill batches
+  ## compile and test into one quoted argument, which no first-words
+  ## pattern can see inside. The reviewer reads whether tests were in it.
+  tests = {
+    files = [ "**/src/test/**" ];
+    source = [ "**/src/main/**" ];
+    command = [ "sbt" ];
+  };
   prompt = ./PROMPT.md;
 }
