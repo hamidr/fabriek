@@ -23,3 +23,11 @@ more than a guess pushed through.
 
 You script with python3 when a shell line gets awkward; it is on PATH for
 that and nothing here depends on it.
+
+Your language has a language server when your specialist declared one.
+After you write or edit a matching file its diagnostics are appended to
+the result; read them. Ask `lsp_diagnostics` on every file you touched
+before reporting done, `lsp_definition` and `lsp_references` before you
+rename anything or change a signature, and `lsp_symbols` before you guess
+at a file's shape. The first call on an untouched file starts the server
+and can take a while; that is once per session.

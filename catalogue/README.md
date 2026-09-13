@@ -11,6 +11,7 @@ specialists/<name>/PROMPT.md    what this specialist is told
 specialists/<name>/default.nix  { pkgs, specialists, skills, ... }:
                                 { extends = [ specialists.python ]; tools = [ pkgs.ruff ];
                                   skills = [ skills.django-migrate ]; prompt = ./PROMPT.md; }
+                                  lsp = [ { id = "jdtls"; include = [ "**/*.java" ]; ... } ]; }
 skills/<name>/SKILL.md          frontmatter (name, description) and the procedure
 skills/<name>/default.nix       { pkgs, ... }: { tools = [ pkgs.maven ]; src = ./.; }
 ```
@@ -20,7 +21,12 @@ The directory name is the name. Each `default.nix` is a function of `pkgs`
 catalogue, so one may extend another by value). A role's specialists and
 everything they extend are flattened once per name, parents first, left to
 right. A misspelt package or parent fails evaluation with Nix's own
-message; a cycle is infinite recursion.
+message; a cycle is refused as the cycle.
+
+`lsp` lists language servers in pi-lsp's shape, `bin` a path into a
+package; a role's servers are the union of its specialists' by id, and the
+same id from two specialists is refused. pi-lsp starts one after the first
+write to a matching file and appends its diagnostics to the result.
 
 Adding a specialist is adding a directory. Nothing else in fabriek lists
 them.
