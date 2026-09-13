@@ -3,13 +3,15 @@
 ## Two things make it one. It declares the factory itself, as the 'fabriek'
 ## output (ADR-020), so the team that works this repository travels with it
 ## rather than living in one person's machine configuration. And it defines one
-## devShell per specialist instead of a single default, because a role declared
-## with 'shell = "backend-jvm"' enters the shell of that name; a role that names
-## none enters 'default'.
+## devShell per part of the project instead of a single default, because a
+## role declared with 'shell = "backend-jvm"' enters the shell of that name; a
+## role that names none enters 'default'.
 ##
 ## The declaration is kept in ./fabriek.nix beside this file so that reading
 ## it costs nothing: anything checking it can evaluate that file alone, without
-## this flake's inputs.
+## this flake's inputs. Who a role is, its specialists, is not here either: it
+## is fabriek's catalogue and this repository's own under ./fabriek/catalogue
+## (ADR-042), named from fabriek.nix.
 ##
 ## flake-parts is used because it makes several per-system shells readable;
 ## plain 'devShells = forAllSystems ...' produces the same attributes.
@@ -36,55 +38,29 @@
 
       perSystem =
         { pkgs, ... }:
-        let
-          ## What every role in this repository gets, whichever shell it names.
-          ##
-          ## Composed rather than inherited, because devShells do not compose:
-          ## a role declaring shell = "backend-jvm" enters that shell and only
-          ## that shell, so anything left in 'default' alone would be invisible
-          ## to it. This list is concatenated into each one below, which is the
-          ## whole mechanism -- there is no fabriek field for it, and a field
-          ## would resolve package names against a nixpkgs this flake does not
-          ## pin.
-          ##
-          ## The agent is not here. Every cage carries pi as its floor whatever
-          ## this file says (ADR-030), so a repository cannot produce a role
-          ## that fails to start by forgetting it. Naming a build of pi here
-          ## stays allowed: a role's profile sits on the front of PATH, so it
-          ## shadows the machine's.
-          common = with pkgs; [
-            jq
-            ripgrep
-          ];
-
-          ## A role's own tools, on top of what every role gets.
-          specialist = packages: pkgs.mkShell { packages = common ++ packages; };
-        in
         {
+          ## What this project needs to build itself, per part, against this
+          ## flake's own nixpkgs. A role's specialists bring the rest: the
+          ## editor's tools, the language's linters and runners, the skills.
+          ## A devShell here is what a person entering this repository on
+          ## their own machine would use, and nothing fabriek-specific.
           devShells = {
-            ## A role that declares no shell lands here, so this is the common
-            ## set and nothing else.
-            default = specialist [ ];
+            ## A role that declares no shell lands here.
+            default = pkgs.mkShell { packages = [ ]; };
 
-            backend-jvm = specialist (with pkgs; [
-              jdk21
-              maven
-            ]);
+            backend-jvm = pkgs.mkShell {
+              packages = with pkgs; [
+                jdk21
+                maven
+              ];
+            };
 
-            frontend = specialist (with pkgs; [
-              nodejs_22
-              pnpm
-            ]);
-
-            data-analyst = specialist (with pkgs; [
-              duckdb
-              python3
-            ]);
-
-            devops = specialist (with pkgs; [
-              kubectl
-              terraform
-            ]);
+            frontend = pkgs.mkShell {
+              packages = with pkgs; [
+                nodejs_22
+                pnpm
+              ];
+            };
           };
         };
     };

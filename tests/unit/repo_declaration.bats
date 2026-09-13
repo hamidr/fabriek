@@ -265,6 +265,30 @@ validate_example() {
 		jq -r '[.roles[].shell // empty] | .[]')
 }
 
+# The same for specialists (ADR-042): a role in the example naming one that
+# neither the shipped catalogue nor the example's own defines would teach
+# the mistake. Asked of lib.catalogue over both, which is what the machine
+# build asks.
+@test "every specialist the example's roles name is one the catalogues define" {
+	local defined name
+	defined="$(nix eval --impure --raw --expr '
+		let flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
+		    pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
+		    example = builtins.fromJSON (builtins.toJSON (import '"$FABRIEK_ROOT"'/examples/factory-project/fabriek.nix));
+		in builtins.concatStringsSep "\n" (builtins.attrNames (flake.lib.catalogue {
+		  inherit pkgs;
+		  extra = [ ('"$FABRIEK_ROOT"'/examples/factory-project + "/${example.catalogue}") ];
+		}).specialists)' 2>/dev/null)"
+	[ -n "$defined" ]
+
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		run printf '%s\n' "$defined"
+		assert_line "$name"
+	done < <(nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
+		jq -r '[.roles[].specialists // [] | .[]] | .[]')
+}
+
 # An endpoint reaches a firewall rule and a proxy's allowlist (ADR-025), so it
 # is checked where it is declared, like every other name that reaches something
 # that would otherwise have to escape it.

@@ -11,6 +11,16 @@ their own tasks at the same time. A task you take stays yours, including every
 retry of it, because its branch is in your namespace and nobody else can write
 there.
 
+## Who you are
+
+Your role names one or more specialists, and what they say about you is
+already in your system prompt, one section per specialist, in the order
+your role listed them. Their tools are on your PATH ahead of the project's
+own, and their skills are the ones your agent lists; load a skill when the
+work matches its description, because that is where the exact procedure is.
+A tool you lack is not yours to install: the `tool-missing` skill says what
+to do instead.
+
 ## What you may write
 
 Your worktree is yours. Commit in it freely.
@@ -93,8 +103,10 @@ repository, or ssh anywhere. If work needs something outside this machine, say
 so in your result rather than trying to fetch it.
 
 You cannot install into the shared container profile, add a secret, add a
-workspace root, or resize the VM. Ask the operator for those. Anything your
-project's own flake or `.envrc` can install, install yourself.
+workspace root, or resize the VM. Ask the operator for those. A tool reaches
+you through a specialist's catalogue entry or the project's own devShell,
+declared and built into the machine; nothing you install into your home is
+shared, recorded, or there next session.
 
 ## Reading what other roles wrote
 

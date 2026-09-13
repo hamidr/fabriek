@@ -14,37 +14,51 @@
 {
   name = "example";
 
-  ## A command is argv, one word per element, never a shell line, so nothing
-  ## in it is re-split on the way through. Which coding agent a role runs is
-  ## this repository's business and not fabriek', and nothing validates it.
-  ## pi is the one fabriek supports (ADR-029): the console and the ledger are
-  ## built on records the agent defines, so the factory needs an agent whose
-  ## protocol it can pin and change rather than wait on.
+  ## Specialists and skills of this repository's own, beside the ones fabriek
+  ## ships (ADR-042 point 3): a directory with the same layout as fabriek's
+  ## catalogue. A name declared in both is refused, never shadowed.
+  catalogue = "fabriek/catalogue";
+
+  ## A role is what it provides and who it is. 'specialists' names entries of
+  ## the catalogues; the role gets their tools, their prompts in that order,
+  ## and their skills (ADR-042). Two specialists compose: 'backend' below is
+  ## a Java developer who can read the Python beside it.
   ##
-  ## 'shell' names one devShell of this same flake, so each specialist has its
-  ## own tools to hand (ADR-016). A role that names none gets 'default'.
+  ## 'shell' names one devShell of this same flake: the project's own build
+  ## environment, resolved against the project's pin (ADR-016). A role that
+  ## names none gets 'default'. A specialist's kit sits in front of it.
   ##
   ## 'provides' is what a role can be given to do. A stage names a capability
   ## rather than a role, so declaring a second backend adds capacity without
   ## touching the pipeline (ADR-015).
+  ##
+  ## No 'command': a role runs pi, the agent fabriek supports (ADR-029), in
+  ## the mode its loop drives. Declaring one is allowed and wins word for
+  ## word; it is argv, never a shell line.
   roles = {
     architect = {
-      command = [ "pi" "--mode" "rpc" ];
       provides = [ "design" ];
+      specialists = [ "architect" ];
     };
     backend = {
-      command = [ "pi" "--mode" "rpc" ];
       provides = [ "build" ];
+      specialists = [
+        "springboot"
+        "python"
+      ];
       shell = "backend-jvm";
     };
     frontend = {
-      command = [ "pi" "--mode" "rpc" ];
       provides = [ "build" ];
+      specialists = [
+        "frontend"
+        "release-here"
+      ];
       shell = "frontend";
     };
     reviewer = {
-      command = [ "pi" "--mode" "rpc" ];
       provides = [ "review" ];
+      specialists = [ "reviewer" ];
     };
   };
 
