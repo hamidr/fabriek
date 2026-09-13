@@ -166,6 +166,25 @@ description: the first' ''
 	assert_output --partial "y"
 }
 
+# ADR-044: what a test is and how tests run, declared per specialist and
+# unioned for the role, so the loop's guard can classify without reading.
+@test "a role's tests.json is the union of its specialists' test files, source files and commands" {
+	specialist x 'tests = { files = [ "**/*_test.py" ]; source = [ "src/**" ]; command = [ "pytest" ]; };'
+	specialist y 'extends = [ specialists.x ]; tests = { files = [ "tests/**" ]; source = [ "src/**" ]; command = [ "python -m pytest" ]; };'
+	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "y" ]; }'
+	assert_success
+	run jq -c '[.files, .source, .command]' "$output/share/fabriek/specialist/tests.json"
+	assert_output '[["**/*_test.py","tests/**"],["src/**"],["pytest","python -m pytest"]]'
+}
+
+@test "a role whose specialists declare no tests gets a tests.json with empty lists, so no guard" {
+	specialist x ''
+	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "x" ]; }'
+	assert_success
+	run jq -c '[.files, .source, .command]' "$output/share/fabriek/specialist/tests.json"
+	assert_output '[[],[],[]]'
+}
+
 @test "two specialists carrying one bin file from different packages fail the build naming both" {
 	specialist x 'tools = [ (pkgs.writeShellScriptBin "same" "a") ];'
 	specialist y 'tools = [ (pkgs.writeShellScriptBin "same" "b") ];'

@@ -205,6 +205,7 @@ machine_text() {
 	assert_output --partial 'extensions/pi-lsp/index.ts'
 	assert_output --partial 'pi-lsp-0.1.7/lib/node_modules/pi-lsp/extensions/pi-lsp/index.ts'
 	assert_output --partial 'share/fabriek/specialist/lsp.json $out/lsp.json'
+	assert_output --partial 'share/fabriek/specialist/tests.json $out/tests.json'
 }
 
 # pi starts on no model unless told one, and asks before trusting a

@@ -88,6 +88,7 @@ let
       cat >$out/extensions/pi-lsp/index.ts <<'TS'
       ${lspText}TS
       ln -s ${profile}/share/fabriek/specialist/lsp.json $out/lsp.json
+      ln -s ${profile}/share/fabriek/specialist/tests.json $out/tests.json
       cp ${pkgs.writeText "settings.json" settingsText} $out/settings.json
       cp ${pkgs.writeText "models.json" modelsText} $out/models.json
       ln -s ${profile}/share/fabriek/specialist/skills $out/skills

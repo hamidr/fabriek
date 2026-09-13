@@ -30,6 +30,7 @@ let
       "skills"
       "prompt"
       "lsp"
+      "tests"
     ];
     skills = [
       "tools"
@@ -187,6 +188,15 @@ let
         version = 1;
         servers = servers.list;
       };
+      ## What a test is and how tests run (ADR-044): three lists, each the
+      ## union across the flattened set in order, each pattern once. Empty
+      ## lists are a declaration too: no guard.
+      testsOf = key: lib.unique (lib.concatMap (node: (node.tests or { }).${key} or [ ]) order);
+      testsJson = builtins.toJSON {
+        files = testsOf "files";
+        source = testsOf "source";
+        command = testsOf "command";
+      };
     in
     ## Forced here so that a name no catalogue has fails on any touch of
     ## the derivation, and not only when something reads the list.
@@ -197,12 +207,14 @@ let
           toolLines
           skillLines
           lspJson
+          testsJson
           ;
         passAsFile = [
           "prompt"
           "toolLines"
           "skillLines"
           "lspJson"
+          "testsJson"
         ];
         passthru = {
           order = map (node: node.name) order;
@@ -213,6 +225,7 @@ let
         mkdir -p $out/bin $out/share/fabriek/specialist/skills
         cp "$promptPath" $out/share/fabriek/specialist/APPEND_SYSTEM.md
         cp "$lspJsonPath" $out/share/fabriek/specialist/lsp.json
+        cp "$testsJsonPath" $out/share/fabriek/specialist/tests.json
 
         declare -A owner ownerPath
         while IFS=$'\t' read -r specialist tool; do
