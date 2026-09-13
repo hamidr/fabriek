@@ -52,8 +52,8 @@ argv NUL-framed through `xargs -0`.
 **`cageworks`** (bash) is the launcher on the operator's host: `up`, `down`,
 `vm status`, `role <factory> <role>` to enter by hand, `role stop`, `role
 steer`, `task file`, `factory mirror`, `factory watch`, `factory send`,
-`factory console`. Every verb but the machine's own goes to the guest over
-ssh.
+`factory console`, `factory board`. Every verb but the machine's own goes to
+the guest over ssh.
 
 **`cageworks-container`** (bash) is the guest program: `role-enter`,
 `role-worktree`, `factory-prepare`, and the operator's interventions
@@ -201,7 +201,10 @@ what the bus still holds is replayed and the board, which reaches the TUI
 only as the executor's periodic event, is on screen at open. A watch that
 ends is started again after a pause and the picture begins over
 (`tui/watch.ts`). Merging is a click in
-Forgejo's UI; nothing merges by verb.
+Forgejo's UI; nothing merges by verb. `cageworks factory board` tunnels a
+local port to that UI over the factory's own ssh and prints the URL with
+a password the machine set fresh on the operator's account
+(`factory-board`), since the account was made with one nothing kept.
 
 ## The invariants
 

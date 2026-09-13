@@ -108,6 +108,8 @@ if printf '%s' "\$*" | grep -q 'xargs -0 cageworks-container'; then
 	printf '%s ' "\${words[@]}" >>"$NIXCAGE_CALLS"
 	printf '\n' >>"$NIXCAGE_CALLS"
 	printf '%s\n' "\${words[@]}" >>"$NIXCAGE_ARGV"
+	## What the guest program would have printed, when a test says so.
+	[ -f "$TEST_TEMP_DIR/guest-answer" ] && cat "$TEST_TEMP_DIR/guest-answer"
 fi
 STUB
 	chmod +x "$STUB_DIR/ssh"

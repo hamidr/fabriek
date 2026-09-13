@@ -49,6 +49,7 @@ case "\$1 \$2 \$3" in
 	if grep -qx "\$u" "$FORGE/users" 2>/dev/null; then echo "Command error: CreateUser: user already exists [name: \$u]" >&2; exit 1; fi
 	echo "\$u" >>"$FORGE/users"
 	;;
+"admin user change-password") ;;
 "admin user generate-access-token")
 	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
 	echo "token-for-\$u"
@@ -334,4 +335,23 @@ memory: reviewer"
 	run wc -l <"$FORGE/issues"
 	assert_output --regexp '^ *2$'
 	[ ! -f "$FORGE/patched" ]
+}
+
+# Merging is a click in Forgejo's UI and nothing else has a verb for it
+# (ADR-036), and the UI is on the bridge, where only the machine's own
+# transport reaches. The operator's account was made with a password nothing
+# kept, so each opening sets a fresh one and says it once.
+@test "factory-board answers the board's address on the bridge and a fresh password for the operator, never the same twice" {
+	run_cageworks_container factory-prepare acme
+	assert_success
+	run_cageworks_container factory-board acme
+	assert_success
+	assert_line --index 0 "10.77.0.1:3000"
+	local first="${lines[1]}"
+	[ "${#first}" -ge 20 ]
+	run grep -c "user change-password --username operator" "$FORGE/cli-calls"
+	assert_output 1
+	run_cageworks_container factory-board acme
+	assert_success
+	[ "${lines[1]}" != "$first" ]
 }

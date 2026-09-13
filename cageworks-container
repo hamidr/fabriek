@@ -117,6 +117,7 @@ usage: cageworks-container
   role-steer <factory> <role> <text>
   factory-send <factory> <json>
   factory-roles <factory>
+  factory-board <factory>
   probes-publish <factory>
 USAGE
 }
@@ -555,6 +556,24 @@ cmd_factory_roles() {
 	jq -r '.roles | keys[]' "$(factory_declaration "$factory")" | paste -sd' ' -
 }
 
+## The board's address on the bridge and a fresh password for the operator's
+## account, for the one thing no verb does: merging, in Forgejo's UI
+## (ADR-036). The account was made with a password nothing kept, so one is
+## set each time and printed once, to the operator's terminal and nowhere
+## else. The address first, the password second, one per line.
+cmd_factory_board() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: cageworks-container factory-board <factory>"
+	factory_declaration "$factory" >/dev/null
+	local password
+	password="$(cageworks_secret)"
+	cageworks_forge_admin user change-password --username operator \
+		--password "$password" --must-change-password=false >/dev/null 2>&1 ||
+		die "could not set the operator's password on the board"
+	jq -r .forgejo "$CAGEWORKS_ETC/bridge.json"
+	printf '%s\n' "$password"
+}
+
 ## The kernel's lines, from bpftrace on stdin, onto the bus with the role
 ## each uid belongs to (ADR-038 point 3).
 cmd_probes_publish() {
@@ -581,6 +600,7 @@ main() {
 	role-stop) cmd_role_stop "$@" ;;
 	factory-mirror) cmd_factory_mirror "$@" ;;
 	factory-watch) cmd_factory_watch "$@" ;;
+	factory-board) cmd_factory_board "$@" ;;
 	probes-publish) cmd_probes_publish "$@" ;;
 	role-steer) cmd_role_steer "$@" ;;
 	factory-send) cmd_factory_send "$@" ;;

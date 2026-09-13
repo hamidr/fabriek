@@ -77,6 +77,16 @@ machine_ssh_args() {
   while IFS= read -r arg; do into+=("$arg"); done <<<"$args"
 }
 
+## A local port nothing listens on, from 8300 up, for a tunnel to the board.
+free_local_port() {
+  local port
+  for port in $(seq 8300 8399); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "$port"; return 0; }
+  done
+  log_err "no free local port between 8300 and 8399"
+  return 1
+}
+
 guest() {
   local factory="${2:-}"
   [[ -n "$factory" ]] || { log_err "no factory named for guest command ${1:-}"; return 1; }
@@ -499,7 +509,7 @@ cmd_vm() {
 cmd_factory() {
   local sub="${1:-}" factory="${2:-}"
   if [[ -z "$sub" || -z "$factory" ]]; then
-    log_err "usage: cageworks factory mirror|watch|send|console <factory>"
+    log_err "usage: cageworks factory mirror|watch|send|console|board <factory>"
     exit 1
   fi
   case "$sub" in
@@ -523,6 +533,25 @@ cmd_factory() {
     fi
     guest factory-send "$factory" "$json"
     ;;
+  board)
+    ## Merging is a click in Forgejo's UI and has no verb (ADR-036), and the
+    ## UI is on the bridge, where only this factory's own ssh reaches: a
+    ## local port is tunnelled to it over the same key and port every other
+    ## verb uses, and held until interrupted. The machine says the address
+    ## and sets the operator's password fresh, so nothing here guesses one.
+    local answer addr password port
+    answer="$(guest factory-board "$factory")" || exit 1
+    addr="$(sed -n 1p <<<"$answer")"
+    password="$(sed -n 2p <<<"$answer")"
+    [[ -n "$addr" && -n "$password" ]] || { log_err "$factory did not say where its board is"; exit 1; }
+    port="$(free_local_port)"
+    local -a ssh_args=()
+    machine_ssh_args "$factory" ssh_args || exit 1
+    echo "http://127.0.0.1:$port/operator/$factory"
+    echo "log in as operator with the password $password"
+    echo "the tunnel holds until interrupted"
+    exec ssh "${ssh_args[@]}" -N -L "127.0.0.1:$port:$addr" root@localhost
+    ;;
   console)
     ## The one face (ADR-039 point 3): the TUI, on this host, over the relay.
     ## Its roles come from the machine's declaration, over the same transport
@@ -533,7 +562,7 @@ cmd_factory() {
     exec cageworks-tui "$factory" $roles
     ;;
   *)
-    log_err "usage: cageworks factory mirror|watch|send|console <factory>"
+    log_err "usage: cageworks factory mirror|watch|send|console|board <factory>"
     exit 1
     ;;
   esac
@@ -563,6 +592,9 @@ ${BOLD}Commands:${NC}
   factory console <factory>
                      The one face: roles, board, live stream, and the keys
                      that file, steer, stop, retry, block, push and mirror
+  factory board <factory>
+                     Forgejo's UI on a local port, for merging; prints the
+                     URL and the operator's login, holds until interrupted
   role steer <factory> <role> <text>
                      Speak into a role's running turn
   up <factory> [--update]

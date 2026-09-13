@@ -34,6 +34,7 @@ cageworks task file acme ship "Add an importer" "handles empty files"
      +-- the executor checks the commit and moves the label; the decider goes on
      |
 cageworks factory console acme     one screen: roles, board, live stream, keys
+cageworks factory board acme       Forgejo's UI on a local port, to merge
 cageworks factory mirror acme      merged main and the record reach origin,
                                    on your word and never before
 ```
@@ -100,6 +101,7 @@ handing numbers out is the only one that can promise never to reissue one.
 | `cageworks role steer <factory> <role> <text>` | Speak into a role's running turn |
 | `cageworks task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
 | `cageworks factory console <factory>` | The one face: roles, board, live stream, and the keys |
+| `cageworks factory board <factory>` | Forgejo's UI on a local port, for merging; prints the URL and the login |
 | `cageworks factory watch <factory>` | The factory's bus as JSON lines, for any client |
 | `cageworks factory send <factory> '<json>'` | A command in the decider's vocabulary, from you |
 | `cageworks factory mirror <factory>` | Push merged main and the record to the repository's origin |

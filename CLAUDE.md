@@ -51,7 +51,7 @@ A change to what a role session is shows up there as a diff.
 ## Repository layout
 
 - `cageworks`: the operator's launcher: `up`, `down`, `vm status`, `role`,
-  `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console`.
+  `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console|board`.
   Reaches the guest program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
