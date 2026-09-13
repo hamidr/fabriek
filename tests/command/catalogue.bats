@@ -59,6 +59,12 @@ catalogue_build() {
 	assert_output '["architect","developer","django","flask","frontend","java","python","reviewer","springboot"]'
 }
 
+@test "the shipped java and python specialists declare their language servers, composed into one lsp.json" {
+	run catalogue_eval 'map (s: s.id) (builtins.fromJSON (builtins.unsafeDiscardStringContext (cat.compose { role = "backend"; specialists = [ "springboot" "django" ]; }).lspJson)).servers'
+	assert_success
+	assert_output '["jdtls","basedpyright"]'
+}
+
 @test "a role naming java and python is composed with developer once, parents first" {
 	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "java" "python" ]; }).order'
 	assert_success
@@ -128,6 +134,36 @@ description: the first' ''
 	assert_line --index 3 "I am y."
 	[ -f "$out/share/fabriek/specialist/skills/one/SKILL.md" ]
 	[ -x "$out/bin/tx" ]
+}
+
+# ADR-043: a server is declared by a specialist and reaches pi-lsp as one
+# entry of the role's lsp.json, id once however many paths reach it.
+@test "a role's lsp.json is the union of its specialists' servers by id, a diamond declaring one once" {
+	specialist base 'lsp = [ { id = "nil"; include = [ "**/*.nix" ]; rootMarkers = [ "flake.nix" ]; bin = "/bin/nil"; languageIdByExtension = { ".nix" = "nix"; }; } ];'
+	specialist x 'extends = [ specialists.base ]; lsp = [ { id = "tsserver"; include = [ "**/*.ts" ]; rootMarkers = [ "package.json" ]; bin = "/bin/tsserver"; args = [ "--stdio" ]; languageIdByExtension = { ".ts" = "typescript"; }; } ];'
+	specialist y 'extends = [ specialists.base ];'
+	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "x" "y" ]; }'
+	assert_success
+	run jq -c '[.version, (.servers | map(.id)), .servers[0].enabled, .servers[0].cwd, .servers[1].args]' "$output/share/fabriek/specialist/lsp.json"
+	assert_output '[1,["nil","tsserver"],true,"{root}",["--stdio"]]'
+}
+
+@test "a role whose specialists declare no server gets an lsp.json with none" {
+	specialist x ''
+	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "x" ]; }'
+	assert_success
+	run jq -c '.servers' "$output/share/fabriek/specialist/lsp.json"
+	assert_output '[]'
+}
+
+@test "one server id from two unrelated specialists is refused naming both" {
+	specialist x 'lsp = [ { id = "pyright"; include = [ "**/*.py" ]; rootMarkers = [ "pyproject.toml" ]; bin = "/a/pyright"; languageIdByExtension = { ".py" = "python"; }; } ];'
+	specialist y 'lsp = [ { id = "pyright"; include = [ "**/*.py" ]; rootMarkers = [ "setup.py" ]; bin = "/b/pyright"; languageIdByExtension = { ".py" = "python"; }; } ];'
+	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "x" "y" ]; }).name'
+	assert_failure
+	assert_output --partial "server pyright"
+	assert_output --partial "x"
+	assert_output --partial "y"
 }
 
 @test "two specialists carrying one bin file from different packages fail the build naming both" {

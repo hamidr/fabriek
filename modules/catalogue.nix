@@ -29,6 +29,7 @@ let
       "tools"
       "skills"
       "prompt"
+      "lsp"
     ];
     skills = [
       "tools"
@@ -145,16 +146,63 @@ let
         node: lib.concatMapStrings (t: "${node.name}\t${t}\n") (toolsOf node)
       ) order;
       skillLines = lib.concatMapStrings (s: "${s.name}\t${s.src}\n") skills;
+      ## The language servers (ADR-043): pi-lsp's own shape, one entry per
+      ## id across the flattened set. The same id from two specialists is
+      ## two opinions about one binary, so it is refused naming both.
+      servers =
+        lib.foldl
+          (
+            acc: node:
+            lib.foldl (
+              inner: server:
+              let
+                owner = inner.owners.${server.id} or null;
+              in
+              if owner != null then
+                throw "role ${role}: server ${server.id} is declared by ${owner} and by ${node.name}"
+              else
+                {
+                  owners = inner.owners // {
+                    ${server.id} = node.name;
+                  };
+                  list = inner.list ++ [
+                    (
+                      {
+                        enabled = true;
+                        args = [ ];
+                        cwd = "{root}";
+                      }
+                      // server
+                    )
+                  ];
+                }
+            ) acc (node.lsp or [ ])
+          )
+          {
+            owners = { };
+            list = [ ];
+          }
+          order;
+      lspJson = builtins.toJSON {
+        version = 1;
+        servers = servers.list;
+      };
     in
     ## Forced here so that a name no catalogue has fails on any touch of
     ## the derivation, and not only when something reads the list.
-    builtins.seq order pkgs.runCommand "fabriek-specialist-${role}"
+    builtins.seq order builtins.seq servers.list pkgs.runCommand "fabriek-specialist-${role}"
       {
-        inherit prompt toolLines skillLines;
+        inherit
+          prompt
+          toolLines
+          skillLines
+          lspJson
+          ;
         passAsFile = [
           "prompt"
           "toolLines"
           "skillLines"
+          "lspJson"
         ];
         passthru = {
           order = map (node: node.name) order;
@@ -164,6 +212,7 @@ let
       ''
         mkdir -p $out/bin $out/share/fabriek/specialist/skills
         cp "$promptPath" $out/share/fabriek/specialist/APPEND_SYSTEM.md
+        cp "$lspJsonPath" $out/share/fabriek/specialist/lsp.json
 
         declare -A owner ownerPath
         while IFS=$'\t' read -r specialist tool; do
