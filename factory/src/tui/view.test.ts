@@ -22,13 +22,15 @@ describe("the TUI's view", () => {
     }
   });
 
-  it("says when routing is stopped at the soft limit, and shows spend", () => {
-    let s = initial(["builder"]);
+  it("says when routing is stopped at the soft limit, and shows spend in total, for the decider and beside each role", () => {
+    let s = initial(["builder", "reviewer"]);
     s = fold(s, { stream: "events:executor", id: "3-0", fields: { kind: "event", name: "board", json: JSON.stringify({ issues: [], ready: [], routing: false }) } });
-    s = fold(s, { stream: "events:executor", id: "4-0", fields: { kind: "event", name: "spend", json: '{"total":9000}' } });
+    s = fold(s, { stream: "events:executor", id: "4-0", fields: { kind: "event", name: "spend", json: '{"builder":7000,"reviewer":0,"decider":2000,"total":9000}' } });
     const out = render(s, { columns: 80, rows: 24, factory: "acme" });
     assert.match(out, /routing stopped/);
-    assert.match(out, /spend +9000/);
+    assert.match(out, /spend 9000 \(decider 2000\)/);
+    assert.match(out, /builder +unknown +7000/);
+    assert.match(out, /reviewer +unknown +0/);
   });
 
   it("never renders wider than the terminal", () => {

@@ -18,12 +18,14 @@ function fit(line: string, width: number): string {
 export function render(s: State, screen: Screen): string {
   const w = Math.max(20, screen.columns);
   const lines: string[] = [];
-  lines.push(`cageworks  ${screen.factory}  ${s.routing ? "routing on" : "routing stopped at the soft limit"}  spend ${s.spend["total"] ?? 0}`);
+  lines.push(
+    `cageworks  ${screen.factory}  ${s.routing ? "routing on" : "routing stopped at the soft limit"}  spend ${s.spend["total"] ?? 0} (decider ${s.spend["decider"] ?? 0})`,
+  );
   lines.push("");
   lines.push("roles");
   for (const [name, r] of Object.entries(s.roles)) {
     const where = r.issue !== undefined && r.state !== "idle" ? ` #${r.issue}` : "";
-    lines.push(`  ${name.padEnd(14)}${(r.state + where).padEnd(16)}${r.last}`);
+    lines.push(`  ${name.padEnd(14)}${(r.state + where).padEnd(16)}${String(s.spend[name] ?? 0).padStart(7)}  ${r.last}`);
   }
   lines.push("");
   lines.push("board");

@@ -18,6 +18,7 @@ import { Executor, type Bus, type Spend } from "./core.js";
 import { ForgeBoard } from "./forge.js";
 import { RoleSessions } from "./sessions.js";
 import { CloneGit } from "./git.js";
+import { spendByRole } from "./spend.js";
 
 const ETC = process.env["CAGEWORKS_ETC"] ?? "/etc/cageworks";
 const STATE = process.env["CAGEWORKS_STATE"] ?? "/var/lib/nixcage";
@@ -29,7 +30,7 @@ function log(line: string): void {
 
 async function main(): Promise<void> {
   const declaration = readDeclaration(await readFile(`${ETC}/declaration.json`, "utf8"));
-  const plan = JSON.parse(await readFile(`${ETC}/bridge.json`, "utf8")) as { valkey: string; forgejo: string; proxy: string };
+  const plan = JSON.parse(await readFile(`${ETC}/bridge.json`, "utf8")) as { valkey: string; forgejo: string; proxy: string; cages: Record<string, string> };
   const factory = declaration.name;
   const workflow = Object.keys(declaration.workflows)[0];
   if (!workflow) throw new Error("the declaration has no workflow");
@@ -134,7 +135,7 @@ async function main(): Promise<void> {
         await executor.checkOutcomes();
         lastOutcomes = Date.now();
         await publish("board", await executor.snapshot());
-        await publish("spend", await spend.counts());
+        await publish("spend", spendByRole(await spend.counts(), plan.cages));
       }
     } catch (err) {
       log(`loop: ${String(err)}`);

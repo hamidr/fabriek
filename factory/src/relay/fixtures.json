@@ -7,5 +7,6 @@
   {"stream":"commands","id":"1700000000005-0","fields":{"json":"{\"verb\":\"assign\",\"issue\":7,\"role\":\"builder\"}"}},
   {"stream":"operator","id":"1700000000006-0","fields":{"json":"{\"op\":\"mirror\"}"}},
   {"stream":"events:executor","id":"1700000000007-0","fields":{"kind":"event","name":"command","json":"{\"result\":{\"ok\":true}}"}},
+  {"stream":"events:executor","id":"1700000000009-0","fields":{"kind":"event","name":"spend","json":"{\"builder\":1200,\"decider\":300,\"total\":1500}"}},
   {"stream":"probes","id":"1700000000008-0","fields":{"uid":"700010","event":"exec uid=700010 pid=4242 comm=git"}}
 ]

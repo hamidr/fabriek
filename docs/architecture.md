@@ -168,7 +168,8 @@ at the last stage, labels `blocked`, frees the role on failed; stops routing
 at ninety percent of the ceiling. `main.ts` connects as the executor's bus
 user, starts every role's session and the decider's through the guest
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
-ten seconds, and publishes the board and the spend to `events:executor`.
+ten seconds, and publishes the board and the spend, named by role from the
+plan, to `events:executor`.
 `mirror` fetches `main` from the forge, writes the issues as
 `refs/cageworks/record`, and pushes both to origin. `factory-prepare` reads
 it back on a machine whose board is empty (`cageworks_forge_restore_record`):

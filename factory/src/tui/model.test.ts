@@ -55,9 +55,9 @@ describe("the TUI's model", () => {
     assert.deepEqual(s.commands.at(-1), { by: "executor", text: "refused assign 7 builder: role builder is not ready" });
   });
 
-  it("spend is what the executor last published, per address and in total", () => {
-    const s = after([{ stream: "events:executor", id: "5-0", fields: { kind: "event", name: "spend", json: '{"10.77.0.10":120,"total":120}' } }]);
-    assert.deepEqual(s.spend, { "10.77.0.10": 120, total: 120 });
+  it("spend is what the executor last published, per role and in total", () => {
+    const s = after([{ stream: "events:executor", id: "5-0", fields: { kind: "event", name: "spend", json: '{"builder":120,"decider":0,"total":120}' } }]);
+    assert.deepEqual(s.spend, { builder: 120, decider: 0, total: 120 });
   });
 
   it("every fixture line folds without throwing, whatever it carries", () => {
