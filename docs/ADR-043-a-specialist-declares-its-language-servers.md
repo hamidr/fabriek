@@ -85,10 +85,11 @@ rejects it in a non-interactive session and the machine's settings trust
 no project, so a repository cannot make a role start a binary its
 specialists did not declare (ADR-034 invariant 1).
 
-**5. The shipped catalogue declares three.** `java` runs
+**5. The shipped catalogue declares four.** `java` runs
 `jdt-language-server`, `python` runs `basedpyright`, `frontend` runs
-`typescript-language-server`; `django`, `flask` and `springboot` inherit
-theirs. The `developer` prompt says when to ask the tools: diagnostics
+`typescript-language-server`, `scala` runs Metals with the settings the
+operator's own editor gives it; `django`, `flask`, `springboot` and
+`react` inherit theirs. The `developer` prompt says when to ask the tools: diagnostics
 before reporting done, definition and references before renaming or
 changing a signature.
 
