@@ -189,9 +189,12 @@ thirty seconds and whenever an actor says something.
 
 The relay (`factory/src/relay/`) prints every stream as JSON lines,
 `relay/fixtures.json` being the contract; `cageworks factory watch` carries
-it over ssh. The TUI (`factory/src/tui/`) folds those lines into one state,
-renders roles, board, commands, findings and spend, and writes through the
-CLI: file, steer, stop, retry, block, push, mirror. Merging is a click in
+it over ssh. When the bus goes away the relay waits, connects again and
+reads on from the last id it printed (`relay/tail.ts`). The TUI
+(`factory/src/tui/`) folds those lines into one state, renders roles,
+board, commands, findings and spend, and writes through the CLI: file,
+steer, stop, retry, block, push, mirror. A watch that ends is started
+again after a pause and the picture begins over (`tui/watch.ts`). Merging is a click in
 Forgejo's UI; nothing merges by verb.
 
 ## The invariants

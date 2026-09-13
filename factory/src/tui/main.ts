@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fold, initial, type State } from "./model.js";
 import { render } from "./view.js";
+import { keepWatching } from "./watch.js";
 import { parseLine } from "../relay/format.js";
 
 const ESC = String.fromCharCode(27);
@@ -105,18 +106,19 @@ function paint(): void {
   process.stdout.write(CLEAR + render(state, screen) + (notice ? `\n${notice}` : ""));
 }
 
-const watch = spawn(cli, ["factory", "watch", factory], { stdio: ["ignore", "pipe", "inherit"] });
-const lines = createInterface({ input: watch.stdout });
-lines.on("line", (line) => {
-  try {
+keepWatching({
+  spawn: () => spawn(cli, ["factory", "watch", factory], { stdio: ["ignore", "pipe", "inherit"] }),
+  onStart: () => {
+    state = initial(roles);
+  },
+  onLine: (line) => {
     state = fold(state, parseLine(line));
-  } catch {
-    // a line that is not the relay's is the relay's problem to say
-  }
-});
-watch.on("exit", (code) => {
-  notice = `watch ended with ${code}`;
-  paint();
+  },
+  onEnd: (code) => {
+    notice = `watch ended with ${code}; starting it again`;
+    paint();
+  },
+  pause: () => new Promise((r) => setTimeout(r, 2000)),
 });
 
 process.stdin.setRawMode?.(true);
