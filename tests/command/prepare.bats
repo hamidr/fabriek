@@ -20,6 +20,10 @@ setup() {
 	PATH="$STUB_DIR:$PATH"
 	export PATH STATE
 	export CAGEWORKS_STATE="$STATE" CAGEWORKS_ETC="$ETC"
+	# Where a push of main to the forge lands here: a bare repository, so no
+	# test waits on an address that is not on this host.
+	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
+	export CAGEWORKS_FORGE_GIT_URL="$TEST_TEMP_DIR/forge.git"
 
 	cat >"$ETC/declaration.json" <<'JSON'
 { "name": "acme",
@@ -74,6 +78,7 @@ done
 path="\${url#*/api/v1}"
 case "\$method \$path" in
 "GET /repos/operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
+"GET /repos/operator/acme/branches/main") [ -e "$FORGE/has-main" ] && echo '{"name":"main"}' || { echo '{}'; exit 22; } ;;
 "POST /user/repos") touch "$FORGE/repo"; echo '{"name":"acme"}' ;;
 "PUT /repos/operator/acme/collaborators/"*) echo "\${path##*/}" >>"$FORGE/collaborators" ;;
 "GET /repos/operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs] | to_entries | map({id: (.key + 1), name: .value})' <"$FORGE/labels" || echo '[]' ;;
@@ -202,11 +207,16 @@ teardown() {
 	assert_output --partial "60192 $STATE/bus/decider $STATE/forge/decider-token"
 }
 
-@test "a label exists for every stage's capability, plus blocked and memory" {
+# The executor moves assigning and assigned as labels too (ADR-033 point 4),
+# and a label the forge lacks is a refused assign. Found on a host: the first
+# assign of the system journey was refused for the label prepare never made.
+@test "a label exists for every stage's capability, plus the executor's assigning, assigned and blocked, and memory" {
 	run_cageworks_container factory-prepare acme
 	assert_success
 	run sort "$FORGE/labels"
-	assert_output "blocked
+	assert_output "assigned
+assigning
+blocked
 build
 memory
 review"
@@ -298,7 +308,7 @@ origin_with_record() {
 fix the footer
 memory: builder
 memory: reviewer"
-	run grep -c "issues/1/labels \[2\]" "$FORGE/labelled"
+	run grep -c "issues/1/labels \[4\]" "$FORGE/labelled"
 	assert_output 1
 	run cat "$FORGE/patched"
 	assert_output '/repos/operator/acme/issues/2 {"state":"closed"}'
@@ -323,7 +333,7 @@ memory: reviewer"
 	assert_output --partial "deploy"
 	run jq -r '.title' "$FORGE/issues"
 	assert_line --index 0 "deploy it"
-	run grep -c "issues/1/labels \[2\]" "$FORGE/labelled"
+	run grep -c "issues/1/labels \[4\]" "$FORGE/labelled"
 	assert_output 1
 }
 
@@ -354,4 +364,29 @@ memory: reviewer"
 	run_cageworks_container factory-board acme
 	assert_success
 	[ "${lines[1]}" != "$first" ]
+}
+
+# The forge's copy of the repository starts empty, and a role's pull request
+# and the operator's mirror both need main there (ADR-036 points 5 and 7).
+# Found on a host: mirror failed on a forge with no main. The push goes to
+# the forge's git URL, which a test points at a bare repository of its own.
+@test "given a forge with no main, prepare pushes origin's main to it once, with the token in no argument" {
+	local origin="$TEST_TEMP_DIR/origin" forge_git="$TEST_TEMP_DIR/forge.git" work="$TEST_TEMP_DIR/w"
+	git init -q --bare -b main "$origin"
+	git init -q --bare -b main "$forge_git"
+	git init -q -b main "$work"
+	echo hi >"$work/README"
+	git -C "$work" add README
+	git -C "$work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
+	git -C "$work" push -q "$origin" main
+	CAGEWORKS_FORGE_GIT_URL="$forge_git" run_cageworks_container factory-prepare acme "$origin"
+	assert_success
+	run git -C "$forge_git" rev-parse --verify --quiet refs/heads/main
+	assert_success
+	[ ! -f "$FORGE/leaks" ]
+	run grep -c "token-for" "$FORGE/api-calls"
+	assert_output 0
+	touch "$FORGE/has-main"
+	CAGEWORKS_FORGE_GIT_URL="$TEST_TEMP_DIR/nowhere" run_cageworks_container factory-prepare acme "$origin"
+	assert_success
 }

@@ -199,3 +199,46 @@ cageworks_forge_board_empty() {
 	[ "$(cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/issues?state=all&type=issues&limit=1" |
 		jq -r 'length')" = "0" ]
 }
+
+## Where the forge's copy of the repository is pushed to and fetched from,
+## for the executor and for prepare alike. Overridable for a suite that has
+## no forge listening, so a push lands in a bare repository of its own.
+cageworks_forge_git_url() {
+	local plan="$1" owner="$2" name="$3"
+	if [ -n "${CAGEWORKS_FORGE_GIT_URL:-}" ]; then
+		printf '%s\n' "$CAGEWORKS_FORGE_GIT_URL"
+	else
+		printf 'http://%s/%s/%s.git\n' "$(jq -r .forgejo "$plan")" "$owner" "$name"
+	fi
+}
+
+## main on the forge, once (ADR-036 points 5 and 7): a role's pull request
+## and the operator's mirror both need it there, and the forge's copy starts
+## empty. Pushed from a clone of origin made for the purpose, with the
+## operator's token through a credential helper that reads the file, so the
+## token is in no argument and no remote URL.
+##
+## cageworks_forge_ensure_main <base> <token-file> <owner> <name> <origin> <git-url>
+cageworks_forge_ensure_main() {
+	local base="$1" token="$2" owner="$3" name="$4" origin="$5" url="$6"
+	cageworks_forge_api "$base" "$token" GET "/repos/$owner/$name/branches/main" >/dev/null 2>&1 && return 0
+	local tmp status=0
+	tmp="$(mktemp -d)"
+	## git's own words are kept: what went wrong is what the log should say.
+	if GIT_TERMINAL_PROMPT=0 git clone -q --bare --branch main --single-branch "$origin" "$tmp/origin.git"; then
+		local attempt
+		for attempt in 1 2 3 4 5; do
+			status=0
+			GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=credential.helper \
+				GIT_CONFIG_VALUE_0="!f() { echo username=$owner; echo \"password=\$(cat '$token')\"; }; f" \
+				git -C "$tmp/origin.git" push -q "$url" refs/heads/main:refs/heads/main && break
+			status=1
+			echo "cageworks: push of main to the forge failed on attempt $attempt" >&2
+			sleep 2
+		done
+	else
+		status=1
+	fi
+	rm -rf "$tmp"
+	return "$status"
+}

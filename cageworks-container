@@ -428,7 +428,18 @@ cmd_factory_prepare() {
 		[ -n "$label" ] || continue
 		cageworks_forge_ensure_label "$base" "$operator" "$owner" "$factory" "$label" ||
 			die "could not make the label $label"
-	done < <(jq -r '[.workflows[].stages[].needs] + ["blocked", "memory"] | unique | .[]' "$declaration")
+	done < <(jq -r '[.workflows[].stages[].needs] + ["assigning", "assigned", "blocked", "memory"] | unique | .[]' "$declaration")
+
+	## main on the forge, once, from the origin the machine knows (ADR-036
+	## points 5 and 7). An origin that cannot be reached is said and not
+	## fatal, as for the record: the clone will say it again.
+	local origin_url
+	origin_url="$(factory_repository "$factory" 2>/dev/null)" || origin_url=""
+	if [ -n "$origin_url" ]; then
+		cageworks_forge_ensure_main "$base" "$operator" "$owner" "$factory" "$origin_url" \
+			"$(cageworks_forge_git_url "$CAGEWORKS_ETC/bridge.json" "$owner" "$factory")" ||
+			echo "cageworks-container: could not put main from $origin_url on the forge; a pull request and a mirror need it" >&2
+	fi
 
 	## A board with nothing on it is a fresh machine, and origin may carry
 	## the record of the one before (ADR-036 point 7). Restored before the
