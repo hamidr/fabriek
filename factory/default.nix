@@ -52,7 +52,7 @@ in
       cp src/relay/fixtures.json $out/lib/cageworks-factory/dist/relay/
       ln -s ${nodeModules} $out/lib/cageworks-factory/node_modules
       ## The programs the machine and the operator run by name.
-      for prog in executor relay tui; do
+      for prog in executor relay tui fake-actor fake-decider; do
         cat >$out/bin/cageworks-$prog <<EOF
       #!${pkgs.runtimeShell}
       exec ${pkgs.nodejs}/bin/node $out/lib/cageworks-factory/dist/$prog/main.js "\$@"
