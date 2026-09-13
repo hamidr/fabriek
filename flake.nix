@@ -69,6 +69,14 @@
               ## tested with node's own runner, so nothing is fetched.
               nodejs
               typescript
+              ## The system harness (tests/system) runs the factory on this
+              ## host with scripted actors: the bus and the forge for real,
+              ## on localhost. Forgejo is marked broken on Darwin in nixpkgs,
+              ## so a Mac gets Gitea, whose API and CLI are the subset the
+              ## forge modules use; the machine itself always runs Forgejo.
+              valkey
+              curl
+              (if stdenv.hostPlatform.isDarwin then gitea else forgejo)
             ];
 
             BATS_LIB_PATH = "${pkgs.bats.libraries.bats-support}/share/bats:${pkgs.bats.libraries.bats-assert}/share/bats";
