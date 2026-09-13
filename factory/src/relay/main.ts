@@ -6,7 +6,8 @@
 import { readFileSync } from "node:fs";
 import { BusClient } from "../bus/client.js";
 import { readDeclaration } from "../declaration.js";
-import { encodeLine, streamsFor } from "./format.js";
+import { streamsFor } from "./format.js";
+import { tail } from "./tail.js";
 
 const ETC = process.env["CAGEWORKS_ETC"] ?? "/etc/cageworks";
 const STATE = process.env["CAGEWORKS_STATE"] ?? "/var/lib/nixcage";
@@ -16,23 +17,19 @@ async function main(): Promise<void> {
   const declaration = readDeclaration(readFileSync(`${ETC}/declaration.json`, "utf8"));
   const plan = JSON.parse(readFileSync(`${ETC}/bridge.json`, "utf8")) as { valkey: string };
   const [host, port] = plan.valkey.split(":");
-  const client = await BusClient.connect({
-    host: host ?? "127.0.0.1",
-    port: Number(port ?? "6379"),
-    user: "executor",
-    password: readFileSync(`${STATE}/bus/executor`, "utf8").trim(),
+  await tail({
+    streams: streamsFor(Object.keys(declaration.roles)),
+    from,
+    connect: () =>
+      BusClient.connect({
+        host: host ?? "127.0.0.1",
+        port: Number(port ?? "6379"),
+        user: "executor",
+        password: readFileSync(`${STATE}/bus/executor`, "utf8").trim(),
+      }),
+    write: (line) => process.stdout.write(line + "\n"),
+    retry: () => new Promise((r) => setTimeout(r, 2000)),
   });
-  const streams: Record<string, string> = {};
-  for (const s of streamsFor(Object.keys(declaration.roles))) streams[s] = from;
-  for (;;) {
-    const batches = await client.xreadMany(streams, 5000);
-    for (const [stream, entries] of Object.entries(batches)) {
-      for (const e of entries) {
-        streams[stream] = e.id;
-        process.stdout.write(encodeLine(stream, e) + "\n");
-      }
-    }
-  }
 }
 
 main().catch((e) => {
