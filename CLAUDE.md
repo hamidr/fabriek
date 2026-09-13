@@ -123,7 +123,8 @@ A change to what a role session is shows up there as a diff.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
   `specialist.sh` is ADR-042's; `lib.sh` is what they share.
-- `models/vm-lifecycle.qnt`: the machine's lifecycle, the one model kept.
+- `models/vm-lifecycle.qnt`: the machine's lifecycle; `models/tdd-guard.qnt`:
+  the loop's test-first guard (ADR-044).
 - `examples/factory-project/`: a repository worked by a factory.
 - `docs/`: ADRs, PRDs, the generated TRACKER.md, `architecture.md`,
   `roadmap.md`.
@@ -169,6 +170,7 @@ Documents have their own checks:
 docmeta-check docs                   # frontmatter is valid
 docmeta-tracker docs                 # regenerate docs/TRACKER.md, never by hand
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 ```
 
 ## Architecture
@@ -185,6 +187,9 @@ reads.
 **The loop** (`factory/src/extension`) announces ready, takes an assignment
 pointer, works the issue in a fresh process, comments its outcome under its
 own token, and ends so the next process is a fresh session. Blocked holds.
+Its test-first guard (`guard.ts`, ADR-044, modeled in
+`models/tdd-guard.qnt`) refuses production edits and done by the order of
+test edits, runs and code edits the specialists' `tests.json` lets it see.
 
 **The executor** (`factory/src/executor`) is uncaged and content-blind: it
 validates the six verbs against the declaration and the board, writes

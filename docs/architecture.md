@@ -76,7 +76,9 @@ A role names its specialists in `fabriek.nix` and nothing else; `command`
 defaults to pi. `modules/catalogue.nix` reads both, flattens what a role
 names once per name, parents first, and builds one derivation per role. A
 specialist may declare language servers (`lsp`), unioned by id into the
-role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043).
+role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043),
+and what a test is (`tests`: test files, source files, runner commands),
+unioned into `tests.json` for the loop's test-first guard (ADR-044).
 
 ## The machine
 
@@ -175,6 +177,16 @@ a fresh session (ADR-035 point 4 as amended). Blocked keeps the process
 alive and silent. `steer` and `abort` reach the running turn; `reconcile` is
 answered with what is held; turn and tool events go to `events:<role>`,
 findings to `findings:<role>`.
+
+`guard.ts` is the test-first guard (ADR-044), the machine in
+`models/tdd-guard.qnt`: from `tests.json` in the pi directory it
+classifies every `write` and `edit` path as test, source or free and every
+`bash` command as a test run or not; a source edit is refused before any
+run, after a test edit without a run, and as a second edit after a passing
+run without a run between; `report_outcome` with done is refused until
+the last run after the last edit passed. A refusal is the tool's result
+and a `guard_refused` event. A run's verdict is the bash tool's error
+flag. Empty lists mean no guard.
 
 ## The executor
 

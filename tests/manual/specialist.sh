@@ -48,6 +48,12 @@ check "the extension is beside the loop" "yes" \
 	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/pi-lsp/index.ts" && echo yes')"
 gated "diagnostics appended after a write" "needs a model: write a Java file with an unused import through pi and read the diagnostics in the session transcript"
 
+scenario "The test-first guard reads what the specialists declared (ADR-044)"
+when "the session reads tests.json beside the loop"
+check "java sources are watched" "yes" \
+	"$(in_cage "$ROLE" sh -c 'jq -e ".source | index(\"**/src/main/**\")" "$PI_CODING_AGENT_DIR/tests.json" >/dev/null && echo yes')"
+gated "an edit without a test is refused" "needs a model: ask the role to add a method to a class under src/main with no test; the transcript shows the refusal and the bus shows guard_refused"
+
 scenario "pi itself lists the skill in its system prompt"
 gated "jvm-profile in the system prompt" "pi 0.84.4 has no flag that prints its skills; read the session's first system message in the role's ~/.pi/sessions"
 

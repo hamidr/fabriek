@@ -1,7 +1,7 @@
 ---
 id: ADR-044
 title: The loop refuses production code before a failing test, and done before a passing run
-status: proposed
+status: implemented
 date: 2026-09-13
 status_date: 2026-09-13
 summary: the loop's test-first guard refuses edits and done by the order of test edits, runs and code edits, per specialist
@@ -133,11 +133,17 @@ nix build .#factory
 ```
 
 `guard.test.ts` in the extension drives the state machine with scripted
-tool calls and asserts each rule's refusal text and each allowed move;
-`bind.test.ts` asserts a refusal is an event on the bus. `catalogue.bats`
-composes `tests.json` from fixture specialists and reads it out of the
-built role. `machine_services.bats` asserts the pi directory links it.
+edits, runs and outcomes and asserts each rule's refusal and each allowed
+move; the loop's glue in `index.ts` publishes a refusal as `guard_refused`
+on the role's events through the actor's existing publish, which
+`bind.test.ts` already covers. `catalogue.bats` composes `tests.json` from
+fixture specialists and reads it out of the built role.
+`machine_services.bats` asserts the pi directory links it. A run's
+verdict is the bash tool's error flag, which pi sets on a non-zero exit;
+`exitCode` is not in the result pi hands an extension.
 
-On a machine, `tests/manual/specialist.sh` gains a step: with a model, a
+On a machine, `tests/manual/specialist.sh` has the step: `tests.json` in
+the role's pi directory with the specialist's patterns; with a model, a
 role told to add a function without a test is refused, and the refusal is
-in the transcript and on the bus. Not run as of this document's date.
+in the transcript and on the bus as `guard_refused`. Not run as of this
+document's date (`docs/roadmap.md` 6.3).
