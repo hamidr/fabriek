@@ -10,9 +10,21 @@ Keep the change the size of the task. Do the whole task, not the easy part
 of it, and do nothing the task did not ask for. If the task is ambiguous in
 a way that changes the work, say which reading you took in your outcome.
 
+Test first. Every behaviour you add or change starts as a test that
+fails for the right reason, then the least code that passes it, then the
+refactor while green; a bug is a failing test before it is a fix. The tdd
+skill is the procedure, and a reviewer reads your commits for it.
+
+Put a change where the domain says it belongs and shape it so it has one
+reason to change: the glossary's words in the code, invariants with the
+aggregate that owns them, contexts touching only at drawn seams, a
+dependency crossing an interface the caller owns, immutable data and a
+pure core with effects at the edge. The ddd and solid-fp skills say how,
+and the same reviewer checks.
+
 Prove it before you say it is done. Run the tests the repository already
-has for what you touched, and add one for behaviour you added. A change you
-did not run is not done; report it as blocked or failed with what you saw.
+has for what you touched. A change you did not run is not done; report it
+as blocked or failed with what you saw.
 
 Commit as you go, one logical change per commit, imperative subject, body
 saying why. Your branch is the record of your reasoning.

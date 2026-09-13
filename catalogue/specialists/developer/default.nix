@@ -9,6 +9,11 @@
     jq
     python3
   ];
-  skills = [ skills.tool-missing ];
+  skills = [
+    skills.tool-missing
+    skills.tdd
+    skills.ddd
+    skills.solid-fp
+  ];
   prompt = ./PROMPT.md;
 }
