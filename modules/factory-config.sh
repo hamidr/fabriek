@@ -58,6 +58,23 @@ fabriek_factory_role_command() {
 	jq -r --arg r "$role" '(.roles[$r].command // []) | .[]' "$declaration"
 }
 
+## The specialists a role is composed of, one name per line, or nothing when
+## it names none. A name becomes a directory under a catalogue, so it is
+## checked here as well as in the schema: this is the last place before it
+## reaches a path.
+fabriek_factory_role_specialists() {
+	local declaration="$1" role="$2" name
+	fabriek_factory_role_declared "$declaration" "$role" || return 1
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		if ! fabriek_name_ok "$name"; then
+			echo "fabriek: role $role names an unusable specialist: $name" >&2
+			return 1
+		fi
+		printf '%s\n' "$name"
+	done < <(jq -r --arg r "$role" '(.roles[$r].specialists // []) | .[]' "$declaration")
+}
+
 ## The devShell a role works in, or nothing when it names none. A specialist is
 ## a role with its own toolchain, and the toolchain is one devShell of the
 ## project's own flake: the repository declares what a JVM specialist or a

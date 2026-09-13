@@ -22,9 +22,9 @@ fabriek_declaration_program() {
 	## resources is not written out here. What a factory may ask of the machine
 	## is one table in resources.sh, read by this schema, by the operator's own
 	## schema and by the clamp that meets one against the other.
-	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider"]\n'
+	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider", "catalogue"]\n'
 	printf '  , decider:   ["policy"]\n'
-	printf '  , role:      ["command", "provides", "shell"]\n'
+	printf '  , role:      ["command", "provides", "shell", "specialists"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout"]\n'
 	printf '  , budget:    ["runs"]\n'
@@ -62,6 +62,12 @@ fabriek_declaration_program() {
          (if ($v.shell? // null) == null then []
           elif ($v.shell | type) != "string"
           then ["role \($r): shell must name one devShell of this flake"]
+          else [] end),
+         (if ($v.specialists? // null) == null then []
+          elif ($v.specialists | type) != "array"
+          then ["role \($r): specialists must be a list of names from the catalogue"]
+          elif ($v.specialists | map(type != "string") | any)
+          then ["role \($r): specialists must be a list of names, one per element"]
           else [] end)
        ] | cat) | cat),
 
@@ -111,6 +117,17 @@ fabriek_declaration_program() {
        then ["decider: policy must be a path inside the repository: \($p)"]
        else [] end),
 
+    ## A repository's own catalogue is a directory inside it (ADR-042 point
+    ## 3), read at build time like the policy; a path that could leave it
+    ## is refused.
+    ($d.catalogue? as $c
+     | if $c == null then []
+       elif ($c | type) != "string" or ($c | length) == 0
+       then ["catalogue: must name a directory"]
+       elif ($c | startswith("/")) or ($c | split("/") | index("..")) != null
+       then ["catalogue: must be a path inside the repository: \($c)"]
+       else [] end),
+
     ((($d.resources? // {}) | if type == "object" then . else {} end)
      | [ (if ((.cores? // 1) | type) != "number"
           then ["resources: cores must be a number"] else [] end),
@@ -144,6 +161,8 @@ fabriek_declaration_declared_names() {
     + ((if (.roles | type) == "object" then .roles else {} end) | to_entries
        | map("role\trole \(.key)\t\(.key)")
        + map(select(.value.shell? != null) | "shell\trole \(.key)\t\(.value.shell)")
+       + map(.key as $r | ((.value.specialists? // []) | if type == "array" then . else [] end
+             | map(select(type == "string")) | map("specialist\trole \($r)\t\(.)")) | .[])
        + map(.key as $r | ((.value.provides? // []) | map("capability\trole \($r)\t\(.)")) | .[]))
     + ((if (.workflows | type) == "object" then .workflows else {} end) | to_entries
        | map("factory\tworkflow \(.key)\t\(.key)"))

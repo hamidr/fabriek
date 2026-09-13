@@ -102,6 +102,28 @@ declare_with() {
 	assert_output --partial "reviewer"
 }
 
+@test "a role names the specialists it is composed of, one per line" {
+	declare_with '.roles.builder.specialists = ["java", "python"]'
+	run fabriek_factory_role_specialists "$DECL" builder
+	assert_success
+	assert_line --index 0 "java"
+	assert_line --index 1 "python"
+}
+
+@test "a role naming no specialist has none, and that is not an error" {
+	run fabriek_factory_role_specialists "$DECL" reviewer
+	assert_success
+	assert_output ""
+}
+
+# A specialist name becomes a directory name under a catalogue.
+@test "a specialist name that is not a usable name is refused, naming the role" {
+	declare_with '.roles.reviewer.specialists = ["../developer"]'
+	run fabriek_factory_role_specialists "$DECL" reviewer
+	assert_failure
+	assert_output --partial "reviewer"
+}
+
 @test "a role says what it can be given to do" {
 	run fabriek_factory_role_provides "$DECL" reviewer
 	assert_success

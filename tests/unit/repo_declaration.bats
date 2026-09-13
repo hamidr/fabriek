@@ -160,6 +160,35 @@ validate_with() {
 
 # A declared command is argv, one word per element, so a shell line written
 # where a list belongs is refused rather than re-split on the way through.
+@test "a role may name the specialists it is composed of" {
+	run validate_with '.roles.backend.specialists = ["java", "python"]'
+	assert_success
+}
+
+@test "specialists must be a list of names, since one name and a list differ" {
+	run validate_with '.roles.backend.specialists = "java"'
+	assert_failure
+	assert_output --partial "backend"
+	assert_output --partial "specialists"
+}
+
+@test "a specialist name that could reach a path is refused" {
+	run validate_with '.roles.backend.specialists = ["../developer"]'
+	assert_failure
+	assert_output --partial "specialist"
+}
+
+@test "a declaration may name its own catalogue, a path inside the repository" {
+	run validate_with '.catalogue = "fabriek/catalogue"'
+	assert_success
+}
+
+@test "a catalogue path that could leave the repository is refused" {
+	run validate_with '.catalogue = "../somewhere/else"'
+	assert_failure
+	assert_output --partial "catalogue"
+}
+
 @test "a command written as a shell line instead of argv is refused" {
 	run validate_with '.roles.backend.command = "claude --dangerously-skip"'
 	assert_failure
