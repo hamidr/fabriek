@@ -101,6 +101,33 @@ factory_eval() {
 	refute_output --partial 'curl-dev'
 }
 
+@test "a role naming specialists gets their kit in its profile beside its devShell's tools" {
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.specialists = [ \"developer\" ];"
+	run factory_eval '.specialists.builder.order'
+	assert_success
+	assert_output '["developer"]'
+	run factory_eval '.profiles.builder.paths'
+	assert_success
+	assert_output --partial 'fabriek-specialist-builder'
+}
+
+@test "a role naming a specialist no catalogue has fails the build naming the role" {
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.specialists = [ \"rust\" ];"
+	run factory_eval '.specialists.builder.order'
+	assert_failure
+	assert_output --partial "role builder names specialist rust"
+}
+
+@test "the repository's own catalogue is read from the pinned repository beside the shipped one" {
+	mkdir -p "$REPO/fabriek/catalogue/specialists/local"
+	printf 'I am local.\n' >"$REPO/fabriek/catalogue/specialists/local/PROMPT.md"
+	printf '{ specialists, ... }: { extends = [ specialists.developer ]; prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/local/default.nix"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.catalogue = \"fabriek/catalogue\"; fabriek.roles.builder.specialists = [ \"local\" ];"
+	run factory_eval '.specialists.builder.order'
+	assert_success
+	assert_output '["developer","local"]'
+}
+
 @test "when a role names a devShell the repository does not define, the build fails naming the role" {
 	declare_flake ''
 	run factory_eval '.profiles.builder.name'

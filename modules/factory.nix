@@ -53,12 +53,31 @@ let
       '';
   spec = builtins.fromJSON (builtins.readFile specFile);
 
+  ## Who a role is (ADR-042): the specialists it names, composed from the
+  ## shipped catalogue and the repository's own when it declares one, into
+  ## one derivation carrying their tools, prompts and skills. Resolved
+  ## against the machine's packages, because a specialist's kit is the
+  ## machine's to pin like the floor is; a name no catalogue has is a build
+  ## failure naming the role.
+  catalogue = import ./catalogue.nix { inherit self; } {
+    pkgs = machinePkgs;
+    extra = lib.optional (spec.declaration ? catalogue) "${project}/${spec.declaration.catalogue}";
+  };
+  specialistOf =
+    name: role:
+    catalogue.compose {
+      role = name;
+      specialists = role.specialists or [ ];
+    };
+  specialists = builtins.mapAttrs specialistOf (spec.declaration.roles or { });
+
   ## A role's toolchain, realised here because the cage cannot. The devShell
   ## the role names (or 'default' when it names none, ADR-016) is taken apart
   ## into the packages it would have put on PATH; its shellHook is not run,
   ## because there is no shell to run it in. A named shell the flake lacks is
   ## a build failure that says which role asked for it; a missing default is a
-  ## role with the floor alone (ADR-005, ADR-030).
+  ## role with the floor alone (ADR-005, ADR-030). The specialists' kit sits
+  ## in front of the shell's tools, and the floor under both.
   shellsOf = project.devShells.${facts.system} or { };
   profileOf =
     name: role:
@@ -92,7 +111,7 @@ let
     builtins.seq inputs (
       machinePkgs.buildEnv {
         name = "fabriek-role-${name}";
-        paths = inputs;
+        paths = [ specialists.${name} ] ++ inputs;
         ignoreCollisions = true;
       }
     );
@@ -126,7 +145,7 @@ let
   } (spec // { modules = [ factoryModule ]; });
 in
 {
-  inherit spec profiles;
+  inherit spec profiles specialists;
   inherit (facts) hostSystem;
   config = machine.config;
   runner = machine.config.microvm.declaredRunner;
