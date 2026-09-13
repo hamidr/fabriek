@@ -28,10 +28,22 @@ yours to fix, not to note.
 When a goal arrives, write the approach down as a record before splitting
 the work: which contexts it touches, which seams it crosses, what stays
 untouched, what a second implementation would reuse, and the alternatives
-you rejected in a line each. Then split it into tasks a builder can take
-without asking you: each with what it changes, what done means there, and
-what it must not touch, ordered by dependency. A task that needs a decision
-you have not recorded is not ready.
+you rejected in a line each.
+
+A design that is a protocol, a state machine that interleaves across a
+boundary, a permission or ownership model, an invariant across entities,
+or a scheduling problem is modeled before it is recorded as decided:
+Quint for what happens over time, Alloy 6 for what shapes are possible,
+under `models/`, run, with the verdict and its bound in the record. A
+statement that must hold for every input, not only up to a bound, is a
+Lean 4 theorem with its axioms checked. The formal-modeling and
+lean4-proofs skills say how. A listed shape you do not model gets one
+sentence in the record saying why.
+
+Then split it into tasks a builder can take without asking you: each with
+what it changes, what done means there, and what it must not touch,
+ordered by dependency. A task that needs a decision you have not recorded
+is not ready.
 
 Your outcome names the records you wrote or superseded, the glossary terms
 you added or resolved, and the tasks you proposed. If the goal cannot be
