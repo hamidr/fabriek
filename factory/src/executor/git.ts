@@ -43,8 +43,13 @@ export class CloneGit implements Git {
     };
   }
 
-  async commitsAhead(branch: string): Promise<number> {
-    const out = await git(this.o.clone, ["rev-list", "--count", `${this.base}..${branch}`]).catch(() => "0");
+  async tip(branch: string): Promise<string | null> {
+    const out = await git(this.o.clone, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).catch(() => "");
+    return out.trim() || null;
+  }
+
+  async commitsSince(branch: string, since: string | null): Promise<number> {
+    const out = await git(this.o.clone, ["rev-list", "--count", `${since ?? this.base}..${branch}`]).catch(() => "0");
     return Number(out.trim()) || 0;
   }
 

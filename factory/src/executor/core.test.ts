@@ -56,8 +56,10 @@ function fakes() {
     running: () => new Set(started),
   };
   let commits = 1;
+  let tips = 0;
   const git: Git = {
-    async commitsAhead() { return commits; },
+    async tip() { return `tip${tips++}`; },
+    async commitsSince() { return commits; },
     async push(branch) { log.push(`push:${branch}`); },
     async mirror() { log.push("mirror"); },
   };
@@ -126,8 +128,8 @@ describe("the executor", () => {
     const { x, f } = await executor();
     await f.board.create("t", "b", "build");
     f.issues.get(1)!.assignee = "builder";
-    f.roleComment(1, "executor", "attempt 1 started for builder");
-    f.roleComment(1, "executor", "attempt 2 started for builder");
+    f.roleComment(1, "executor", "attempt 1 started for builder at build (branch at none)");
+    f.roleComment(1, "executor", "attempt 2 started for builder at build (branch at none)");
     x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
     const r = await x.apply({ verb: "retry", issue: 1 });
     assert.match(r.ok ? "" : r.reason, /attempts/);
@@ -137,7 +139,7 @@ describe("the executor", () => {
     const { x, f } = await executor();
     await f.board.create("t", "b", "build");
     f.issues.get(1)!.assignee = "builder";
-    f.roleComment(1, "executor", "attempt 1 started for builder");
+    f.roleComment(1, "executor", "attempt 1 started for builder at build (branch at none)");
     f.roleComment(1, "builder", "outcome: failed\n\nthe tests would not compile");
     x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
     const r = await x.apply({ verb: "retry", issue: 1 });
@@ -226,6 +228,49 @@ describe("the executor", () => {
     await x.checkOutcomes();
     assert.deepEqual(f.issues.get(1)?.labels, ["build"]);
     assert.match(f.issues.get(1)?.thread.at(-1)?.body ?? "", /no commit/);
+  });
+
+  it("the attempt comment records the branch's tip, and a done with no commit after it is not done even if earlier tasks left commits", async () => {
+    const { x, f } = await executor();
+    await f.board.create("first", "b", "build");
+    await f.board.create("second", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    assert.match(f.issues.get(1)?.thread[0]?.body ?? "", /^attempt 1 started for builder at build \(branch at tip0\)$/);
+    x.heard("builder", { kind: "ack", issue: 1 });
+    await x.settle();
+    f.roleComment(1, "builder", "outcome: done\n\nfirst task");
+    await x.checkOutcomes();
+    assert.deepEqual(f.issues.get(1)?.labels, ["test"]);
+    // The branch now carries the first task's commit; the second adds none.
+    f.setCommits(0);
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.apply({ verb: "assign", issue: 2, role: "builder" });
+    assert.match(f.issues.get(2)?.thread[0]?.body ?? "", /\(branch at tip1\)$/);
+    x.heard("builder", { kind: "ack", issue: 2 });
+    await x.settle();
+    f.roleComment(2, "builder", "outcome: done\n\nnothing new");
+    await x.checkOutcomes();
+    assert.deepEqual(f.issues.get(2)?.labels, ["build"]);
+    assert.equal(f.issues.get(2)?.assignee, null);
+  });
+
+  it("attempts are counted per stage: a task that used its budget at build still has it at test, and the reviewer's first attempt is attempt 1", async () => {
+    const { x, f } = await executor();
+    await f.board.create("t", "b", "build");
+    for (const attempt of [1, 2]) {
+      x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+      assert.deepEqual(await x.apply({ verb: "assign", issue: 1, role: "builder" }), { ok: true });
+      x.heard("builder", { kind: "ack", issue: 1 });
+      await x.settle();
+      f.roleComment(1, "builder", attempt === 1 ? "outcome: failed\n\nno" : "outcome: done\n\nyes");
+      await x.checkOutcomes();
+    }
+    assert.deepEqual(f.issues.get(1)?.labels, ["test"]);
+    // The same role serves the next stage, and its budget there is untouched.
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    assert.deepEqual(await x.apply({ verb: "assign", issue: 1, role: "builder" }), { ok: true });
+    assert.match(f.issues.get(1)?.thread.at(-1)?.body ?? "", /^attempt 1 started for builder at test/);
   });
 
   it("a done outcome at the last stage closes the issue", async () => {

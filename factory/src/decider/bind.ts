@@ -16,6 +16,7 @@ import { ForgeClient } from "../forge/client.js";
 import { readDeclaration, type Declaration } from "../declaration.js";
 import { parseMessage } from "../messages.js";
 import { Decider, type IssueView, type Snapshot } from "./core.js";
+import { attemptsAt } from "../thread.js";
 
 const STREAM_CAP = 1000;
 const STATE_LABELS = new Set(["assigning", "assigned", "blocked", "memory"]);
@@ -77,13 +78,14 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       const labels = r.labels.map((l) => l.name);
       if (labels.includes("memory")) continue;
       const thread = await o.forge.thread(r.number);
-      const attempts = thread.filter((c) => c.by === "executor" && /^attempt \d+ started/.test(c.body)).length;
+      const stage = labels.find((l) => !STATE_LABELS.has(l)) ?? null;
+      const attempts = stage ? attemptsAt(thread, stage) : 0;
       const assignee = r.assignees?.[0]?.login ?? null;
       const lastOutcome = [...thread].reverse().find((c) => c.by === assignee && c.body.startsWith("outcome:"))?.body ?? null;
       issues.push({
         number: r.number,
         title: r.title,
-        stage: labels.find((l) => !STATE_LABELS.has(l)) ?? null,
+        stage,
         assignee,
         attempts,
         blocked: labels.includes("blocked"),

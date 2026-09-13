@@ -52,7 +52,7 @@ const forge: DeciderForge = {
     }
     throw new Error(`unscripted ${path}`);
   },
-  thread: async () => [{ by: "executor", body: "attempt 1 started for builder" }, { by: "builder", body: "outcome: failed\n\nno" }],
+  thread: async () => [{ by: "executor", body: "attempt 1 started for builder at build (branch at none)" }, { by: "builder", body: "outcome: failed\n\nno" }],
 };
 
 const tick = () => new Promise((r) => setTimeout(r, 20));

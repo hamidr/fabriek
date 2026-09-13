@@ -8,6 +8,7 @@ import type { Command } from "../vocabulary.js";
 import type { Message } from "../messages.js";
 import { capableRoles, stageOf, type Declaration } from "../declaration.js";
 import { isRoleName } from "../names.js";
+import { attemptLine, attemptsAt, isAttemptLine, tipOf } from "../thread.js";
 
 export interface BoardIssue {
   number: number;
@@ -41,8 +42,10 @@ export interface Sessions {
 }
 
 export interface Git {
-  /** Commits on the role's branch that are not on the base. */
-  commitsAhead(branch: string): Promise<number>;
+  /** The commit a branch points at, or null when there is no such branch. */
+  tip(branch: string): Promise<string | null>;
+  /** Commits on the branch after the given one, or after the base when null. */
+  commitsSince(branch: string, since: string | null): Promise<number>;
   push(branch: string): Promise<void>;
   /** main and refs/cageworks/record to origin, together. */
   mirror(): Promise<void>;
@@ -179,8 +182,10 @@ export class Executor {
     return i.labels.find((l) => !STATE_LABELS.has(l)) ?? null;
   }
 
+  /** Attempts at the stage the issue is at now; a task at no stage has had none there. */
   private attemptsOf(i: BoardIssue): number {
-    return i.thread.filter((c) => c.by === "executor" && /^attempt \d+ started/.test(c.body)).length;
+    const stage = this.stageLabel(i);
+    return stage ? attemptsAt(i.thread, stage) : 0;
   }
 
   private async holds(role: string): Promise<boolean> {
@@ -206,7 +211,9 @@ export class Executor {
 
     const attempt = attempts + 1;
     const previous = [...i.thread].reverse().find((c) => c.by === i.assignee && c.body.startsWith("outcome:"));
-    let brief = `attempt ${attempt} started for ${role}`;
+    // Where the branch stands as the attempt starts, so that done is judged
+    // by commits made for this task and not by ones an earlier task left.
+    let brief = attemptLine(attempt, role, stage, await this.o.git.tip(workBranch(role)));
     if (attempt > 1 && previous) brief += `\n\nprevious outcome:\n${previous.body}`;
     await this.o.board.assign(issue, role);
     await this.o.board.setLabels(issue, [...i.labels.filter((l) => l !== ASSIGNED && l !== BLOCKED), ASSIGNING]);
@@ -267,7 +274,7 @@ export class Executor {
   async checkOutcomes(): Promise<void> {
     for (const i of await this.o.board.open()) {
       if (!i.labels.includes(ASSIGNED) || !i.assignee) continue;
-      const started = i.thread.map((c, k) => ({ c, k })).filter(({ c }) => c.by === "executor" && /^attempt \d+ started/.test(c.body)).at(-1);
+      const started = i.thread.map((c, k) => ({ c, k })).filter(({ c }) => c.by === "executor" && isAttemptLine(c.body)).at(-1);
       const outcome = i.thread
         .map((c, k) => ({ c, k }))
         .filter(({ c, k }) => c.by === i.assignee && c.body.startsWith("outcome:") && k > (started?.k ?? -1))
@@ -278,7 +285,7 @@ export class Executor {
       const bare = i.labels.filter((l) => !STATE_LABELS.has(l));
       switch (status) {
         case "done": {
-          if ((await this.o.git.commitsAhead(workBranch(i.assignee))) === 0) {
+          if ((await this.o.git.commitsSince(workBranch(i.assignee), tipOf(started?.c.body ?? ""))) === 0) {
             await this.o.board.comment(i.number, "not done: no commit on the role's branch for this task");
             await this.o.board.setLabels(i.number, bare);
             await this.o.board.assign(i.number, null);
