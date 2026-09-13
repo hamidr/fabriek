@@ -1,9 +1,9 @@
 ---
 id: ADR-033
 title: A cage is an actor, and the executor is the one sender of work
-status: accepted
+status: implemented
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: actors announce ready on a bus and are sent work by one uncaged sender, so mutual exclusion is a property of the sender
 depends_on: [ADR-015, ADR-018, ADR-019]
 supersedes: [ADR-024]
@@ -91,8 +91,12 @@ and no `assigned` row exists that the executor did not send. A bats test
 enumerates `ACL DRYRUN` per user against `EVAL`, `CONFIG`, `ACL` and `SCAN`
 and expects every one refused.
 
-Status 2026-09-13: the executor scenarios above are in
+Implemented 2026-09-13: the executor scenarios above are in
 `factory/src/executor/core.test.ts` (the crash between board write and
-send, the stall, the liar). The `ACL DRYRUN` enumeration is not written:
-`tests/command/guest_services.bats` asserts the ACL script's shape, and a
-DRYRUN needs a Valkey to ask. It is what keeps this at accepted.
+send, the stall, the liar), and `tests/system/journey.sh` asks a real
+Valkey, with the ACL `cageworks-container bus-acl` applied, `ACL DRYRUN`
+for every user against `EVAL`, `CONFIG`, `ACL` and `SCAN` and sees each
+refused, a role refused another's control stream and the decider refused
+a mailbox. The journey also found the executor reading the bus from "$"
+after starting its sessions, which lost a fast actor's ready; it reads
+from where each stream is first.

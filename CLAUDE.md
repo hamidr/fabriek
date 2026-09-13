@@ -63,9 +63,10 @@ A change to what a role session is shows up there as a diff.
   it and bats drives it.
 - `factory/`: the TypeScript package, one for all of the executor
   (`src/executor`), the loop as a pi extension (`src/extension`), the decider
-  (`src/decider`), the relay (`src/relay`) and the TUI (`src/tui`), so the
-  vocabulary (`src/vocabulary.ts`) and the bus messages (`src/messages.ts`)
-  are defined once. No runtime dependency and no npm: built with `tsc`, tested
+  (`src/decider`), the relay (`src/relay`), the TUI (`src/tui`) and the two
+  scripted stand-ins for pi (`src/fake-actor`, `src/fake-decider`), so the
+  vocabulary (`src/vocabulary.ts`), the bus messages (`src/messages.ts`) and
+  the thread's attempt lines (`src/thread.ts`) are defined once. No runtime dependency and no npm: built with `tsc`, tested
   with node's own runner, pi's types linked in from the pi in the closure
   (`factory/default.nix`).
 - `modules/names.sh`: the names cageworks accepts, checked where they are
@@ -95,6 +96,12 @@ A change to what a role session is shows up there as a diff.
   cage, bound read-only into a role session.
 - `modules/package.nix`: the two programs, wrapped with the module directory
   they source and the tools they run.
+- `tests/system/journey.sh`: the whole factory on this host with no cage
+  and no model: Valkey and a forge for real on localhost, the real guest
+  program, executor and relay, and the scripted actor and decider
+  (`factory/src/fake-actor`, `factory/src/fake-decider`) where the cages
+  would run pi. PRD-006's journey from a filed goal to a mirrored record,
+  with the refusals along the way and the bus ACL asked with DRYRUN.
 - `tests/manual/`: what cannot be a bats test because it needs a machine.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's; `lib.sh` is
@@ -111,8 +118,9 @@ nix develop                          # bash, jq, shellcheck, bats, git, node
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/       # ~310 scenarios, minutes
 nix develop --command bats -f "one invocation" tests/command/seam.bats
-nix build .#factory                  # compiles and runs its 97 scenarios
+nix build .#factory                  # compiles and runs its 125 scenarios
 nix develop --command bash -c 'cd factory && npm test'
+nix develop --command tests/system/journey.sh              # the factory on this host, ~4 minutes
 CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
 ```
 

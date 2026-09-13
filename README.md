@@ -139,6 +139,7 @@ nix develop
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix build .#factory
+nix develop --command tests/system/journey.sh   # the whole factory on this host, no model
 docmeta-check docs && docmeta-tracker --check docs
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
 ```

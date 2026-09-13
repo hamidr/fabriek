@@ -96,3 +96,12 @@ verb by name for each argument the declaration refuses, and
 `factory/src/decider/core.test.ts` yields a valid `assign` from a recorded
 board and has the executor refuse one naming a role that lacks the
 capability (docs/roadmap.md 3.3, 3.4).
+
+Since 2026-09-13 `tests/system/journey.sh` runs the executor against a
+real bus and forge with a scripted decider (the decider's own binding,
+judged by a policy with no model): every ask passes the core's gate and
+the executor's, and the refusals the journey provokes are the executor's.
+It found two rules the executor got wrong: done was judged on any commit
+on the role's branch, so an earlier task's commit passed a later task,
+and attempts were counted per task rather than per stage. Both fixed;
+the attempt line now names the stage and where the branch stood.

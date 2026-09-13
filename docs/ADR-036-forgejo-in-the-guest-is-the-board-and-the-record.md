@@ -99,6 +99,10 @@ give the same twenty results.
 
 Status 2026-09-13: the `cageworks up` and executor scenarios above hold
 (`tests/command/prepare.bats`, `factory/src/executor/core.test.ts`), and
-since 2026-09-13 prepare reads the record back onto an empty board. The
-decision-52 probe script has not been rerun against the image the machine
-pins; that rerun is what keeps this at accepted.
+since 2026-09-13 prepare reads the record back onto an empty board.
+`tests/system/journey.sh` drives the board on a real forge (Gitea on a
+Mac, Forgejo elsewhere): labels moved, a pull request opened, main and
+the record mirrored to origin. It found prepare making no `assigning` or
+`assigned` label and putting no `main` on the forge, both fixed. The
+decision-52 probe script has not been rerun against the image the
+machine pins; that rerun is what keeps this at accepted.

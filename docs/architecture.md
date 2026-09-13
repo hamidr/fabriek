@@ -165,10 +165,13 @@ findings to `findings:<role>`.
 actor with an `assigning` row what it holds and resolving those rows from
 the answers, never creating one; applies the six verbs after validating each
 against the declaration and the board; writes `assigning` and the attempt
-comment before sending, `assigned` on the ack; reads outcomes off the board
-and moves the stage label only when a commit is on the role's branch, closes
-at the last stage, labels `blocked`, frees the role on failed; stops routing
-at ninety percent of the ceiling. `main.ts` connects as the executor's bus
+line (`thread.ts`: the stage and where the role's branch stood) before
+sending, `assigned` on the ack; reads outcomes off the board and moves the
+stage label only when the role's branch has a commit since the attempt
+began, closes at the last stage, labels `blocked`, frees the role on
+failed; counts attempts per stage; stops routing at ninety percent of the
+ceiling. It reads the control streams from where they are before it
+starts the sessions, so no ready is missed. `main.ts` connects as the executor's bus
 user, starts every role's session and the decider's through the guest
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend, named by role from the
@@ -220,11 +223,23 @@ a password the machine set fresh on the operator's account
 ```
 nix develop --command shellcheck -x cageworks cageworks-container modules/*.sh
 nix develop --command bats --recursive tests/       # 310 scenarios, minutes
-nix build .#factory                                  # 97 scenarios
+nix build .#factory                                  # 125 scenarios
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+nix develop --command tests/system/journey.sh        # the factory on this host
 CAGEWORKS_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine
 CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
 ```
+
+`tests/system/journey.sh` runs the factory as a system with no cage and no
+model: Valkey and a forge on localhost, `factory-prepare` and `bus-acl` on
+them, the executor with `CAGEWORKS_SESSION_COMMAND` naming a session that
+runs `cageworks-fake-actor` or `cageworks-fake-decider` where a cage would
+run pi. The scripted actor is the extension's own actor, bus and board
+(`extension/bind.ts`) driven by a script; the scripted decider is the
+decider's own binding (`decider/bind.ts`) judged by `fake-decider/policy.ts`.
+Every command still passes the core's gate and the executor's. What the
+journey proves is everything but the model and the cage; what needs a
+machine is the cage, the bridge, the proxy's count and pi.
 
 ## Not built, and known gaps
 
@@ -238,5 +253,7 @@ CAGEWORKS_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
   builder; a retry has always succeeded.
 - `tests/manual/parity.sh` passes up to the first assignment and is gated
   there on a credential the endpoint accepts; see `docs/roadmap.md` 5.1.
+  Everything after the assignment is proved on this host by
+  `tests/system/journey.sh` with scripted actors, on Gitea on a Mac.
 - Which model a session starts on is the machine's choice, a table in
   `modules/guest/floor.nix`; a declaration cannot name one.

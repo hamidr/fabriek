@@ -232,6 +232,17 @@ One package, built through the flake, tests in its own runner.
   proof says so and stops. The proof reads the machine as built: the forge
   on the bridge, the decider as a session the executor starts, the stages
   from the spec, the issue by its title, routing off the relay.
+  2026-09-13: the journey after the assignment passes on this host with
+  scripted actors in place of pi (`tests/system/journey.sh`): assigned,
+  acked, worked, moved, closed; a done with no commit refused; a failed
+  task retried by the same role; push to a pull request; mirror to origin;
+  ACL DRYRUN per bus user. Six defects found and fixed on the way, each
+  one the machine would have hit: the ready race at the executor's start,
+  the missing `assigning`/`assigned` labels, no `main` on the forge, the
+  executor's comments never read as its own, done accepted on an earlier
+  task's commit, attempts counted per task rather than per stage. What
+  still needs a machine and a credential: the cage, the bridge, the
+  proxy's count, and pi itself.
 - 5.2 `factory-structure.als` and `vm-lifecycle.qnt` green or deleted with
   a reason; `task-claim.qnt`, `egress-authority.als`, `ledger-tap.qnt` and
   `factory-lifecycle.qnt` deleted. Done 2026-09-12: `vm-lifecycle.qnt`
