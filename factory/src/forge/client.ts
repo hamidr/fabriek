@@ -52,9 +52,10 @@ export class ForgeClient {
     return { number: r.number, title: r.title, body: r.body ?? "", labels: r.labels.map((l) => l.name), assignee: r.assignees?.[0]?.login ?? null };
   }
 
+  /** Who said what, oldest first. The executor writes with the owner's token, so the owner's words read as the executor's. */
   async thread(n: number): Promise<Comment[]> {
     const r = await this.call<{ user: { login: string }; body: string }[]>("GET", `${this.repo}/issues/${n}/comments`);
-    return r.map((c) => ({ by: c.user.login, body: c.body }));
+    return r.map((c) => ({ by: c.user.login === this.o.owner ? "executor" : c.user.login, body: c.body }));
   }
 
   async comment(n: number, body: string): Promise<void> {

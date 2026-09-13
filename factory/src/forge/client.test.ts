@@ -56,8 +56,12 @@ describe("a forge client", () => {
     assert.equal(last?.path, "/api/v1/repos/operator/acme/issues/7");
   });
 
-  it("reads a thread as who said what, oldest first", async () => {
-    answer = () => [200, [{ user: { login: "executor" }, body: "brief", created_at: "2026-09-12T10:00:00Z" }, { user: { login: "builder" }, body: "outcome: done", created_at: "2026-09-12T11:00:00Z" }]];
+  it("reads a thread as who said what, oldest first, with the repository owner's words read as the executor's", async () => {
+    // The executor writes with the operator's token, so the forge shows its
+    // comments as the owner's; every reader of a thread looks for the
+    // executor by that name. Found on a host: attempts counted zero and a
+    // stale outcome was read as fresh, because nothing was ever "executor".
+    answer = () => [200, [{ user: { login: "operator" }, body: "brief", created_at: "2026-09-12T10:00:00Z" }, { user: { login: "builder" }, body: "outcome: done", created_at: "2026-09-12T11:00:00Z" }]];
     const thread = await client().thread(7);
     assert.deepEqual(thread, [{ by: "executor", body: "brief" }, { by: "builder", body: "outcome: done" }]);
   });
