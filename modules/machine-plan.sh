@@ -70,6 +70,15 @@ fabriek_role_profile() {
 	readlink -f "$link"
 }
 
+## The store path of a role's pi directory, resolved like its profile.
+fabriek_role_pi_dir() {
+	local etc="$1" role="$2" link
+	fabriek_name_ok "$role" || return 1
+	link="$etc/roles/$role/pi"
+	[ -L "$link" ] || [ -d "$link" ] || return 1
+	readlink -f "$link"
+}
+
 ## What makes a supervised session an actor (ADR-033, ADR-035): pi's
 ## configuration directory bound where PI_CODING_AGENT_DIR names it, the bus
 ## password and the forge token bound read-only, and the environment the
@@ -89,12 +98,20 @@ fabriek_actor_args() {
 		return 1
 	fi
 	## The decider runs the machine's own loop, in a directory of its own,
-	## and reads the declaration and the policy rather than a capability.
-	local pidir="$etc/pi" capabilities=""
+	## and reads the declaration and the policy rather than a capability. A
+	## role runs the loop from its own directory, one store path the build
+	## made beside its profile, carrying who it is (ADR-042 point 5); a
+	## session without it would be an agent with no loop, so it is refused.
+	local pidir capabilities="" specialists=""
 	if [ "$role" = "$FABRIEK_DECIDER" ]; then
 		pidir="$etc/pi-decider"
 	else
+		if ! pidir="$(fabriek_role_pi_dir "$etc" "$role")"; then
+			echo "fabriek: role $role has no pi directory at $etc/roles/$role/pi; the machine's build makes one per role" >&2
+			return 1
+		fi
 		capabilities="$(jq -r --arg r "$role" '.roles[$r].provides | join(",")' "$etc/declaration.json")"
+		specialists="$(jq -r --arg r "$role" '(.roles[$r].specialists // []) | join(",")' "$etc/declaration.json")"
 	fi
 	local forge bus proxy
 	forge="$(jq -r .forgejo "$etc/bridge.json")"
@@ -126,6 +143,7 @@ fabriek_actor_args() {
 	printf '%s\n' \
 		"--setenv" "FABRIEK_ROLE=$role" \
 		"--setenv" "FABRIEK_CAPABILITIES=$capabilities" \
+		"--setenv" "FABRIEK_SPECIALISTS=$specialists" \
 		"--setenv" "FABRIEK_BUS=$bus" \
 		"--setenv" "FABRIEK_FORGE=http://$forge/api/v1" \
 		"--setenv" "FABRIEK_REPOSITORY=operator/$factory" \

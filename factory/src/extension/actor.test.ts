@@ -66,6 +66,24 @@ describe("an actor", () => {
     assert.deepEqual(actor.state, { kind: "working", issue: 7, attempt: 1 });
   });
 
+  it("given specialists, the brief names them after the role, so the brief and the system prompt agree", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, specialists: ["java", "python"], ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    const prompt = (f.agent as { lastPrompt?: string }).lastPrompt ?? "";
+    assert.ok(prompt.startsWith("You are the role builder.\nYour specialists: java, python.\n"), prompt.split("\n").slice(0, 2).join(" | "));
+  });
+
+  it("given no specialists, the brief says nothing about them", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    const prompt = (f.agent as { lastPrompt?: string }).lastPrompt ?? "";
+    assert.ok(!prompt.includes("specialists"), prompt.split("\n")[1]);
+  });
+
   it("when an assignment arrives while working, it is refused and the actor keeps its task", async () => {
     const f = fakes();
     const actor = new Actor({ role: "builder", capabilities, ...f });

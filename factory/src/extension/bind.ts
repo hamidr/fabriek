@@ -8,6 +8,7 @@
 // Environment, set by the executor when it starts the session:
 //   FABRIEK_ROLE          the role this cage is
 //   FABRIEK_CAPABILITIES  what it provides, comma separated
+//   FABRIEK_SPECIALISTS   who it is composed of, comma separated, may be empty
 //   FABRIEK_BUS           host:port of the bus on the bridge
 //   FABRIEK_FORGE         the forge's API base, http://host:port/api/v1
 //   FABRIEK_REPOSITORY    owner/name on the forge
@@ -36,6 +37,7 @@ export type ActorForge = Pick<ForgeClient, "issue" | "thread" | "comment" | "mem
 export interface BindOptions {
   role: string;
   capabilities: string[];
+  specialists?: string[];
   connect(): Promise<ActorBus>;
   forge: ActorForge;
   agent: Agent;
@@ -88,7 +90,7 @@ export function bindActor(o: BindOptions): Bound {
     rewriteMemory: (n, body) => o.forge.rewriteMemory(n, body),
     blockedOn: () => o.forge.blockedOn(o.role),
   };
-  const actor = new Actor({ role: o.role, capabilities: o.capabilities, bus: new RoleBus(() => client, o.role), board, agent: o.agent, checks: o.checks });
+  const actor = new Actor({ role: o.role, capabilities: o.capabilities, specialists: o.specialists ?? [], bus: new RoleBus(() => client, o.role), board, agent: o.agent, checks: o.checks });
 
   /** Read the mailbox until stopped, reconnecting when the bus goes away. */
   async function listen(): Promise<void> {
@@ -137,13 +139,14 @@ function env(name: string): string {
 }
 
 /** The binding's inputs as the executor hands them to a session, read once. */
-export function fromEnvironment(): Pick<BindOptions, "role" | "capabilities" | "connect" | "forge"> & { baseBranch: string } {
+export function fromEnvironment(): Pick<BindOptions, "role" | "capabilities" | "specialists" | "connect" | "forge"> & { baseBranch: string } {
   const role = env("FABRIEK_ROLE");
   const [busHost, busPort] = env("FABRIEK_BUS").split(":");
   const [owner, repo] = env("FABRIEK_REPOSITORY").split("/");
   return {
     role,
     capabilities: env("FABRIEK_CAPABILITIES").split(",").filter(Boolean),
+    specialists: (process.env["FABRIEK_SPECIALISTS"] ?? "").split(",").filter(Boolean),
     connect: () =>
       BusClient.connect({
         host: busHost ?? "127.0.0.1",

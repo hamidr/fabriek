@@ -32,63 +32,82 @@ let
     openai = "gpt-5";
   };
   startOn = lib.head ((lib.attrValues routed) ++ [ "anthropic" ]);
+  settingsText = builtins.toJSON {
+    defaultProvider = startOn;
+    defaultModel = defaultModels.${startOn};
+    ## A repository's own .pi is not the machine's to run: a session asks
+    ## nobody, and what a role runs is declared, not found in the tree.
+    defaultProjectTrust = "never";
+  };
   settings = {
     mode = "0444";
-    text = builtins.toJSON {
-      defaultProvider = startOn;
-      defaultModel = defaultModels.${startOn};
-      ## A repository's own .pi is not the machine's to run: a session asks
-      ## nobody, and what a role runs is declared, not found in the tree.
-      defaultProjectTrust = "never";
-    };
+    text = settingsText;
   };
+  ## The credential is the proxy's to add; the placeholder only makes pi
+  ## consider the provider configured. The path is the proxy's per-host
+  ## location, so a request to the provider lands at the proxy and leaves
+  ## the machine with the header the operator holds.
+  modelsText = builtins.toJSON {
+    providers = lib.mapAttrs' (
+      host: provider:
+      lib.nameValuePair provider {
+        baseUrl = "http://${plan.proxy}/${host}";
+        apiKey = "fabriek";
+      }
+    ) routed;
+  };
+  loopText = ''
+    // The loop (ADR-035). Built into the machine; nothing here is the
+    // repository's to change.
+    export { default } from "${extension}";
+  '';
+
+  ## A role's own pi directory (ADR-042 point 5): the loop, the models and
+  ## the settings every role gets, and from its profile the prompt and the
+  ## skills of who it is. One store path per role, resolved by the machine
+  ## program like the profile is, so what the cage binds carries no symlink
+  ## into an /etc it does not have.
+  roles = lib.attrNames (cfg.declaration.roles or { });
+  piDirOf =
+    role:
+    let
+      profile = config.environment.etc."fabriek/roles/${role}/profile".source;
+    in
+    pkgs.runCommand "fabriek-pi-${role}" { } ''
+      mkdir -p $out/extensions/fabriek
+      cp ${pkgs.writeText "index.ts" loopText} $out/extensions/fabriek/index.ts
+      cp ${pkgs.writeText "settings.json" settingsText} $out/settings.json
+      cp ${pkgs.writeText "models.json" modelsText} $out/models.json
+      ln -s ${profile}/share/fabriek/specialist/skills $out/skills
+      ln -s ${profile}/share/fabriek/specialist/APPEND_SYSTEM.md $out/APPEND_SYSTEM.md
+    '';
 in
 {
   config = {
     nixcage.containerPackages = [ pkgs.pi-coding-agent ];
 
-    ## Real files, not /etc's usual symlinks: a session binds the directory
-    ## and a cage has no /etc/static for a symlink to land in.
-    environment.etc."fabriek/pi/extensions/fabriek/index.ts" = {
-      mode = "0444";
-      text = ''
-        // The loop (ADR-035). Built into the machine; nothing here is the
-        // repository's to change.
-        export { default } from "${extension}";
-      '';
-    };
-
-    ## The decider's loop (ADR-034 point 1), in a directory of its own so a
-    ## role's session never loads it. Same models.json: the decider reaches
-    ## the model through the same proxy and is counted on its own address.
-    environment.etc."fabriek/pi-decider/extensions/fabriek/index.ts" = {
-      mode = "0444";
-      text = ''
-        export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
-      '';
-    };
-    environment.etc."fabriek/pi/settings.json" = settings;
-    environment.etc."fabriek/pi-decider/settings.json" = settings;
-    environment.etc."fabriek/pi-decider/models.json" = {
-      mode = "0444";
-      source = config.environment.etc."fabriek/pi/models.json".source;
-    };
-
-    ## The credential is the proxy's to add; the placeholder only makes pi
-    ## consider the provider configured. The path is the proxy's per-host
-    ## location, so a request to the provider lands at the proxy and leaves
-    ## the machine with the header the operator holds.
-    environment.etc."fabriek/pi/models.json" = {
-      mode = "0444";
-      text = builtins.toJSON {
-        providers = lib.mapAttrs' (
-          host: provider:
-          lib.nameValuePair provider {
-            baseUrl = "http://${plan.proxy}/${host}";
-            apiKey = "fabriek";
-          }
-        ) routed;
+    environment.etc =
+      lib.listToAttrs (
+        map (role: lib.nameValuePair "fabriek/roles/${role}/pi" { source = piDirOf role; }) roles
+      )
+      // {
+        ## The decider's loop (ADR-034 point 1), in a directory of its own
+        ## so a role's session never loads it. Real files, not /etc's usual
+        ## symlinks: a session binds the directory and a cage has no
+        ## /etc/static for a symlink to land in. Same models.json as a
+        ## role's: the decider reaches the model through the same proxy and
+        ## is counted on its own address.
+        "fabriek/pi-decider/extensions/fabriek/index.ts" = {
+          mode = "0444";
+          text = ''
+            export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
+          '';
+        };
+        "fabriek/pi-decider/settings.json" = settings;
+        "fabriek/pi-decider/models.json" = {
+          mode = "0444";
+          text = modelsText;
+        };
       };
-    };
   };
 }

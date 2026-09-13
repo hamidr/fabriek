@@ -173,13 +173,28 @@ machine_text() {
 }
 
 # A cage binds the directory and has no /etc/static of its own, so a symlink
-# there is a file the cage cannot open: the pi directories are real files.
-@test "the loop and models.json reach a cage as files, not as symlinks into an /etc it does not have" {
+# there is a file the cage cannot open: the decider's pi directory is real
+# files, and a role's is one store path the machine program resolves.
+@test "the decider's loop and models.json reach its cage as files, not as symlinks into an /etc it does not have" {
 	local f
-	for f in pi/extensions/fabriek/index.ts pi/models.json pi-decider/extensions/fabriek/index.ts pi-decider/models.json; do
+	for f in pi-decider/extensions/fabriek/index.ts pi-decider/models.json; do
 		run machine_eval "c.environment.etc.\"fabriek/$f\".mode"
 		assert_output '"0444"'
 	done
+}
+
+# Who a role is rides in the directory pi already reads (ADR-042 point 5):
+# one per role, from the store, beside its profile. The shared one is gone,
+# because a directory every role read could carry no role's prompt.
+@test "each role is handed its own pi directory from the store, and the shared one is gone" {
+	local r
+	for r in builder reviewer; do
+		run machine_eval "c.environment.etc.\"fabriek/roles/$r/pi\".source"
+		assert_success
+		assert_output --partial "fabriek-pi-$r"
+	done
+	run machine_eval 'c.environment.etc ? "fabriek/pi/settings.json"'
+	assert_output false
 }
 
 # pi starts on no model unless told one, and asks before trusting a
@@ -187,15 +202,12 @@ machine_text() {
 # answered. Found on a machine whose decider said "No API key found for the
 # selected model" every thirty seconds.
 @test "every supervised session starts on a model of the routed provider and trusts no project settings" {
-	local d
-	for d in pi pi-decider; do
-		run machine_text "c.environment.etc.\"fabriek/$d/settings.json\".text"
-		assert_output --partial '"defaultProvider":"anthropic"'
-		assert_output --partial '"defaultModel":"claude-sonnet-4-5"'
-		assert_output --partial '"defaultProjectTrust":"never"'
-		run machine_eval "c.environment.etc.\"fabriek/$d/settings.json\".mode"
-		assert_output '"0444"'
-	done
+	run machine_text 'c.environment.etc."fabriek/pi-decider/settings.json".text'
+	assert_output --partial '"defaultProvider":"anthropic"'
+	assert_output --partial '"defaultModel":"claude-sonnet-4-5"'
+	assert_output --partial '"defaultProjectTrust":"never"'
+	run machine_eval 'c.environment.etc."fabriek/pi-decider/settings.json".mode'
+	assert_output '"0444"'
 }
 
 @test "the executor does not start until the machine has been prepared, and is restarted when it is" {
@@ -211,10 +223,10 @@ machine_text() {
 }
 
 @test "every supervised session is handed the loop and a models.json that points pi at the proxy" {
-	run machine_text 'c.environment.etc."fabriek/pi/extensions/fabriek/index.ts".text'
+	run machine_text 'c.environment.etc."fabriek/pi-decider/extensions/fabriek/index.ts".text'
 	assert_output --partial 'fabriek-factory'
-	assert_output --partial 'dist/extension/index.js'
-	run machine_text 'c.environment.etc."fabriek/pi/models.json".text'
+	assert_output --partial 'dist/decider/index.js'
+	run machine_text 'c.environment.etc."fabriek/pi-decider/models.json".text'
 	assert_output --partial '"anthropic":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.anthropic.com"}'
 	refute_output --partial openai
 	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'

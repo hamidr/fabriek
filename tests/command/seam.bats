@@ -88,21 +88,25 @@ EOF
 ## takes its address from, and the profile its toolchain is.
 declare_machine() {
 	export FABRIEK_ETC="$TEST_TEMP_DIR/etc"
-	mkdir -p "$FABRIEK_ETC/roles/builder" "$TEST_TEMP_DIR/store/role-builder/bin"
+	mkdir -p "$FABRIEK_ETC/roles/builder" "$TEST_TEMP_DIR/store/role-builder/bin" "$TEST_TEMP_DIR/store/pi-builder/extensions"
 	ln -s "$TEST_TEMP_DIR/store/role-builder" "$FABRIEK_ETC/roles/builder/profile"
+	# The role's own pi directory (ADR-042 point 5): the loop, the models and
+	# its specialists' kit, one store path per role beside its profile.
+	ln -s "$TEST_TEMP_DIR/store/pi-builder" "$FABRIEK_ETC/roles/builder/pi"
 	# The session is handed the resolved store path, which on a host that
 	# symlinks /tmp is not the path the link was written with.
 	PROFILE="$(readlink -f "$TEST_TEMP_DIR/store/role-builder")"
+	PIDIR="$(readlink -f "$TEST_TEMP_DIR/store/pi-builder")"
 	cat >"$FABRIEK_ETC/bridge.json" <<'JSON'
 { "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
 	cat >"$FABRIEK_ETC/declaration.json" <<'JSON'
-{ "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend" } } }
+{ "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend", "specialists": ["java", "python"] } } }
 JSON
 	# What prepare made for the role: its bus password and its forge token.
-	mkdir -p "$STATE/bus" "$STATE/forge" "$FABRIEK_ETC/pi/extensions" "$FABRIEK_ETC/pi-decider/extensions"
+	mkdir -p "$STATE/bus" "$STATE/forge" "$FABRIEK_ETC/pi-decider/extensions"
 	echo pass >"$STATE/bus/builder"
 	echo tok >"$STATE/forge/builder-token"
 	echo pass >"$STATE/bus/decider"
@@ -152,7 +156,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $FABRIEK_ETC/pi:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $PIDIR:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -339,6 +343,18 @@ EOF
 	run_fabriek_container role-enter --signing-key builder acme builder
 	assert_failure
 	assert_output --partial "fabriek up"
+}
+
+# The loop, the models and who the role is all ride in that directory; a
+# session started without it is an agent with no loop, which nobody can reach.
+@test "a role whose build realised no pi directory is refused rather than started as nobody" {
+	rm "$FABRIEK_ETC/roles/builder/pi"
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_fabriek_container role-enter --repository "$REPO" \
+		--task-dir "$TEST_TEMP_DIR/run" --signing-key builder \
+		acme builder
+	assert_failure
+	assert_output --partial "role builder has no pi directory"
 }
 
 @test "a role whose build realised no profile enters with the floor alone" {

@@ -56,6 +56,8 @@ export type State =
 export interface ActorOptions {
   role: string;
   capabilities: string[];
+  /** Who this role is composed of (ADR-042); named in the brief so it agrees with the system prompt. */
+  specialists?: string[];
   bus: Bus;
   board: Board;
   agent: Agent;
@@ -128,8 +130,10 @@ export class Actor {
 
   /** The prompt a task starts with: the issue, its thread, and what this role remembers. */
   private brief(task: Issue, thread: Comment[], attempt: number): string {
+    const specialists = this.o.specialists ?? [];
     const lines = [
       `You are the role ${this.o.role}.`,
+      ...(specialists.length > 0 ? [`Your specialists: ${specialists.join(", ")}.`] : []),
       `Task #${task.number}, attempt ${attempt}: ${task.title}`,
       "",
       task.body,
