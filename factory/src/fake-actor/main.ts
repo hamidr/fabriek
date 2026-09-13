@@ -5,10 +5,13 @@
 // a host with no cage and no credential (tests/system/journey.sh).
 //
 // Environment, beyond what the executor sets for any session:
-//   CAGEWORKS_CLONE         the clone the role's branch is made in
-//   CAGEWORKS_FAKE_OUTCOME  done (default), done-without-commit, failed, blocked
+//   CAGEWORKS_CLONE              the clone the role's branch is made in
+//   CAGEWORKS_FAKE_OUTCOME       done (default), done-without-commit, failed, blocked
+//   CAGEWORKS_FAKE_OUTCOME_FILE  a file read at each task, whose word wins
+//                                over the variable, so a harness can change
+//                                the script between tasks of one session
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bindActor, fromEnvironment, type Bound } from "../extension/bind.js";
@@ -18,8 +21,20 @@ type Script = "done" | "done-without-commit" | "failed" | "blocked";
 
 const world = fromEnvironment();
 const clone = process.env["CAGEWORKS_CLONE"] ?? "";
-const script = (process.env["CAGEWORKS_FAKE_OUTCOME"] ?? "done") as Script;
 const branch = workBranch(world.role);
+
+function script(): Script {
+  const file = process.env["CAGEWORKS_FAKE_OUTCOME_FILE"];
+  if (file) {
+    try {
+      const word = readFileSync(file, "utf8").trim();
+      if (word) return word as Script;
+    } catch {
+      // no file yet: the variable says
+    }
+  }
+  return (process.env["CAGEWORKS_FAKE_OUTCOME"] ?? "done") as Script;
+}
 
 function git(args: string[], cwd = clone): string {
   return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", `user.name=${world.role}`, "-c", `user.email=${world.role}@factory.invalid`, ...args], { cwd, encoding: "utf8" });
@@ -47,10 +62,11 @@ async function work(): Promise<void> {
   const actor = bound.actor;
   if (actor.state.kind !== "working") return;
   const { issue } = actor.state;
+  const outcome = script();
   await actor.publish("turn_start", { issue });
-  if (script === "done") commitOne(issue);
+  if (outcome === "done") commitOne(issue);
   await actor.publish("tool_call", { toolName: "git", issue });
-  switch (script) {
+  switch (outcome) {
     case "done":
     case "done-without-commit":
       await actor.reportOutcome({ status: "done", summary: `scripted: task #${issue} done` });
@@ -62,8 +78,8 @@ async function work(): Promise<void> {
       await actor.reportOutcome({ status: "blocked", summary: `scripted: task #${issue} waits` });
       break;
   }
-  await actor.updateMemory(`last task: #${issue} (${script})`);
-  await actor.share(`${world.role} finished #${issue} as ${script}`);
+  await actor.updateMemory(`last task: #${issue} (${outcome})`);
+  await actor.share(`${world.role} finished #${issue} as ${outcome}`);
   await actor.publish("turn_end", { issue });
   await actor.settled();
 }
