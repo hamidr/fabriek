@@ -1,9 +1,9 @@
 ---
 id: ADR-034
 title: The supervisor splits into a caged decider and an uncaged executor
-status: accepted
+status: implemented
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: a caged model judges what happens next and asks; an uncaged executor validates each verb and acts
 depends_on: [ADR-015, ADR-030, ADR-033]
 supersedes: []
@@ -90,3 +90,9 @@ Executor scenarios (docs/roadmap.md 3.3): every verb with each argument
 that the declaration refuses, and the refusal named. Decider scenarios
 (3.4): a recorded board yields a valid `assign`; an `assign` naming a role
 that does not provide the capability is refused by the executor.
+
+Implemented 2026-09-13: `factory/src/executor/core.test.ts` refuses every
+verb by name for each argument the declaration refuses, and
+`factory/src/decider/core.test.ts` yields a valid `assign` from a recorded
+board and has the executor refuse one naming a role that lacks the
+capability (docs/roadmap.md 3.3, 3.4).

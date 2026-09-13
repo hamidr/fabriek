@@ -1,9 +1,9 @@
 ---
 id: ADR-040
 title: The declaration is built into the machine's image
-status: accepted
+status: implemented
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time
 depends_on: [ADR-016, ADR-019, ADR-020, ADR-030]
 supersedes: []
@@ -60,3 +60,8 @@ Machine scenarios (docs/roadmap.md 2.1): a declaration with an unknown key
 fails `cageworks up` at the build with the key named; a role naming a
 devShell the flake lacks fails the build; a session started for a role has
 that devShell's environment without running `nix develop`.
+
+Implemented 2026-09-13: `tests/command/factory_flake.bats` fails the build
+by the unknown key's name and by the role naming a devShell the flake
+lacks, and `tests/command/seam.bats` hands the session its role's profile
+on `NIXCAGE_PATH_PREFIX` with no `nix develop` run (docs/roadmap.md 2.1).

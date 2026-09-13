@@ -90,3 +90,9 @@ task it was never sent; in every case no task is `assigned` to two actors
 and no `assigned` row exists that the executor did not send. A bats test
 enumerates `ACL DRYRUN` per user against `EVAL`, `CONFIG`, `ACL` and `SCAN`
 and expects every one refused.
+
+Status 2026-09-13: the executor scenarios above are in
+`factory/src/executor/core.test.ts` (the crash between board write and
+send, the stall, the liar). The `ACL DRYRUN` enumeration is not written:
+`tests/command/guest_services.bats` asserts the ACL script's shape, and a
+DRYRUN needs a Valkey to ask. It is what keeps this at accepted.

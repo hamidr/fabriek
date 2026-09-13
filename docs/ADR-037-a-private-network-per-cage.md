@@ -74,3 +74,10 @@ address fails; a packet sent with a peer's source address is dropped, shown
 by the proxy's count for the peer not moving; a request from the cage moves
 its own count and nobody else's. The soft limit stops routing with a running
 turn allowed to finish; the hard limit returns a refusal from the proxy.
+
+Status 2026-09-13: `tests/manual/isolation.sh` ran on a machine on
+2026-09-12 (docs/roadmap.md 2.4): no route off the machine, no cage to
+cage, a spoofed source dropped. The two Thens that read the proxy's count,
+and the soft and hard limits, are gated on a credential the endpoint
+accepts. The counting filter itself is driven with the API's own bodies
+since 2026-09-13 (`modules/guest/spend.test.mjs`).

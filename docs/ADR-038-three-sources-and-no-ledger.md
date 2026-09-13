@@ -54,3 +54,9 @@ Extension scenarios (docs/roadmap.md 3.2): every turn and tool event reaches
 the bus and no file under the role's home grows with them. Machine scenarios
 (2.2): a process started in a cage appears on `probes` with that cage's uid
 and the stream length never exceeds its cap.
+
+Status 2026-09-13: turn and tool events reach the bus as events
+(`factory/src/extension/actor.test.ts`), and since 2026-09-13 each probe
+entry carries the role its uid belongs to (`tests/command/probes.bats`).
+Not yet seen on a machine: a process started in a cage appearing on
+`probes`, and the cap holding; that is what keeps this at accepted.

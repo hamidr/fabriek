@@ -1,9 +1,9 @@
 ---
 id: ADR-032
 title: A factory clones the repository's origin, and the operator's checkout leaves the design
-status: accepted
+status: implemented
 date: 2026-09-10
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: two clients of one remote need nothing joining them, so the machine clones origin and the supervisor pushes there
 depends_on: [ADR-009, ADR-011, ADR-019, ADR-025]
 supersedes: []
@@ -124,6 +124,12 @@ asserts. That is PRD-004 phase 3's exit condition, and nothing here is done
 until it holds on a machine:
 
 ```bash
-CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/moves-in.sh
-# clone from origin, a worktree per role, a session that runs in one
+CAGEWORKS_PROOF_DIR=/tmp/proof tests/manual/isolation.sh
+# a session per role, each in its cage on the machine, in a worktree of the clone
 ```
+
+Implemented 2026-09-13: `tests/manual/isolation.sh` ran on a machine on
+2026-09-12 (docs/roadmap.md 2.4) with every role in its cage in a worktree
+of the machine's clone of origin, and `seam.bats` asserts the session line.
+`moves-in.sh`, which this section named, was deleted with the proofs the
+redesign superseded; the isolation proof is the one that shows this.

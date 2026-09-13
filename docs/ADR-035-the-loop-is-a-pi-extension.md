@@ -1,9 +1,9 @@
 ---
 id: ADR-035
 title: The loop is a pi extension, and loop and agent share a uid
-status: accepted
+status: implemented
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: the actor loop is a pi extension shipped with the machine; it shares the agent uid so the budget stays at the proxy
 depends_on: [ADR-029, ADR-030, ADR-033]
 supersedes: [ADR-021, ADR-028]
@@ -82,3 +82,9 @@ pointer opens a fresh session; the memory issue is read before the first
 turn and rewritten after the last; a Valkey restart is followed by a
 re-announce; an outcome without a commit is reported as advice and not
 withheld.
+
+Implemented 2026-09-13: every scenario named above is in
+`factory/src/extension/actor.test.ts` against fakes of the bus, the board
+and the agent (docs/roadmap.md 3.2), the re-announce after the bus comes
+back included. What is not yet seen is a real assignment worked on a
+machine, which is PRD-006's parity proof and gated on a credential.

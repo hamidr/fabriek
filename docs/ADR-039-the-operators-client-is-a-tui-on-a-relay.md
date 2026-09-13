@@ -1,9 +1,9 @@
 ---
 id: ADR-039
 title: The operator's client is a TUI on a relay, and cageworks is the machine
-status: accepted
+status: implemented
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-13
 summary: a TUI on the operator host reads a JSONL relay and writes through the CLI; the host holds a launcher and no decision
 depends_on: [ADR-019, ADR-034, ADR-035, ADR-036]
 supersedes: [ADR-026]
@@ -65,3 +65,10 @@ carries has a fixture, the guest side emits it and the host side parses it.
 TUI scenarios (4.2): every verb the executor accepts is reachable from the
 TUI, and a session that reconnects after a dropped ssh shows the board and
 the stream without a blank screen.
+
+Implemented 2026-09-13: `relay/fixtures.json` is read by the relay's test
+and the TUI's; every verb the executor accepts is a key in `tui/main.ts`;
+and since 2026-09-13 the relay reads on from the last id after the bus
+goes away (`relay/tail.ts`), the TUI starts a watch again when it ends and
+opens on what the bus still holds (`tui/watch.ts`), which is the reconnect
+scenario above, on fakes.

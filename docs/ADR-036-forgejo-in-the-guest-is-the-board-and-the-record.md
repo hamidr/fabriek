@@ -96,3 +96,9 @@ label change, a `done` without a signed commit on the role's namespace is
 refused, `mirror` pushes `main` and `refs/cageworks/record` in one call. The
 decision-52 probe script, rerun against the image the machine pins, must
 give the same twenty results.
+
+Status 2026-09-13: the `cageworks up` and executor scenarios above hold
+(`tests/command/prepare.bats`, `factory/src/executor/core.test.ts`), and
+since 2026-09-13 prepare reads the record back onto an empty board. The
+decision-52 probe script has not been rerun against the image the machine
+pins; that rerun is what keeps this at accepted.
