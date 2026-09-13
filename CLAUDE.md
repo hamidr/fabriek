@@ -127,7 +127,7 @@ nix build .#factory                  # compiles and runs its ~145 scenarios
 nix develop --command bash -c 'cd factory && npm test'
 nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ \
   && node --test --test-name-pattern="refuses" dist/vocabulary.test.js'   # one TS scenario
-nix fmt                              # nixfmt-rfc-style, Nix files only
+nix fmt                              # nixfmt, Nix files only
 nix develop --command tests/system/journey.sh              # the factory on this host, ~4 minutes
 FABRIEK_PROOF_DIR=/tmp/proof tests/manual/isolation.sh   # needs a machine
 ```

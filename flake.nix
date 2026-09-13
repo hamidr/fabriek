@@ -89,7 +89,7 @@
             '';
           };
 
-          formatter = pkgs.nixfmt-rfc-style;
+          formatter = pkgs.nixfmt;
         };
 
       flake.overlays.default = final: _prev: {
