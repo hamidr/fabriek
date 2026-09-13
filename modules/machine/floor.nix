@@ -62,11 +62,19 @@ let
     export { default } from "${extension}";
   '';
 
+  ## The language-server extension (ADR-043), loaded the way the loop is:
+  ## a real index.ts re-exporting the store path, because pi resolves an
+  ## extension's imports from where it found the file, and a symlink into
+  ## the store would leave vscode-jsonrpc unresolvable.
+  lspText = ''
+    export { default } from "${pkgs.pi-lsp}/${pkgs.pi-lsp.extension}/index.ts";
+  '';
+
   ## A role's own pi directory (ADR-042 point 5): the loop, the models and
-  ## the settings every role gets, and from its profile the prompt and the
-  ## skills of who it is. One store path per role, resolved by the machine
-  ## program like the profile is, so what the cage binds carries no symlink
-  ## into an /etc it does not have.
+  ## the settings every role gets, and from its profile the prompt, the
+  ## skills and the language servers of who it is. One store path per
+  ## role, resolved by the machine program like the profile is, so what the
+  ## cage binds carries no symlink into an /etc it does not have.
   roles = lib.attrNames (cfg.declaration.roles or { });
   piDirOf =
     role:
@@ -74,8 +82,12 @@ let
       profile = config.environment.etc."fabriek/roles/${role}/profile".source;
     in
     pkgs.runCommand "fabriek-pi-${role}" { } ''
-      mkdir -p $out/extensions/fabriek
-      cp ${pkgs.writeText "index.ts" loopText} $out/extensions/fabriek/index.ts
+      mkdir -p $out/extensions/fabriek $out/extensions/pi-lsp
+      cat >$out/extensions/fabriek/index.ts <<'TS'
+      ${loopText}TS
+      cat >$out/extensions/pi-lsp/index.ts <<'TS'
+      ${lspText}TS
+      ln -s ${profile}/share/fabriek/specialist/lsp.json $out/lsp.json
       cp ${pkgs.writeText "settings.json" settingsText} $out/settings.json
       cp ${pkgs.writeText "models.json" modelsText} $out/models.json
       ln -s ${profile}/share/fabriek/specialist/skills $out/skills

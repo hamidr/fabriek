@@ -41,6 +41,9 @@ nixpkgs.lib.nixosSystem {
           ## The TypeScript half, for the loop the floor carries (ADR-035)
           ## and the executor, the decider and the relay beside it.
           fabriek-factory = (import ../factory { pkgs = final; }).package;
+          ## The language-server extension every role's pi directory
+          ## loads (ADR-043).
+          pi-lsp = import ./pi-lsp { pkgs = final; };
         })
       ];
     }

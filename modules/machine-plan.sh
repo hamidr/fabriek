@@ -117,13 +117,15 @@ fabriek_actor_args() {
 	forge="$(jq -r .forgejo "$etc/bridge.json")"
 	bus="$(jq -r .valkey "$etc/bridge.json")"
 	proxy="$(jq -r .proxy "$etc/bridge.json")"
-	## The configuration directory is ours and read-only; pi's sessions,
+	## The configuration directory is ours and read-only, named twice
+	## because pi-lsp reads its servers from PI_AGENT_DIR (ADR-043); pi's sessions,
 	## the verbatim transcript, go to the role's own home (ADR-038 point 2).
 	## No startup network calls: a cage has no route, and a call that fails
 	## slowly is a slow start nobody attributed (ADR-029 point 7).
 	printf '%s\n' \
 		"--bind-ro" "$pidir:/run/fabriek/pi" \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
+		"--setenv" "PI_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions" \
 		"--setenv" "PI_OFFLINE=1" \
 		"--bind-ro" "$password:/run/fabriek/bus-password" \

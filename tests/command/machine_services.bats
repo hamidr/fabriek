@@ -197,6 +197,16 @@ machine_text() {
 	assert_output false
 }
 
+# ADR-043: the language-server extension rides beside the loop, loaded the
+# same way, and reads the servers the role's specialists declared.
+@test "a role's pi directory carries pi-lsp beside the loop and links the specialists' lsp.json" {
+	run machine_text 'c.environment.etc."fabriek/roles/builder/pi".source.buildCommand'
+	assert_success
+	assert_output --partial 'extensions/pi-lsp/index.ts'
+	assert_output --partial 'pi-lsp-0.1.7/lib/node_modules/pi-lsp/extensions/pi-lsp/index.ts'
+	assert_output --partial 'share/fabriek/specialist/lsp.json $out/lsp.json'
+}
+
 # pi starts on no model unless told one, and asks before trusting a
 # project's own .pi; a session with nobody at the keyboard needs both
 # answered. Found on a machine whose decider said "No API key found for the
