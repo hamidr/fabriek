@@ -35,15 +35,22 @@ function run(args: string[]): Promise<string> {
   });
 }
 
-/** One line of input from the operator, with the screen given back after. */
+/**
+ * One line of input from the operator, with the screen given back after.
+ * The hotkeys are off for the prompt's duration: readline reads the same
+ * stdin, and with both listening every letter of an answer was a key, so
+ * typing a role called "reviewer" ran retry, file and steer on the way.
+ */
 function ask(question: string): Promise<string> {
   return new Promise((resolve) => {
     draw = false;
+    process.stdin.off("data", onKey);
     process.stdin.setRawMode?.(false);
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     rl.question(`\n${question} `, (answer) => {
       rl.close();
       process.stdin.setRawMode?.(true);
+      process.stdin.on("data", onKey);
       process.stdin.resume();
       draw = true;
       resolve(answer.trim());
@@ -52,6 +59,7 @@ function ask(question: string): Promise<string> {
 }
 
 let notice = "";
+const onKey = (k: string): void => void key(k);
 async function key(k: string): Promise<void> {
   switch (k) {
     case "q":
@@ -125,6 +133,6 @@ keepWatching({
 process.stdin.setRawMode?.(true);
 process.stdin.resume();
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (k: string) => void key(k));
+process.stdin.on("data", onKey);
 setInterval(paint, 500);
 paint();
