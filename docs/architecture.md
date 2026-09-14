@@ -1,10 +1,10 @@
 # Architecture, as built
 
-What fabriek is on the `redesign` branch as of 2026-09-12, read from the
-code rather than from the decisions. Where an ADR's status and the code
-disagree, this file says what the code does and names the ADR. The decisions
-are ADR-033 through ADR-040 and PRD-006; `docs/roadmap.md` says what of them
-is built and what is not.
+What fabriek is on `main` as of 2026-09-14, read from the code rather than
+from the decisions. Where an ADR's status and the code disagree, this file
+says what the code does and names the ADR. The decisions are ADR-033
+through ADR-044 and PRD-006; `docs/roadmap.md` says what of them is built
+and what is not.
 
 This file carries no docmeta frontmatter on purpose: it is not a decision and
 `docmeta-tracker` should not index it. Regenerate it by hand when the
@@ -65,7 +65,7 @@ operator stream; it decides nothing and runs no loop.
 executor, the extension that is the loop, the decider, the relay and the
 TUI. It is built by the flake with `tsc` and tested with node's own runner;
 pi's types are linked in from the pi in the closure. `nix build .#factory`
-runs its 97 scenarios.
+runs its 136 scenarios.
 
 **`catalogue/`** is what a role can be (ADR-042): one directory per
 specialist (`PROMPT.md` and a `default.nix` naming its tools, its parents
@@ -246,18 +246,30 @@ a password the machine set fresh on the operator's account
    titles and bodies are files, commands are typed JSON on a stream.
 2. A cage holds no credential that reaches off the machine, and no route.
 3. A role session's cage is composed of nixcage flags and nothing else.
+4. What a role can run is what its specialists declared, built into the
+   machine: tools, language servers and the runner the guard trusts come
+   from the catalogue and the repository's own, never from anything found
+   in the tree or installed in a home (ADR-031, ADR-042, ADR-043).
 
 ## Tests
 
 ```
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
-nix develop --command bats --recursive tests/       # 310 scenarios, minutes
-nix build .#factory                                  # 125 scenarios
+nix develop --command bats --recursive tests/       # 376 scenarios, minutes
+nix build .#factory                                  # 136 scenarios
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 nix develop --command tests/system/journey.sh        # the factory on this host
 FABRIEK_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine
 FABRIEK_PROOF_DIR=... tests/manual/parity.sh       # needs a machine
+FABRIEK_PROOF_DIR=... tests/manual/specialist.sh   # needs a machine
 ```
+
+`tests/command/catalogue.bats` evaluates and builds `lib.catalogue` for
+real over the shipped catalogue and one each scenario writes: the flattening,
+every refusal, and what a built role carries (`bin/`, `APPEND_SYSTEM.md`,
+`skills/`, `lsp.json`, `tests.json`). `factory_flake.bats` and
+`machine_services.bats` evaluate `lib.factory` on fixture repositories.
 
 `tests/system/journey.sh` runs the factory as a system with no cage and no
 model: Valkey and a forge on localhost, `factory-prepare` and `bus-acl` on
@@ -286,3 +298,10 @@ machine is the cage, the bridge, the proxy's count and pi.
   `tests/system/journey.sh` with scripted actors, on Gitea on a Mac.
 - Which model a session starts on is the machine's choice, a table in
   `modules/machine/floor.nix`; a declaration cannot name one.
+- A cage has no network, and sbt, Maven, pnpm and Metals fetch dependencies
+  over one. A language specialist works only when the project's devShell
+  carries the cache; otherwise the first build is a blocked outcome. No
+  per-factory artifact cache exists.
+- The guard's verdict is pi's bash error flag, not an exit code; `sbt`
+  counts any invocation as a run because its verbs sit inside one quoted
+  argument. `tests/manual/specialist.sh` has not run on a machine.
