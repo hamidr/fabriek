@@ -111,7 +111,7 @@ usage: fabriek-container
   role-worktree <factory> <role> <repo>
   task-file <factory> <workflow> <title> [body]
   factory-prepare <factory> [origin]
-  role-stop <factory> <role>
+  role-stop [--now] <factory> <role>
   factory-mirror <factory>
   factory-watch <factory> [--from <id>]
   role-steer <factory> <role> <text>
@@ -215,22 +215,21 @@ cmd_role_enter() {
 	## machine's, written by its build from the same declaration the rules
 	## were generated from; a role the plan does not place would have no
 	## address, and a machine without a plan has no bridge to put it on.
-	## A supervised run is the role's cage and takes its place; a person
-	## entering while that cage runs joins its network instead, because the
-	## place is taken and a second veth of that name would collide with it.
-	## nspawn keeps a directory per machine name under /run/systemd/nspawn
-	## and refuses a second machine of one name, registered or not, so the
-	## hand's cage beside an actor carries a name of its own; it reaches no
-	## veth in that mode, so the twelve-character bound does not apply.
-	local network cage="$role"
-	if [ -n "$signing_role" ]; then
-		local address
-		address="$(fabriek_bridge_address "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
-		network="$(fabriek_bridge_placement "$FABRIEK_ETC/bridge.json" "$address")"
-	else
-		network="$(fabriek_cage_network "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
-		case "$network" in ns:*) cage="$role-hand" ;; esac
+	## A supervised run is the role's cage and takes its place. A person
+	## entering while that cage runs is put inside it (nixcage ADR-012
+	## point 4): the same mounts, processes and home the actor has, with
+	## the command they asked for or the cage's shell. No agent reaches
+	## them there; a hand inside a running actor reads and does not sign.
+	if [ -z "$signing_role" ] && fabriek_cage_running "$role"; then
+		if [ $# -gt 0 ]; then
+			nixcage-container exec "$role" -- "$@"
+		else
+			nixcage-container exec "$role"
+		fi
+		return
 	fi
+	local network cage="$role"
+	network="$(fabriek_cage_network "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
 
 	local -a opts=(
 		--uid "$uid"
@@ -239,6 +238,17 @@ cmd_role_enter() {
 		--network "$network"
 		--no-nix-daemon
 	)
+
+	## What the cage may take of the machine, set on its scope (nixcage
+	## ADR-012), sized from the declaration for a supervised run; a hand's
+	## own cage is bounded by the machine like before.
+	if [ -n "$signing_role" ]; then
+		local bound
+		while IFS= read -r bound; do
+			[ -n "$bound" ] || continue
+			opts+=("$bound")
+		done < <(fabriek_cage_bounds "$FABRIEK_ETC/declaration.json")
+	fi
 
 	## A role's toolchain is the profile the build realised from its devShell
 	## (ADR-040), handed in on the front of PATH because a cage has no daemon
@@ -521,10 +531,23 @@ cmd_task_file() {
 	echo "$factory: filed at $stage"
 }
 
+## A stop goes through the executor, which ends the turn and keeps the
+## task with the role. --now ends the cage itself at its scope (nixcage
+## ADR-012), for a turn that no longer answers the bus.
 cmd_role_stop() {
+	local now=""
+	if [ "${1:-}" = "--now" ]; then
+		now=1
+		shift
+	fi
 	local factory="${1:-}" role="${2:-}"
-	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop <factory> <role>"
+	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop [--now] <factory> <role>"
 	fabriek_role_name_ok "$role" || die "invalid role name: $role"
+	if [ -n "$now" ]; then
+		nixcage-container stop "$role" || exit 1
+		echo "$factory: $role stopped at its scope"
+		return
+	fi
 	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" '{verb: "stop", role: $r}')" || exit 1
 	echo "$factory: stop sent to $role"

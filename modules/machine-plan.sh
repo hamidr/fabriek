@@ -33,29 +33,43 @@ fabriek_bridge_placement() {
 	jq -r --arg a "$address" '"\(.bridge):\($a)/\(.prefix)"' "$plan"
 }
 
-## The leader pid of a running cage of this name, or nothing. A cage is not
-## registered with machined (nixcage enters with --register=no), so it is
-## found through the nspawn that holds it: the one whose argv names the
-## machine, and its child. Asked by a hand session before it takes a veth,
-## because an actor's cage holds the role's one veth and one address.
-fabriek_cage_leader() {
-	local name="$1" nspawn
+## Whether a cage of this name is running, asked of nixcage, which answers
+## for the cage's scope (nixcage ADR-012). A hand entering a running role
+## is put inside its cage rather than beside it.
+fabriek_cage_running() {
+	local name="$1"
 	fabriek_name_ok "$name" || return 1
-	nspawn="$(pgrep -f -- "--machine=$name( |\$)" 2>/dev/null | head -1)"
-	[ -n "$nspawn" ] || return 1
-	pgrep -P "$nspawn" 2>/dev/null | head -1 | grep .
+	case "$(nixcage-container status "$name" 2>/dev/null)" in
+	running\ *) return 0 ;;
+	*) return 1 ;;
+	esac
 }
 
-## What a session's --network is: a running cage's namespace when a hand
-## joins one, the bridge placement otherwise (nixcage ADR-011).
+## What a session's --network is: the bridge placement (nixcage ADR-011).
 fabriek_cage_network() {
-	local plan="$1" role="$2" leader
-	if leader="$(fabriek_cage_leader "$role")"; then
-		printf 'ns:/proc/%s/ns/net\n' "$leader"
-	else
-		local address
-		address="$(fabriek_bridge_address "$plan" "$role")" || return 1
-		fabriek_bridge_placement "$plan" "$address"
+	local plan="$1" role="$2" address
+	address="$(fabriek_bridge_address "$plan" "$role")" || return 1
+	fabriek_bridge_placement "$plan" "$address"
+}
+
+## The bounds a cage gets on its scope (nixcage ADR-012), one argv word per
+## line: what the factory declared it may use, divided by how many cages it
+## said may run at once, never less than one cpu. Nothing declared, nothing
+## bounded: the machine's own size is the ceiling then.
+fabriek_cage_bounds() {
+	local declaration="$1" memory cores concurrency mib
+	memory="$(jq -r '.resources.memory // empty' "$declaration")"
+	cores="$(jq -r '.resources.cores // empty' "$declaration")"
+	concurrency="$(jq -r '.resources.concurrency // 1' "$declaration")"
+	[ "$concurrency" -ge 1 ] 2>/dev/null || concurrency=1
+	if [ -n "$memory" ]; then
+		mib="$(fabriek_size_mib "$memory")" || return 1
+		printf -- '--memory\n%sM\n' "$((mib / concurrency))"
+	fi
+	if [ -n "$cores" ]; then
+		local cpus=$((cores / concurrency))
+		[ "$cpus" -ge 1 ] || cpus=1
+		printf -- '--cpus\n%s\n' "$cpus"
 	fi
 }
 

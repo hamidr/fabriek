@@ -48,8 +48,10 @@ setup() {
 	export FABRIEK_LIB="$FABRIEK_ROOT/modules"
 	export FABRIEK_STATE="$STATE"
 
-	# The seam itself. Only 'enter' is recorded; the other two primitives
-	# answer so that role-enter gets far enough to emit one.
+	# The seam itself. 'enter', 'exec' and 'stop' are recorded; the others
+	# answer so that role-enter gets far enough to emit one. No cage runs
+	# unless a scenario says so (nixcage ADR-012: status, netns).
+	RUNNING="$TEST_TEMP_DIR/running"
 	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
 case "\$1" in
@@ -63,16 +65,22 @@ storage)
 	printf '%s\n' "\$*" >>"$STORAGE_CALLS"
 	mkdir -p "\$3"
 	;;
+status)
+	if [ -f "$RUNNING/\$2" ]; then echo "running \$(cat "$RUNNING/\$2") machine.slice/machine-\$2.scope"; else echo stopped; fi
+	;;
+netns)
+	if [ -f "$RUNNING/\$2" ]; then echo "/proc/\$(cat "$RUNNING/\$2")/ns/net"; else echo "nixcage: \$2 is not running" >&2; exit 1; fi
+	;;
 enter)
 	shift
 	printf '%s\n' "\$*" >>"$CALLS"
 	;;
+exec|stop)
+	printf '%s\n' "\$*" >>"$CALLS"
+	;;
 esac
 EOF
-	# Whether a cage of the role's name is running, which a hand session
-	# asks before taking a veth. No cage runs unless a scenario says so.
-	printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB_DIR/pgrep"
-	chmod +x "$STUB_DIR/pgrep"
+	mkdir -p "$RUNNING"
 	# Root-only mechanics a role's worktree needs, and which say nothing
 	# about the seam.
 	for tool in chown setfacl; do
@@ -103,7 +111,8 @@ declare_machine() {
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
 	cat >"$FABRIEK_ETC/declaration.json" <<'JSON'
-{ "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend", "specialists": ["java", "python"] } } }
+{ "name": "acme", "roles": { "builder": { "command": ["agent", "--print"], "provides": ["build", "test"], "shell": "backend", "specialists": ["java", "python"] } },
+  "resources": { "memory": "8G", "cores": 4, "concurrency": 2 } }
 JSON
 	# What prepare made for the role: its bus password and its forge token.
 	mkdir -p "$STATE/bus" "$STATE/forge" "$FABRIEK_ETC/pi-decider/extensions"
@@ -156,7 +165,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $PIDIR:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $PIDIR:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -236,35 +245,27 @@ JSON
 # The declared command is what an actor runs (ADR-033); a person entering by
 # hand is not one, and a hand that asks for a command gets that command.
 # Found by tests/manual/isolation.sh, whose every question to a cage ran pi.
-## An actor's cage holds the role's one veth and one address, and a second
-## cage of that name would collide with it on both; a person entering the
-## role while its actor runs joins the actor's network namespace instead
-## (nixcage ADR-011 point 5). The cage's leader is the child of the nspawn
-## whose argv names the machine, since a cage is not registered.
+## An actor's cage is where its work is; a person entering the role while
+## its actor runs is put inside that cage rather than beside it (nixcage
+## ADR-012 point 4), which nixcage answers for from the cage's scope.
 running_cage() {
-	cat >"$STUB_DIR/pgrep" <<EOF
-#!/usr/bin/env bash
-case "\$*" in
-*"--machine=$1( |\$)"*) echo 4242 ;;
-"-P 4242") echo 4243 ;;
-*) exit 1 ;;
-esac
-EOF
-	chmod +x "$STUB_DIR/pgrep"
+	echo 4243 >"$RUNNING/$1"
 }
 
-@test "a person entering a role whose actor is running joins its cage's network instead of taking a second veth" {
+@test "a person entering a role whose actor is running is put inside that cage, not beside it" {
 	running_cage builder
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 	run recorded
-	assert_output --partial "--network ns:/proc/4243/ns/net"
-	refute_output --partial "--network fabriek-acme:"
-	# nspawn keeps a directory under /run/systemd/nspawn per machine name
-	# and refuses a second machine of one name, registered or not; found on
-	# a machine ("Mount point ... exists already, refusing"). The hand's
-	# cage carries its own name, which reaches no veth in this mode.
-	assert_output --partial " builder-hand $STATE/worktrees/acme/builder"
+	assert_output "exec builder"
+}
+
+@test "a person entering a running role with a command runs it inside the cage" {
+	running_cage builder
+	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder git status
+	assert_success
+	run recorded
+	assert_output "exec builder -- git status"
 }
 
 @test "a supervised run takes the bridge placement whatever else is running under the role's name" {
@@ -275,6 +276,7 @@ EOF
 	run recorded
 	assert_output --partial "--network fabriek-acme:10.77.0.10/24"
 	refute_output --partial "ns:/proc"
+	refute_output --partial "exec"
 }
 
 @test "a person entering by hand with a command runs that command, not the declared one" {
