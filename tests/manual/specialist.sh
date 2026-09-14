@@ -54,6 +54,16 @@ check "java sources are watched" "yes" \
 	"$(in_cage "$ROLE" sh -c 'jq -e ".source | index(\"**/src/main/**\")" "$PI_CODING_AGENT_DIR/tests.json" >/dev/null && echo yes')"
 gated "an edit without a test is refused" "needs a model: ask the role to add a method to a class under src/main with no test; the transcript shows the refusal and the bus shows guard_refused"
 
+scenario "nixcage answers for the running cage (ADR-045)"
+when "the machine is asked about the role's cage through nixcage"
+check "status says running with the role's scope" "yes" \
+	"$(sshm "nixcage-container status $ROLE" 2>/dev/null | grep -q "^running .* machine.slice/machine-$ROLE.scope\$" && echo yes)"
+check "the scope carries the memory bound" "yes" \
+	"$(sshm "systemctl show -p MemoryMax --value machine-$ROLE.scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
+check "a hand lands inside the actor's cage" "yes" \
+	"$(in_cage "$ROLE" sh -c 'grep -q "machine-'"$ROLE"'.scope" /proc/1/cgroup && echo yes')"
+gated "enter --print-argv matches seam.bats" "compare nixcage-container enter --print-argv for the role against the line seam.bats asserts; needs the role's uid and paths from the machine"
+
 scenario "pi itself lists the skill in its system prompt"
 gated "jvm-profile in the system prompt" "pi 0.84.4 has no flag that prints its skills; read the session's first system message in the role's ~/.pi/sessions"
 

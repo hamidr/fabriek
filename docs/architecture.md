@@ -156,9 +156,12 @@ given, the signing binds, and for a supervised run the actor's part: the
 role's own pi directory bound at `PI_CODING_AGENT_DIR` and `PI_AGENT_DIR`, the bus password
 and forge token bound read-only, and the `FABRIEK_*` environment naming the
 role, its capabilities, its specialists, the bus, the forge, the repository
-and the proxy. The cage is
-named after the role, because nspawn names its veth after the cage, and a
-role name is at most twelve characters. The decider's session is the same
+and the proxy, and `--memory` and `--cpus` sized from the declaration's
+resources over its concurrency, set on the cage's scope (nixcage ADR-012).
+The cage is named after the role, a machine name of at most sixty-four
+characters; its veth carries a hash of that name (nixcage ADR-013). A
+person entering a role whose actor is running is put inside its cage with
+`nixcage-container exec`, not beside it. The decider's session is the same
 line with the machine's own loop, the declaration and the policy bound in,
 and `pi --mode rpc` as its command.
 

@@ -28,16 +28,19 @@ cage has no route off the machine (ADR-037).
 
 ## The interface with nixcage
 
-fabriek uses three exported primitives and nothing else. It writes no nspawn
-arguments, runs no `zfs` and allocates no uid. The only SSH connection it opens
-is to a machine it built itself, over the key and port it allocated for that
-factory (ADR-019).
+fabriek uses nixcage's exported primitives and nothing else. It writes no
+nspawn arguments, runs no `zfs`, allocates no uid and reads no process table.
+The only SSH connection it opens is to a machine it built itself, over the
+key and port it allocated for that factory (ADR-019).
 
 | Primitive | Used for |
 | --- | --- |
-| `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX|ns:PATH] [--no-nix-daemon] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session |
+| `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX] [--no-nix-daemon] [--memory SIZE] [--cpus N] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session, bounded on its scope from the declaration |
 | `nixcage-container uid <principal>` | A role's uid, allocated once and never reissued |
 | `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree and the record's dataset, owned and bounded |
+| `nixcage-container status <name>`, `stop <name>` | Whether a role's cage runs and its scope's cgroup (the probes' key); `role stop --now` |
+| `nixcage-container exec <name> [-- cmd]` | A person entering a role whose actor is running, inside its cage |
+| `nixcage.lib.vethHostName` | The name the bridge's rules key on (nixcage ADR-013) |
 
 When something is needed that these cannot express, **the interface changes in
 nixcage first**: two commits in two repositories and a lock bump. Reaching
@@ -83,8 +86,8 @@ A change to what a role session is shows up there as a diff.
   a directory. A specialist's `lsp` servers reach the `pi-lsp` extension
   (`modules/pi-lsp/`, built from npm with a lockfile of ours, ADR-043).
 - `modules/names.sh`: the names fabriek accepts, checked where they are
-  declared. A role name is also its cage's, and nspawn names the veth after
-  the cage, so it is at most twelve characters; `decider` is reserved.
+  declared. A role name is also its cage's, a machine name to nspawn, so it
+  is at most sixty-four characters; `decider` is reserved.
   `factory/src/names.ts` mirrors it: a change to the alphabet lands in both.
 - `modules/*.sh`: what the two programs source by store path.
   `machine-spec.sh` composes a machine's spec inside the build;

@@ -275,6 +275,9 @@ One package, built through the flake, tests in its own runner.
 - 6.3 The same proof's guard scenario (ADR-044): tests.json where the loop
   reads it, and with a model, an edit without a test refused with
   guard_refused on the bus. Not run as of 2026-09-14.
+- 6.4 The same proof's nixcage scenario (ADR-045): status from the scope,
+  MemoryMax on it, a hand inside the actor's cage, and enter --print-argv
+  against seam.bats. Not run as of 2026-09-14.
 
 ## Where the log's open items landed (its section 6)
 
