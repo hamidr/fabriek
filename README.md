@@ -117,8 +117,22 @@ file = "/home/me/.secrets/anthropic"
 path = "/home/me/Src/acme"
 ```
 
-A repository states what it needs and this caps it; fabriek says which field
-it clamped rather than sizing down quietly. Which endpoints a factory may
+On NixOS the same file is declared instead of kept, and a factory can be
+brought up at boot (ADR-048):
+
+```nix
+services.fabriek = {
+  enable = true;
+  caps = { memory = "16G"; cores = 8; egress = [ "api.anthropic.com" ]; };
+  credentials."api.anthropic.com" = { header = "x-api-key"; file = "/run/secrets/anthropic"; };
+  factories.acme = { path = "/srv/acme"; autoStart = true; };
+};
+```
+
+The module renders `/etc/fabriek/config.toml`, which the CLI reads when no
+personal file exists, and `fabriek-acme.service` runs `fabriek up acme` at
+boot. A repository states what it needs and this caps it; fabriek says
+which field it clamped rather than sizing down quietly. Which endpoints a factory may
 reach, which credential opens each, and which model a session starts on are
 the operator's alone; a declaration names none of them (ADR-025, ADR-029). Both files are closed schemas: a key
 fabriek does not recognise is refused with its own name rather than ignored,

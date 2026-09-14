@@ -105,6 +105,10 @@ A change to what a role session is shows up there as a diff.
   `check.sh` is `fabriek check`, `ls` and `show`:
   the declaration and every specialist resolved at the commit, evaluation
   only.
+- `modules/host.nix`: `nixosModules.host`, `services.fabriek` on a NixOS
+  host (ADR-048): the operator's `config.toml` rendered to `/etc`, read by
+  the CLI when no personal file exists, and a unit per factory with
+  `autoStart`.
 - `modules/factory.nix`: `lib.factory`, one factory's machine from the
   repository it works and the facts only the host knows (ADR-040). Validation
   and the clamp run inside a derivation by the same shell modules.
@@ -167,7 +171,8 @@ drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
 the forge, `operator.bats`, `bus_acl.bats` and `probes.bats` stub `valkey-cli`;
 `factory_flake.bats` and `machine_services.bats` evaluate `lib.factory` for
-real, and `catalogue.bats` evaluates and builds `lib.catalogue` for real.
+real, `host_module.bats` evaluates `nixosModules.host` for real, and
+`catalogue.bats` evaluates and builds `lib.catalogue` for real.
 The package's tests
 drive each core against fakes of its interfaces and each adapter against a
 local fake server. Every test name reads as a scenario.

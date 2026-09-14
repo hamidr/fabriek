@@ -80,6 +80,15 @@ role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043),
 and what a test is (`tests`: test files, source files, runner commands),
 unioned into `tests.json` for the loop's test-first guard (ADR-044).
 
+## The host
+
+A NixOS host declares its factories with `services.fabriek`
+(`modules/host.nix`, ADR-048): the operator's `config.toml` rendered to
+`/etc/fabriek/config.toml`, read by the CLI when no personal file exists,
+and `fabriek-<name>.service` for each factory with `autoStart`, running
+`fabriek up` at boot and `down` at stop under `/var/lib/fabriek`. Every
+other host keeps the file by hand.
+
 ## The machine
 
 `fabriek up <factory>` writes a flake under the machine's directory whose
