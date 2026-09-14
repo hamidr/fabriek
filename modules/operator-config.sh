@@ -17,13 +17,22 @@
 ## is ignored because it was misspelled is a ceiling nobody has.
 
 ## Where the operator's config lives. FABRIEK_CONFIG overrides it, which is
-## what the suite uses and what an operator with more than one of them needs.
+## what the suite uses and what an operator with more than one of them needs;
+## then the person's own file; then the host's, which a NixOS module renders
+## (ADR-048). The host's path is a variable so the suite can point it at a
+## file of its own.
+FABRIEK_HOST_CONFIG="${FABRIEK_HOST_CONFIG:-/etc/fabriek/config.toml}"
 fabriek_operator_config_path() {
 	if [ -n "${FABRIEK_CONFIG:-}" ]; then
 		printf '%s\n' "$FABRIEK_CONFIG"
 		return 0
 	fi
-	printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/fabriek/config.toml"
+	local own="${XDG_CONFIG_HOME:-$HOME/.config}/fabriek/config.toml"
+	if [ ! -f "$own" ] && [ -f "$FABRIEK_HOST_CONFIG" ]; then
+		printf '%s\n' "$FABRIEK_HOST_CONFIG"
+		return 0
+	fi
+	printf '%s\n' "$own"
 }
 
 ## The schema, built around the one resources table so that what an operator

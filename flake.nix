@@ -105,6 +105,10 @@
           }).container;
       };
 
+      ## A NixOS host declares its factories: the operator's file and a unit
+      ## per auto-started factory (ADR-048).
+      flake.nixosModules.host = import ./modules/host.nix;
+
       ## One factory's machine, built from a spec the operator's side composes.
       ## A function rather than a nixosConfigurations attribute because how big
       ## a machine is and what port it answers on are not facts this repository

@@ -324,3 +324,20 @@ TOML
 	assert_failure
 	assert_output --partial "api.anthropic.com"
 }
+
+# ADR-048: FABRIEK_CONFIG, then the person's own file, then the host's,
+# which a NixOS module renders.
+@test "the host's config is read when the person has none, and the person's wins when both exist" {
+	local own="$TEST_TEMP_DIR/xdg/fabriek/config.toml" host="$TEST_TEMP_DIR/etc-config.toml"
+	mkdir -p "$(dirname "$own")"
+	unset FABRIEK_CONFIG
+	export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" FABRIEK_HOST_CONFIG="$host"
+	run fabriek_operator_config_path
+	assert_output "$own"
+	: >"$host"
+	run fabriek_operator_config_path
+	assert_output "$host"
+	: >"$own"
+	run fabriek_operator_config_path
+	assert_output "$own"
+}
