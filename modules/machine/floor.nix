@@ -36,16 +36,12 @@ let
   };
   startOn = lib.head ((lib.attrValues routed) ++ [ "anthropic" ]);
   startHost = lib.head ((lib.attrNames routed) ++ [ "api.anthropic.com" ]);
-  settingsText = builtins.toJSON {
-    defaultProvider = startOn;
-    defaultModel = cfg.egressModels.${startHost} or defaultModels.${startOn};
-    ## A repository's own .pi is not the machine's to run: a session asks
-    ## nobody, and what a role runs is declared, not found in the tree.
-    defaultProjectTrust = "never";
-  };
-  settings = {
-    mode = "0444";
-    text = settingsText;
+  ## One file for the machine program to read onto pi's argv, rather than
+  ## a settings.json in each pi directory: pi locks that file to read it,
+  ## and the directory is bound read-only, so its settings never arrived.
+  modelText = builtins.toJSON {
+    provider = startOn;
+    model = cfg.egressModels.${startHost} or defaultModels.${startOn};
   };
   ## The credential is the proxy's to add; the placeholder only makes pi
   ## consider the provider configured. The path is the proxy's per-host
@@ -74,8 +70,8 @@ let
     export { default } from "${pkgs.pi-lsp}/${pkgs.pi-lsp.extension}/index.ts";
   '';
 
-  ## A role's own pi directory (ADR-042 point 5): the loop, the models and
-  ## the settings every role gets, and from its profile the prompt, the
+  ## A role's own pi directory (ADR-042 point 5): the loop and the models
+  ## every role gets, and from its profile the prompt, the
   ## skills and the language servers of who it is. One store path per
   ## role, resolved by the machine program like the profile is, so what the
   ## cage binds carries no symlink into an /etc it does not have.
@@ -93,7 +89,6 @@ let
       ${lspText}TS
       ln -s ${profile}/share/fabriek/specialist/lsp.json $out/lsp.json
       ln -s ${profile}/share/fabriek/specialist/tests.json $out/tests.json
-      cp ${pkgs.writeText "settings.json" settingsText} $out/settings.json
       cp ${pkgs.writeText "models.json" modelsText} $out/models.json
       ln -s ${profile}/share/fabriek/specialist/skills $out/skills
       ln -s ${profile}/share/fabriek/specialist/APPEND_SYSTEM.md $out/APPEND_SYSTEM.md
@@ -120,7 +115,10 @@ in
             export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
           '';
         };
-        "fabriek/pi-decider/settings.json" = settings;
+        "fabriek/model.json" = {
+          mode = "0444";
+          text = modelText;
+        };
         "fabriek/pi-decider/models.json" = {
           mode = "0444";
           text = modelsText;

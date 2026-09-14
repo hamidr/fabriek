@@ -227,17 +227,19 @@ machine_text() {
 	assert_output --partial 'share/fabriek/specialist/tests.json $out/tests.json'
 }
 
-# pi starts on no model unless told one, and asks before trusting a
-# project's own .pi; a session with nobody at the keyboard needs both
-# answered. Found on a machine whose decider said "No API key found for the
-# selected model" every thirty seconds.
-@test "every supervised session starts on a model of the routed provider and trusts no project settings" {
-	run machine_text 'c.environment.etc."fabriek/pi-decider/settings.json".text'
-	assert_output --partial '"defaultProvider":"anthropic"'
-	assert_output --partial '"defaultModel":"claude-opus-5"'
-	assert_output --partial '"defaultProjectTrust":"never"'
-	run machine_eval 'c.environment.etc."fabriek/pi-decider/settings.json".mode'
-	assert_output '"0444"'
+# pi starts on no model unless told one; a session with nobody at the
+# keyboard needs it answered. Found on a machine whose decider said "No API
+# key found for the selected model" every thirty seconds, first because no
+# model was named, then because it was named in a settings.json pi could
+# not lock in a read-only directory. The build's answer is one file the
+# machine program reads onto pi's argv; no pi directory carries settings.
+@test "the build names the model every supervised session starts on, and no pi directory carries settings" {
+	run machine_text 'c.environment.etc."fabriek/model.json".text'
+	assert_output '{"model":"claude-opus-5","provider":"anthropic"}'
+	run machine_eval 'c.environment.etc ? "fabriek/pi-decider/settings.json"'
+	assert_output false
+	run machine_text 'c.environment.etc."fabriek/roles/builder/pi".source.buildCommand'
+	refute_output --partial 'settings.json'
 }
 
 @test "the executor does not start until the machine has been prepared, and is restarted when it is" {
@@ -260,9 +262,8 @@ machine_text() {
 	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm deepseek
 	run machine_text 'c.environment.etc."fabriek/pi-decider/models.json".text'
 	assert_output --partial '"deepseek":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.deepseek.com"}'
-	run machine_text 'c.environment.etc."fabriek/pi-decider/settings.json".text'
-	assert_output --partial '"defaultProvider":"deepseek"'
-	assert_output --partial '"defaultModel":"deepseek-v4-flash"'
+	run machine_text 'c.environment.etc."fabriek/model.json".text'
+	assert_output '{"model":"deepseek-v4-flash","provider":"deepseek"}'
 }
 
 @test "every supervised session is handed the loop and a models.json that points pi at the proxy" {

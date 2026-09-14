@@ -56,13 +56,12 @@ declare_with() {
 }
 
 # ADR-029 fixed the agent and ADR-030 put it on every cage, so a role that
-# says nothing runs it (ADR-042 point 9). A declared command still wins.
-@test "a role that declares no command runs pi in rpc mode" {
+# says nothing runs it (ADR-042 point 9), composed by the machine with the
+# model its build chose; the declaration's side says nothing about it.
+@test "a role that declares no command prints none, and the machine runs the agent" {
 	run fabriek_factory_role_command "$DECL" reviewer
 	assert_success
-	assert_line --index 0 "pi"
-	assert_line --index 1 "--mode"
-	assert_line --index 2 "rpc"
+	assert_output ""
 }
 
 @test "an undeclared role is refused, and the message says which roles exist" {

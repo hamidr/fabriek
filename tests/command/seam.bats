@@ -47,6 +47,8 @@ setup() {
 
 	export FABRIEK_LIB="$FABRIEK_ROOT/modules"
 	export FABRIEK_STATE="$STATE"
+	RUN="$TEST_TEMP_DIR/run-fabriek"
+	export FABRIEK_RUN="$RUN"
 
 	# The seam itself. 'enter', 'exec' and 'stop' are recorded; the others
 	# answer so that role-enter gets far enough to emit one. No cage runs
@@ -116,6 +118,9 @@ JSON
 JSON
 	# What prepare made for the role: its bus password and its forge token.
 	mkdir -p "$STATE/bus" "$STATE/forge" "$FABRIEK_ETC/pi-decider/extensions"
+	# Where a session starts (ADR-029 point 6): the build's answer, read
+	# onto pi's argv because pi cannot read a settings file it cannot lock.
+	echo '{ "provider": "anthropic", "model": "claude-opus-5" }' >"$FABRIEK_ETC/model.json"
 	echo pass >"$STATE/bus/builder"
 	echo tok >"$STATE/forge/builder-token"
 	echo pass >"$STATE/bus/decider"
@@ -165,7 +170,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind-ro $PIDIR:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -314,13 +319,55 @@ running_cage() {
 	assert_success
 	run recorded
 	assert_output --partial "--network fabriek-acme:10.77.0.2/24 --no-nix-daemon"
-	assert_output --partial "--bind-ro $FABRIEK_ETC/pi-decider:/run/fabriek/pi --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1"
+	assert_output --partial "--bind $RUN/pi-decider:/run/fabriek/pi --bind-ro $FABRIEK_ETC/pi-decider/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1"
 	assert_output --partial "--bind-ro $STATE/forge/decider-token:/run/fabriek/forge-token"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/declaration.json:/run/fabriek/declaration.json --setenv FABRIEK_DECLARATION=/run/fabriek/declaration.json"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/decider-policy.md:/run/fabriek/policy.md --setenv FABRIEK_POLICY=/run/fabriek/policy.md"
 	assert_output --partial "--setenv FABRIEK_ROLE=decider --setenv FABRIEK_CAPABILITIES= "
-	assert_output --partial " decider $STATE/worktrees/acme/decider pi --mode rpc"
+	assert_output --partial " decider $STATE/worktrees/acme/decider pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
 	refute_output --partial NIXCAGE_PATH_PREFIX
+}
+
+# pi 0.84 locks settings.json to read it, and the pi directory is bound
+# read-only, so the settings a session needs with nobody at the keyboard
+# (the model to start on, and never to trust the project's own .pi) ride
+# on its argv, from the answer the build wrote. A declared command is the
+# repository's word for word and gets nothing appended.
+@test "a role that declares no command runs pi on the build's model and trusts no project settings" {
+	cat >"$FABRIEK_ETC/declaration.json" <<'JSON'
+{ "name": "acme", "roles": { "builder": { "provides": ["build", "test"], "shell": "backend" } },
+  "resources": { "memory": "8G", "cores": 4, "concurrency": 2 } }
+JSON
+	run_fabriek_container role-enter --repository "$REPO" --signing-key builder acme builder
+	assert_success
+	run recorded
+	assert_output --partial " builder $STATE/worktrees/acme/builder pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
+}
+
+# pi 0.84 locks settings.json, auth.json and models-store.json to read them,
+# and the lock is a directory beside each, so the directory pi is handed
+# has to be writable. What the build put there stays the build's: each
+# entry is bound read-only over a scratch directory made fresh for the
+# session and owned by the role, so a lock lands and nothing outlives the
+# session.
+@test "the pi directory is scratch for the session with every file of the build's bound read-only over it" {
+	mkdir -p "$TEST_TEMP_DIR/store/pi-builder/skills"
+	echo '{}' >"$TEST_TEMP_DIR/store/pi-builder/models.json"
+	echo 'leftover' >"$RUN/pi-builder/auth.json" 2>/dev/null || { mkdir -p "$RUN/pi-builder"; echo leftover >"$RUN/pi-builder/auth.json"; }
+	run_fabriek_container role-enter --repository "$REPO" --signing-key builder acme builder
+	assert_success
+	run recorded
+	assert_output --partial "--bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --bind-ro $PIDIR/models.json:/run/fabriek/pi/models.json --bind-ro $PIDIR/skills:/run/fabriek/pi/skills --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi"
+	[ -d "$RUN/pi-builder" ]
+	[ ! -e "$RUN/pi-builder/auth.json" ]
+}
+
+@test "a machine whose build wrote no model is refused a supervised session rather than starting pi on none" {
+	rm "$FABRIEK_ETC/model.json"
+	run_fabriek_container role-enter --repository "$REPO" --signing-key decider acme decider
+	assert_failure
+	assert_output --partial "model.json"
+	[ ! -f "$CALLS" ]
 }
 
 @test "without a policy file on the machine, the decider is started without one and told nothing" {

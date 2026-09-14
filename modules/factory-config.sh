@@ -47,14 +47,14 @@ fabriek_factory_role_declared() {
 	return 1
 }
 
-## What a role's session runs, one argv word per line. A command is argv and
-## never a shell line, so nothing in it is re-split or expanded on the way. A
-## role that declares none runs pi in the mode the loop drives: the agent is
-## fixed (ADR-029) and on every cage (ADR-030), so saying nothing means it.
+## What a role's session runs, one argv word per line, or nothing: a command
+## is argv and never a shell line, so nothing in it is re-split or expanded
+## on the way. A role that declares none prints none, and runs the agent
+## (ADR-029) the way the machine composes it (fabriek_actor_command).
 fabriek_factory_role_command() {
 	local declaration="$1" role="$2"
 	fabriek_factory_role_declared "$declaration" "$role" || return 1
-	jq -r --arg r "$role" '(.roles[$r].command // ["pi", "--mode", "rpc"]) | .[]' "$declaration"
+	jq -r --arg r "$role" '(.roles[$r].command // []) | .[]' "$declaration"
 }
 
 ## The specialists a role is composed of, one name per line, or nothing when

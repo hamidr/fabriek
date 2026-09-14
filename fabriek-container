@@ -206,12 +206,18 @@ cmd_role_enter() {
 	worktree="$(cmd_role_worktree "$factory" "$role" "$repo")" || exit 1
 
 	## The decider is the machine's own role (ADR-034 point 1): not in the
-	## declaration, running the agent in the mode its loop drives.
+	## declaration, running the agent the way a role that declares no
+	## command does.
 	if [ "$role" = "$FABRIEK_DECIDER" ]; then
-		declared_cmd=$'pi\n--mode\nrpc'
+		declared_cmd=""
 	else
 		declared_cmd="$(fabriek_factory_role_command \
 			"$(factory_declaration "$factory")" "$role")" || exit 1
+	fi
+	## Only a supervised run is an actor; a person entering by hand runs
+	## what they asked and needs no model to have been chosen.
+	if [ -n "$signing_role" ] && [ -z "$declared_cmd" ]; then
+		declared_cmd="$(fabriek_actor_command "$FABRIEK_ETC")" || exit 1
 	fi
 
 	## Where on the factory's bridge this cage is (ADR-037). The plan is the
@@ -317,7 +323,10 @@ cmd_role_enter() {
 		## substitution, because a refusal has to stop the session and a
 		## loop's status is the loop's, not the substitution's.
 		local actor_lines actor_line
-		actor_lines="$(fabriek_actor_args "$FABRIEK_ETC" "$STATE_DIR" "$factory" "$role")" || exit 1
+		local scratch
+		scratch="$(fabriek_actor_scratch "$role" "$uid")" ||
+			die "could not make a pi directory for $role's session"
+		actor_lines="$(fabriek_actor_args "$FABRIEK_ETC" "$STATE_DIR" "$factory" "$role" "$scratch")" || exit 1
 		while IFS= read -r actor_line; do
 			[ -n "$actor_line" ] || continue
 			opts+=("$actor_line")

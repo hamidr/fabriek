@@ -93,15 +93,62 @@ fabriek_role_pi_dir() {
 	readlink -f "$link"
 }
 
-## What makes a supervised session an actor (ADR-033, ADR-035): pi's
-## configuration directory bound where PI_CODING_AGENT_DIR names it, the bus
-## password and the forge token bound read-only, and the environment the
-## extension reads. One flag per line, in a fixed order, because seam.bats
-## asserts the whole line.
+## What a supervised session runs when the repository declares no command:
+## the agent (ADR-029) in the mode the loop drives, on the model the build
+## chose, trusting nothing the project's own .pi says. On argv rather than
+## in settings.json: pi locks that file to read it, and the directory it is
+## in is bound read-only, so a session with nobody at the keyboard started
+## on no model. One word per line, like a declared command.
 ##
-## fabriek_actor_args <etc> <state> <factory> <role>
+## fabriek_actor_command <etc>
+fabriek_actor_command() {
+	local etc="$1" provider model
+	if [ ! -s "$etc/model.json" ]; then
+		echo "fabriek: this machine's build wrote no model at $etc/model.json; a session cannot start on none" >&2
+		return 1
+	fi
+	provider="$(jq -r '.provider // empty' "$etc/model.json")"
+	model="$(jq -r '.model // empty' "$etc/model.json")"
+	if [ -z "$provider" ] || [ -z "$model" ]; then
+		echo "fabriek: $etc/model.json names no provider and model" >&2
+		return 1
+	fi
+	printf '%s\n' pi --mode rpc --provider "$provider" --model "$model" --no-approve
+}
+
+## Where a session's pi scratch lives on the machine. FABRIEK_RUN overrides
+## it, which is what the suite uses.
+fabriek_run_dir() { printf '%s\n' "${FABRIEK_RUN:-/run/fabriek}"; }
+
+## The directory pi is handed, made fresh for one supervised session and
+## given to the role. pi locks settings.json, auth.json and models-store.json
+## to read them, and the lock is a directory beside each, so what it is
+## handed has to be writable; what the build put there is bound read-only
+## over it by fabriek_actor_args, so the loop, the models and the prompt stay
+## the build's and only pi's own state lands here. Fresh every session:
+## nothing a role writes outlives the session that wrote it.
+##
+## fabriek_actor_scratch <role> <uid>
+fabriek_actor_scratch() {
+	local role="$1" uid="$2" dir
+	dir="$(fabriek_run_dir)/pi-$role"
+	rm -rf "$dir" && mkdir -p "$dir" && chmod 0700 "$dir" || return 1
+	## The suite runs as a person and cannot give a directory away; on the
+	## machine this runs as root and a directory it cannot give is a fault.
+	chown "$uid" "$dir" 2>/dev/null || [ "$(id -u)" != 0 ] || return 1
+	printf '%s\n' "$dir"
+}
+
+## What makes a supervised session an actor (ADR-033, ADR-035): pi's
+## directory, scratch for the session with the build's files bound
+## read-only over it, where PI_CODING_AGENT_DIR names it; the bus password
+## and the forge token bound read-only; and the environment the extension
+## reads. One flag per line, in a fixed order, because seam.bats asserts
+## the whole line.
+##
+## fabriek_actor_args <etc> <state> <factory> <role> <scratch>
 fabriek_actor_args() {
-	local etc="$1" state="$2" factory="$3" role="$4"
+	local etc="$1" state="$2" factory="$3" role="$4" scratch="$5"
 	local password="$state/bus/$role" token="$state/forge/$role-token"
 	if [ ! -s "$password" ]; then
 		echo "fabriek: role $role has no bus password at $password; run fabriek up" >&2
@@ -136,8 +183,13 @@ fabriek_actor_args() {
 	## the verbatim transcript, go to the role's own home (ADR-038 point 2).
 	## No startup network calls: a cage has no route, and a call that fails
 	## slowly is a slow start nobody attributed (ADR-029 point 7).
+	printf '%s\n' "--bind" "$scratch:/run/fabriek/pi"
+	local entry
+	for entry in "$pidir"/* "$pidir"/.[!.]*; do
+		[ -e "$entry" ] || continue
+		printf '%s\n' "--bind-ro" "$entry:/run/fabriek/pi/${entry##*/}"
+	done
 	printf '%s\n' \
-		"--bind-ro" "$pidir:/run/fabriek/pi" \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions" \
