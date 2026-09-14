@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 048
+**Next ADR number:** 049
 
 ## PRDs
 
@@ -72,3 +72,4 @@ document, then regenerate.
 | [ADR-045](ADR-045-nixcage-answers-for-a-running-cage.md) | nixcage answers for a running cage, bounds it, names its veth, and puts a hand inside it | proposed | -- | ADR-018, ADR-037, ADR-038, ADR-043 | four primitives move upstream: leader and stop from the scope, memory and cpu bounds, the veth's name, exec into a cage |  |
 | [ADR-046](ADR-046-a-dependency-cache-warmed-from-the-commit.md) | A factory's dependency cache is warmed at the machine build from the commit's lockfiles | proposed | -- | ADR-031, ADR-037, ADR-040, ADR-042 | build tools read a cache the machine build filled from the commit's lockfiles; nothing fetches on a cage's word |  |
 | [ADR-047](ADR-047-the-launchers-grammar.md) | The launcher has one verb level, a factory option, and the conventions of a Unix tool | proposed | -- | ADR-019, ADR-039, ADR-042 | fabriek [-f FACTORY] VERB; flags anywhere, -h per verb, stderr and exit 2 for usage, colour only on a tty, --json, stdin |  |
+| [ADR-048](ADR-048-a-nixos-host-declares-its-factories.md) | A NixOS host declares its factories, and the same file serves every other host | proposed | -- | ADR-019, ADR-020, ADR-025, ADR-047 | services.fabriek renders the operator's config.toml and a unit per auto-started factory; the CLI reads /etc too |  |
