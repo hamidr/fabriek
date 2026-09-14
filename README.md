@@ -37,7 +37,7 @@ fabriek -f acme file ship "Add an importer" -m "handles empty files"
      |     before a failing test; it commits on its branch, comments its outcome
      +-- the executor checks the commit and moves the label; the decider goes on
      |
-fabriek -f acme console         one screen: roles, board, live stream, keys
+fabriek -f acme console         one screen: roles, board, activity, a role's stream
 fabriek -f acme board           Forgejo's UI on a local port, to merge
 fabriek -f acme mirror          merged main and the record reach origin,
                                    on your word and never before
@@ -166,7 +166,7 @@ takes `-h`; a usage error is one line on stderr and exit 2; `ls`, `ps`,
 | `fabriek steer ROLE [TEXT]` | Speak into a role's running turn; TEXT or stdin |
 | `fabriek log [-t] ROLE [SESSION]` | The sessions pi kept for a role, or one of them as it is or as the turns' text |
 | `fabriek file [-m BODY] WORKFLOW TITLE` | File a goal, the body from -m or stdin; the decider assigns it and nothing is typed after |
-| `fabriek console` | The one face: roles, board, live stream, and the keys |
+| `fabriek console` | The one face: roles with one selected, board, activity, that role's stream, keys |
 | `fabriek board` | Forgejo's UI on a local port, for merging; prints the URL and the login |
 | `fabriek watch [--from ID]` | The factory's bus as JSON lines, for any client |
 | `fabriek send [JSON]` | A command in the decider's vocabulary, from you or stdin |

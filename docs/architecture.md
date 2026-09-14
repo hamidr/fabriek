@@ -239,9 +239,13 @@ The relay (`factory/src/relay/`) prints every stream as JSON lines,
 `relay/fixtures.json` being the contract; `fabriek watch` carries
 it over ssh. When the bus goes away the relay waits, connects again and
 reads on from the last id it printed (`relay/tail.ts`). The TUI
-(`factory/src/tui/`) folds those lines into one state, renders roles,
-board, commands, findings and spend, and writes through the CLI: file,
-steer, stop, retry, block, push, mirror. The watch asks from `0-0`, so
+(`factory/src/tui/`) folds those lines into one state and renders it in
+panes: the roles with one selected (`j`/`k`), the board by stage, the
+factory's activity (commands and findings in bus-id order), and the
+selected role's own stream, its turns, tools, words and refusals in the
+operator's terms. It writes through the CLI (`tui/cli.ts`): file, retry,
+block, mirror, and steer, stop and push aimed at the selected role. The
+watch asks from `0-0`, so
 what the bus still holds is replayed and the board, which reaches the TUI
 only as the executor's periodic event, is on screen at open. A watch that
 ends is started again after a pause and the picture begins over

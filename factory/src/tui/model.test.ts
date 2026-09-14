@@ -36,6 +36,45 @@ describe("the TUI's model", () => {
     assert.equal(s.roles["builder"]?.last, "tool_call bash");
   });
 
+  it("a role's stream keeps what it did in the operator's words: a turn, each tool with its command or path, what it said, and a refusal", () => {
+    let s = after([{ stream: "events:builder", id: "1-0", fields: { kind: "event", name: "turn_start", json: '{"turnIndex":0}' } }]);
+    s = fold(s, { stream: "events:builder", id: "2-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"bash","input":{"command":"pwd && ls"}}' } });
+    s = fold(s, { stream: "events:builder", id: "3-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"edit","input":{"path":"src/a.py"}}' } });
+    s = fold(s, { stream: "events:builder", id: "4-0", fields: { kind: "event", name: "tool_result", json: '{"toolName":"bash"}' } });
+    s = fold(s, { stream: "events:builder", id: "5-0", fields: { kind: "event", name: "turn_end", json: '{"message":{"role":"assistant","content":[{"type":"thinking","thinking":"hm"},{"type":"text","text":"Reading the tree first."}]}}' } });
+    s = fold(s, { stream: "events:builder", id: "6-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } });
+    s = fold(s, { stream: "findings:builder", id: "7-0", fields: { kind: "finding", text: "done on builder/work" } });
+    assert.deepEqual(s.stream["builder"], [
+      "turn 1",
+      "bash  pwd && ls",
+      "edit  src/a.py",
+      "Reading the tree first.",
+      "guard refused run-before-code on src/a.py",
+      "finding: done on builder/work",
+    ]);
+    assert.equal(s.stream["reviewer"], undefined);
+  });
+
+  it("activity is in the order the bus gave each line its id, whatever order the relay replayed the streams in", () => {
+    let s = initial(["builder"]);
+    s = fold(s, { stream: "commands", id: "300-0", fields: { json: '{"verb":"assign","issue":7,"role":"builder"}' } });
+    s = fold(s, { stream: "operator", id: "100-0", fields: { json: '{"op":"steer","role":"builder","text":"go"}' } });
+    s = fold(s, { stream: "events:executor", id: "200-0", fields: { kind: "event", name: "command", json: '{"from":"commands","command":{"verb":"push","role":"builder"},"result":{"ok":true}}' } });
+    assert.deepEqual(s.activity.map((a) => `${a.by} ${a.text}`), ["operator steer builder go", "executor did push builder", "decider assign 7 builder"]);
+  });
+
+  it("what the operator said to a role is in that role's stream, so the question reads beside the answer", () => {
+    const s = after([{ stream: "mailbox:builder", id: "1-0", fields: { kind: "steer", text: "status?" } }]);
+    assert.deepEqual(s.stream["builder"], ["operator: status?"]);
+  });
+
+  it("a role's stream is bounded, newest last", () => {
+    let s = initial(["builder"]);
+    for (let i = 0; i < 300; i++) s = fold(s, { stream: "events:builder", id: `${i}-0`, fields: { kind: "event", name: "turn_start", json: `{"turnIndex":${i}}` } });
+    assert.equal(s.stream["builder"]?.length, 200);
+    assert.equal(s.stream["builder"]?.at(-1), "turn 300");
+  });
+
   it("a guard refusal is the role's last line and is counted for the task; the same rule on the same path three times is a repeat", () => {
     let s = after([
       { stream: "control:builder", id: "1-0", fields: { kind: "ready", capabilities: "build" } },

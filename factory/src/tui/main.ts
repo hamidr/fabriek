@@ -22,6 +22,9 @@ if (!factory) {
 const roles = process.argv.slice(3);
 let state: State = initial(roles);
 let draw = true;
+/** The role the operator has picked: its stream on screen, s and x aimed at it. */
+let selected = 0;
+const selectedRole = (): string | undefined => Object.keys(state.roles)[selected];
 
 const cli = process.env["FABRIEK_CLI"] ?? "fabriek";
 
@@ -74,15 +77,26 @@ async function key(k: string): Promise<void> {
       if (title && workflow) notice = await run(cliArgs(factory, "file", [...(body ? ["-m", body] : []), workflow, title]));
       break;
     }
+    case "j":
+    case `${ESC}[B`:
+      selected = Math.min(selected + 1, Math.max(0, Object.keys(state.roles).length - 1));
+      break;
+    case "k":
+    case `${ESC}[A`:
+      selected = Math.max(0, selected - 1);
+      break;
     case "s": {
-      const role = await ask("steer which role:");
-      const text = await ask("say:");
-      if (role && text) notice = await run(cliArgs(factory, "steer", [role, text]));
+      const role = selectedRole();
+      if (!role) break;
+      const text = await ask(`steer ${role}:`);
+      if (text) notice = await run(cliArgs(factory, "steer", [role, text]));
       break;
     }
     case "x": {
-      const role = await ask("stop which role:");
-      if (role) notice = await run(cliArgs(factory, "stop", [role]));
+      const role = selectedRole();
+      if (!role) break;
+      const sure = await ask(`stop ${role}'s turn? [y/N]`);
+      if (sure.toLowerCase() === "y") notice = await run(cliArgs(factory, "stop", [role]));
       break;
     }
     case "r": {
@@ -97,7 +111,7 @@ async function key(k: string): Promise<void> {
       break;
     }
     case "p": {
-      const role = await ask("push which role's branch:");
+      const role = selectedRole();
       if (role) notice = await run(cliArgs(factory, "send", [JSON.stringify({ verb: "push", role })]));
       break;
     }
@@ -111,8 +125,15 @@ async function key(k: string): Promise<void> {
 
 function paint(): void {
   if (!draw) return;
-  const screen = { columns: process.stdout.columns || 80, rows: (process.stdout.rows || 24) - 1, factory };
-  process.stdout.write(CLEAR + render(state, screen) + (notice ? `\n${notice}` : ""));
+  const screen = {
+    columns: process.stdout.columns || 80,
+    rows: process.stdout.rows || 24,
+    factory,
+    selected: selectedRole(),
+    notice,
+    color: process.stdout.isTTY === true && process.env["NO_COLOR"] === undefined,
+  };
+  process.stdout.write(CLEAR + render(state, screen));
 }
 
 keepWatching({

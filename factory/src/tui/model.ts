@@ -24,6 +24,14 @@ export interface BoardIssue {
   blocked: boolean;
 }
 
+/** One thing the factory did, as the operator reads it: who, and what. */
+export interface Activity {
+  /** The bus's id, which orders it: the relay replays one stream after another. */
+  id: string;
+  by: string;
+  text: string;
+}
+
 export interface State {
   roles: Record<string, RoleView>;
   board: BoardIssue[];
@@ -31,11 +39,16 @@ export interface State {
   routing: boolean;
   findings: { role: string; text: string }[];
   commands: { by: "decider" | "executor" | "operator"; text: string }[];
+  /** Commands and findings as they came, one list, newest last. */
+  activity: Activity[];
+  /** What each role did, in the operator's words, newest last. */
+  stream: Record<string, string[]>;
   spend: Record<string, number>;
   probes: string[];
 }
 
 const KEEP = 50;
+const STREAM_KEEP = 200;
 
 export function initial(roles: string[]): State {
   return {
@@ -45,14 +58,52 @@ export function initial(roles: string[]): State {
     routing: true,
     findings: [],
     commands: [],
+    activity: [],
+    stream: {},
     spend: {},
     probes: [],
   };
 }
 
-function keep<T>(list: T[], item: T): T[] {
+function keep<T>(list: T[], item: T, max = KEEP): T[] {
   const out = [...list, item];
-  return out.length > KEEP ? out.slice(out.length - KEEP) : out;
+  return out.length > max ? out.slice(out.length - max) : out;
+}
+
+/** The role's stream with one more line. */
+function said(s: State, role: string, text: string): State {
+  return { ...s, stream: { ...s.stream, [role]: keep(s.stream[role] ?? [], text, STREAM_KEEP) } };
+}
+
+/** Where a bus id sorts: milliseconds, then the sequence within them. */
+function idOrder(a: string, b: string): number {
+  const [am, as] = a.split("-").map(Number) as [number, number];
+  const [bm, bs] = b.split("-").map(Number) as [number, number];
+  return am - bm || as - bs;
+}
+
+function did(s: State, id: string, by: string, text: string): State {
+  const activity = [...s.activity, { id, by, text }].sort((x, y) => idOrder(x.id, y.id));
+  return { ...s, activity: activity.length > KEEP ? activity.slice(activity.length - KEEP) : activity };
+}
+
+/** A tool call as one line: the tool, then the one argument that says what it touched. */
+function toolLine(payload: Record<string, unknown>): string {
+  const tool = String(payload["toolName"] ?? "tool");
+  const input = (payload["input"] ?? {}) as Record<string, unknown>;
+  const what = ["command", "path", "pattern", "query", "url"].map((k) => input[k]).find((v) => typeof v === "string") as string | undefined;
+  return what ? `${tool}  ${what.split("\n")[0]}` : tool;
+}
+
+/** What the assistant said in a turn, its thinking left out. */
+function saidText(payload: Record<string, unknown>): string {
+  const message = payload["message"] as { content?: unknown } | undefined;
+  const content = Array.isArray(message?.content) ? (message.content as { type?: string; text?: string }[]) : [];
+  return content
+    .filter((c) => c.type === "text" && typeof c.text === "string")
+    .map((c) => (c.text as string).trim())
+    .filter((t) => t.length > 0)
+    .join(" ");
 }
 
 function tryJson(text: string | undefined): unknown {
@@ -66,10 +117,11 @@ function tryJson(text: string | undefined): unknown {
 function describeCommand(c: unknown): string {
   if (typeof c !== "object" || c === null) return String(c);
   const o = c as Record<string, unknown>;
+  // The decider's commands say verb; the operator's entries say op.
   const rest = Object.entries(o)
-    .filter(([k]) => k !== "verb")
+    .filter(([k]) => k !== "verb" && k !== "op")
     .map(([, v]) => String(v));
-  return [String(o["verb"] ?? "?"), ...rest].join(" ");
+  return [String(o["verb"] ?? o["op"] ?? "?"), ...rest].join(" ");
 }
 
 export function fold(s: State, line: Line): State {
@@ -101,17 +153,32 @@ export function fold(s: State, line: Line): State {
         const before = view(role).guard;
         const same = before !== undefined && before.rule === rule && before.path === path;
         const guard = { rule, path, count: (before?.count ?? 0) + 1, repeats: same ? before.repeats + 1 : 1 };
-        return withRole(role, { ...view(role), guard, last: `guard ${rule}${path ? ` ${path}` : ""}` });
+        const next = withRole(role, { ...view(role), guard, last: `guard ${rule}${path ? ` ${path}` : ""}` });
+        return said(next, role, `guard refused ${rule}${path ? ` on ${path}` : ""}`);
       }
       const tool = payload && typeof payload["toolName"] === "string" ? ` ${payload["toolName"]}` : "";
-      return withRole(role, { ...view(role), last: `${eventName}${tool}` });
+      const next = withRole(role, { ...view(role), last: `${eventName}${tool}` });
+      if (eventName === "turn_start" && payload) return said(next, role, `turn ${Number(payload["turnIndex"] ?? 0) + 1}`);
+      if (eventName === "tool_call" && payload) return said(next, role, toolLine(payload));
+      if (eventName === "turn_end" && payload) {
+        const text = saidText(payload);
+        return text ? said(next, role, text) : next;
+      }
+      return next;
     }
-    case "findings":
-      return { ...s, findings: keep(s.findings, { role, text: line.fields["text"] ?? "" }) };
-    case "commands":
-      return { ...s, commands: keep(s.commands, { by: "decider", text: describeCommand(tryJson(line.fields["json"])) }) };
-    case "operator":
-      return { ...s, commands: keep(s.commands, { by: "operator", text: describeCommand(tryJson(line.fields["json"])) }) };
+    case "findings": {
+      const text = line.fields["text"] ?? "";
+      const next = { ...s, findings: keep(s.findings, { role, text }) };
+      return said(did(next, line.id, role, text), role, `finding: ${text}`);
+    }
+    case "commands": {
+      const text = describeCommand(tryJson(line.fields["json"]));
+      return did({ ...s, commands: keep(s.commands, { by: "decider", text }) }, line.id, "decider", text);
+    }
+    case "operator": {
+      const text = describeCommand(tryJson(line.fields["json"]));
+      return did({ ...s, commands: keep(s.commands, { by: "operator", text }) }, line.id, "operator", text);
+    }
     case "probes": {
       // The role is the machine's word on whose uid it was; none means no role's.
       const who = line.fields["role"] ? `${line.fields["role"]}  ` : "";
@@ -120,6 +187,7 @@ export function fold(s: State, line: Line): State {
     case "mailbox": {
       const m = tryJson(JSON.stringify(line.fields)) as Record<string, string> | null;
       if (m?.["kind"] === "assignment") return withRole(role, { ...view(role), last: `assigned #${m["issue"]}` });
+      if (m?.["kind"] === "steer") return said(s, role, `operator: ${m["text"] ?? ""}`);
       return s;
     }
     default:
@@ -127,9 +195,9 @@ export function fold(s: State, line: Line): State {
   }
 }
 
-function foldExecutor(s: State, line: Line): State {
-  const payload = tryJson(line.fields["json"]) as Record<string, unknown> | null;
-  switch (line.fields["name"]) {
+function foldExecutor(s: State, ln: Line): State {
+  const payload = tryJson(ln.fields["json"]) as Record<string, unknown> | null;
+  switch (ln.fields["name"]) {
     case "board": {
       if (!payload) return s;
       const issues = (payload["issues"] as BoardIssue[] | undefined) ?? [];
@@ -145,7 +213,8 @@ function foldExecutor(s: State, line: Line): State {
       if (!payload) return s;
       const result = payload["result"] as { ok: boolean; reason?: string } | undefined;
       const text = describeCommand(payload["command"]);
-      return { ...s, commands: keep(s.commands, { by: "executor", text: result?.ok ? `did ${text}` : `refused ${text}: ${result?.reason ?? ""}` }) };
+      const line = result?.ok ? `did ${text}` : `refused ${text}: ${result?.reason ?? ""}`;
+      return did({ ...s, commands: keep(s.commands, { by: "executor", text: line }) }, ln.id, "executor", line);
     }
     default:
       return s;
