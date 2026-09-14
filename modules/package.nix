@@ -10,27 +10,16 @@ let
   ## Everything the machine program sources, plus the guidance it binds into a
   ## role's session. One directory so the program needs a single path rather
   ## than one per file.
+  ## Every module rather than a list of them: the list drifted twice (check.sh,
+  ## transcript.sh) and the installed CLI was what found out.
   lib' = pkgs.runCommand "fabriek-lib" { } ''
     mkdir -p $out
-    cp ${../modules/names.sh} $out/names.sh
-    cp ${../modules/role-worktree.sh} $out/role-worktree.sh
-    cp ${../modules/factory-clone.sh} $out/factory-clone.sh
-    cp ${../modules/factory-config.sh} $out/factory-config.sh
-    cp ${../modules/schema.sh} $out/schema.sh
-    cp ${../modules/sizes.sh} $out/sizes.sh
-    cp ${../modules/resources.sh} $out/resources.sh
-    cp ${../modules/repo-declaration.sh} $out/repo-declaration.sh
-    cp ${../modules/operator-config.sh} $out/operator-config.sh
-    cp ${../modules/machine.sh} $out/machine.sh
-    cp ${../modules/signing.sh} $out/signing.sh
-    cp ${../modules/role-guidance.sh} $out/role-guidance.sh
-    cp ${../modules/machine-spec.sh} $out/machine-spec.sh
-    cp ${../modules/machine-plan.sh} $out/machine-plan.sh
-    cp ${../modules/forge.sh} $out/forge.sh
-    cp ${../modules/bus.sh} $out/bus.sh
-    cp ${../modules/operator.sh} $out/operator.sh
-    cp ${../modules/probes.sh} $out/probes.sh
-    cp ${../modules/role-guidance.md} $out/role-guidance.md
+    cp ${
+      pkgs.lib.fileset.toSource {
+        root = ../modules;
+        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "sh" || f.name == "role-guidance.md") ../modules;
+      }
+    }/* $out/
   '';
 
   ## The machine program, on the machine the cages are on. It calls
