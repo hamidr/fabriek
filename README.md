@@ -27,7 +27,7 @@ natively.
 ```
 fabriek up acme                  builds and boots the factory's machine from
      |                             a lock that pins the repository's commit
-fabriek task file acme ship "Add an importer" "handles empty files"
+fabriek -f acme file ship "Add an importer" -m "handles empty files"
      |
      +-- an issue on the machine's forge, labelled with the first stage
      +-- the decider, a cage of its own, chooses a ready role and asks
@@ -37,9 +37,9 @@ fabriek task file acme ship "Add an importer" "handles empty files"
      |     before a failing test; it commits on its branch, comments its outcome
      +-- the executor checks the commit and moves the label; the decider goes on
      |
-fabriek factory console acme     one screen: roles, board, live stream, keys
-fabriek factory board acme       Forgejo's UI on a local port, to merge
-fabriek factory mirror acme      merged main and the record reach origin,
+fabriek -f acme console         one screen: roles, board, live stream, keys
+fabriek -f acme board           Forgejo's UI on a local port, to merge
+fabriek -f acme mirror          merged main and the record reach origin,
                                    on your word and never before
 ```
 
@@ -130,24 +130,29 @@ handing numbers out is the only one that can promise never to reissue one.
 
 ## Commands
 
+`fabriek [-f FACTORY] VERB [ARGS]`. The factory a verb is about is `-f`,
+else `FABRIEK_FACTORY`, else the one factory registered here. Every verb
+takes `-h`; a usage error is one line on stderr and exit 2; `ls`, `ps`,
+`show` and `check` take `--json`; colour appears only on a terminal.
+
 | Command | Description |
 |---|---|
-| `fabriek check [<repo>]` | What `up` would refuse, in seconds: the declaration at its commit and every specialist each role names |
-| `fabriek catalogue list [<repo>]`, `catalogue show <specialist> [<repo>]` | Every specialist and skill, and what one brings: order, tools, skills, servers, tests, prompt; no build |
-| `fabriek role show <factory> <role>` | The same for a registered factory's role at its commit |
-| `fabriek up <factory>` | Build and boot the machine that factory runs in |
-| `fabriek down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
-| `fabriek vm status` | The machines on this host, what each is doing, and the port it answers on |
-| `fabriek role <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid |
-| `fabriek role stop <factory> <role>` | End a role's running turn; its task stays with it |
-| `fabriek role steer <factory> <role> <text>` | Speak into a role's running turn |
-| `fabriek role transcript [--text] <factory> <role> [<session>]` | The sessions pi kept for a role, or one of them as it is or as the turns' text |
-| `fabriek task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
-| `fabriek factory console <factory>` | The one face: roles, board, live stream, and the keys |
-| `fabriek factory board <factory>` | Forgejo's UI on a local port, for merging; prints the URL and the login |
-| `fabriek factory watch <factory>` | The factory's bus as JSON lines, for any client |
-| `fabriek factory send <factory> '<json>'` | A command in the decider's vocabulary, from you |
-| `fabriek factory mirror <factory>` | Push merged main and the record to the repository's origin |
+| `fabriek check [REPO]` | What `up` would refuse, in seconds: the declaration at its commit and every specialist each role names |
+| `fabriek ls [REPO]`, `fabriek show NAME [REPO]` | Every specialist and skill, and what one brings: order, tools, skills, servers, tests, prompt; no build |
+| `fabriek -f FACTORY show ROLE` | The same for a registered factory's role at its commit |
+| `fabriek up [-u] [FACTORY]` | Build and boot the machine that factory runs in; -u moves the pin to HEAD |
+| `fabriek down [FACTORY]` | Shut it down, reporting a stop that cannot complete rather than forcing one |
+| `fabriek ps [--json]` | The machines on this host, what each is doing, and the port it answers on |
+| `fabriek enter ROLE [-- CMD...]` | Enter a role by hand, in its own worktree and uid; inside its cage when its actor runs |
+| `fabriek stop [-k] ROLE` | End a role's running turn through the executor; -k ends the cage at its scope |
+| `fabriek steer ROLE [TEXT]` | Speak into a role's running turn; TEXT or stdin |
+| `fabriek log [-t] ROLE [SESSION]` | The sessions pi kept for a role, or one of them as it is or as the turns' text |
+| `fabriek file [-m BODY] WORKFLOW TITLE` | File a goal, the body from -m or stdin; the decider assigns it and nothing is typed after |
+| `fabriek console` | The one face: roles, board, live stream, and the keys |
+| `fabriek board` | Forgejo's UI on a local port, for merging; prints the URL and the login |
+| `fabriek watch [--from ID]` | The factory's bus as JSON lines, for any client |
+| `fabriek send [JSON]` | A command in the decider's vocabulary, from you or stdin |
+| `fabriek mirror` | Push merged main and the record to the repository's origin |
 
 ## How work moves
 

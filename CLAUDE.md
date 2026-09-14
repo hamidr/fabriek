@@ -38,7 +38,7 @@ key and port it allocated for that factory (ADR-019).
 | `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX] [--no-nix-daemon] [--memory SIZE] [--cpus N] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session, bounded on its scope from the declaration |
 | `nixcage-container uid <principal>` | A role's uid, allocated once and never reissued |
 | `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree and the record's dataset, owned and bounded |
-| `nixcage-container status <name>`, `stop <name>` | Whether a role's cage runs and its scope's cgroup (the probes' key); `role stop --now` |
+| `nixcage-container status <name>`, `stop <name>` | Whether a role's cage runs and its scope's cgroup (the probes' key); `stop -k` |
 | `nixcage-container exec <name> [-- cmd]` | A person entering a role whose actor is running, inside its cage |
 | `nixcage.lib.vethHostName` | The name the bridge's rules key on (nixcage ADR-013) |
 
@@ -53,9 +53,9 @@ A change to what a role session is shows up there as a diff.
 
 ## Repository layout
 
-- `fabriek`: the operator's launcher: `check`, `catalogue list|show`, `up`,
-  `down`, `vm status`, `role`, `role show`, `role stop`, `role steer`,
-  `role transcript`, `task file`, `factory mirror|watch|send|console|board`.
+- `fabriek`: the operator's launcher, `fabriek [-f FACTORY] VERB` (ADR-047):
+  `up`, `down`, `ps`, `check`, `ls`, `show`, `enter`, `stop`, `steer`, `log`,
+  `file`, `console`, `board`, `watch`, `send`, `mirror`.
   Reaches the machine program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
@@ -102,7 +102,7 @@ A change to what a role session is shows up there as a diff.
   and command; `repo-declaration.sh`, `schema.sh`, `resources.sh`, `sizes.sh`,
   `operator-config.sh` are the declaration's and the operator's schemas and
   the clamp between them; `machine.sh` is where a machine lives on the host;
-  `check.sh` is `fabriek check`, `catalogue list|show` and `role show`:
+  `check.sh` is `fabriek check`, `ls` and `show`:
   the declaration and every specialist resolved at the commit, evaluation
   only.
 - `modules/factory.nix`: `lib.factory`, one factory's machine from the

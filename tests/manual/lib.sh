@@ -39,7 +39,7 @@ wait_ssh() {
 in_cage() {
 	local role="$1"
 	shift
-	bash fabriek role "$F" "$role" -- "$@" 2>/dev/null
+	bash fabriek -f "$F" enter "$role" -- "$@" 2>/dev/null
 }
 
 # shellcheck disable=SC2034  # read by the script that sources this

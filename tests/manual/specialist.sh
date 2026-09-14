@@ -11,7 +11,7 @@
 ##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   tests/manual/specialist.sh
 ##
-## Every line is asked with `fabriek role`, the real session, from the role's
+## Every line is asked with `fabriek enter`, the real session, from the role's
 ## own cage. The single-quoted $PI_CODING_AGENT_DIR below expands there,
 ## where it is set, and not here.
 # shellcheck disable=SC2016

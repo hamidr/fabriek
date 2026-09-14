@@ -49,11 +49,11 @@ argv NUL-framed through `xargs -0`.
 
 ## Two programs and one package
 
-**`fabriek`** (bash) is the launcher on the operator's host: `up`, `down`,
-`vm status`, `role <factory> <role>` to enter by hand, `role stop`, `role
-steer`, `task file`, `factory mirror`, `factory watch`, `factory send`,
-`factory console`, `factory board`. Every verb but the machine's own goes to
-the machine over ssh.
+**`fabriek`** (bash) is the launcher on the operator's host, `fabriek [-f
+FACTORY] VERB [ARGS]` (ADR-047): `up`, `down`, `ps`, `check`, `ls`, `show`,
+`enter` by hand, `stop`, `steer`, `log`, `file`, `console`, `board`, `watch`,
+`send`, `mirror`. The factory is `-f`, else `FABRIEK_FACTORY`, else the one
+registered. Every verb but the machine's own goes to the machine over ssh.
 
 **`fabriek-container`** (bash) is the machine program: `role-enter`,
 `role-worktree`, `factory-prepare`, and the operator's interventions
@@ -227,7 +227,7 @@ thirty seconds and whenever an actor says something.
 ## The operator
 
 The relay (`factory/src/relay/`) prints every stream as JSON lines,
-`relay/fixtures.json` being the contract; `fabriek factory watch` carries
+`relay/fixtures.json` being the contract; `fabriek watch` carries
 it over ssh. When the bus goes away the relay waits, connects again and
 reads on from the last id it printed (`relay/tail.ts`). The TUI
 (`factory/src/tui/`) folds those lines into one state, renders roles,
@@ -237,7 +237,7 @@ what the bus still holds is replayed and the board, which reaches the TUI
 only as the executor's periodic event, is on screen at open. A watch that
 ends is started again after a pause and the picture begins over
 (`tui/watch.ts`). Merging is a click in
-Forgejo's UI; nothing merges by verb. `fabriek factory board` tunnels a
+Forgejo's UI; nothing merges by verb. `fabriek board` tunnels a
 local port to that UI over the factory's own ssh and prints the URL with
 a password the machine set fresh on the operator's account
 (`factory-board`), since the account was made with one nothing kept.

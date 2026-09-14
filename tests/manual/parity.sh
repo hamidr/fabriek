@@ -73,7 +73,7 @@ when "the operator files a goal"
 ## The number is read off the board by title, because task file cannot know
 ## it before the executor has acted.
 title="the importer handles empty files $(date +%s)"
-check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash fabriek task file "$F" ship "$title" "acceptance: an empty file imports as no rows" 2>/dev/null | tail -1)"
+check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash fabriek -f "$F" file ship "$title" -m "acceptance: an empty file imports as no rows" 2>/dev/null | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
 issue_by_title() { api GET "$repo/issues?state=all&type=issues&limit=50" | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1 | sed 's/^[0-9][0-9]*$/found/'; }
 check "the executor opens an issue for it" found "$(eventually 60 found issue_by_title)"
@@ -130,7 +130,7 @@ when "the operator merges it in Forgejo"
 check "the merge is accepted" 200 \
 	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
 when "the operator runs fabriek factory mirror"
-bash fabriek factory mirror "$F" >/dev/null 2>&1
+bash fabriek -f "$F" mirror >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"
 main_origin="$(sshm git ls-remote "$origin" refs/heads/main 2>/dev/null | cut -f1)"
 check "origin's main is Forgejo's main" "$main_forge" "$main_origin"
@@ -143,7 +143,7 @@ total="$(sshm "curl -s http://$proxy/status" | jq -r '[.[]] | add // 0')"
 check "the proxy counted tokens" yes "$([ "${total:-0}" -gt 0 ] && echo yes || echo no)"
 when "the operator reads the executor's board on the relay"
 check "the executor is routing" true \
-	"$(timeout 20 bash fabriek factory watch "$F" --from 0 2>/dev/null | jq -r 'select(.stream == "events:executor" and .fields.name == "board") | .fields.json | fromjson | .routing' | tail -1)"
+	"$(timeout 20 bash fabriek -f "$F" watch --from 0 2>/dev/null | jq -r 'select(.stream == "events:executor" and .fields.name == "board") | .fields.json | fromjson | .routing' | tail -1)"
 
 bash fabriek down "$F"
 exit "$fail"
