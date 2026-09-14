@@ -74,7 +74,8 @@ teardown() {
 @test "unknown command fails with help" {
 	run_fabriek frobnicate
 	assert_failure
-	assert_output --partial "Unknown command"
+	[ "$status" -eq 2 ]
+	assert_output --partial "unknown verb"
 }
 
 @test "every machine command goes to the factory's own machine and nowhere else" {

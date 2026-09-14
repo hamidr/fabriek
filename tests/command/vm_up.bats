@@ -144,10 +144,15 @@ EOF
 	assert_output --partial "ghost"
 }
 
-@test "up with no factory named explains itself" {
+@test "up with no factory named takes the one registered, and with two asks which" {
 	run_fabriek up
-	assert_failure
-	assert_output --partial "usage"
+	assert_success
+	assert_output --partial "acme is running"
+	run_fabriek down
+	printf '\n[factories.widgets]\npath = "%s"\n' "$REPO" >>"$FABRIEK_CONFIG"
+	run_fabriek up
+	[ "$status" -eq 2 ]
+	assert_output --partial "which factory"
 }
 
 @test "starting a factory builds its machine and leaves it running" {
@@ -255,7 +260,7 @@ EOF
 	run grep -c "^flake update project " "$NIX_CALLS"
 	assert_output 0
 	run_fabriek down acme
-	run_fabriek up acme --update
+	run_fabriek up -u acme
 	assert_success
 	run grep -c "^flake update project --flake path:$FABRIEK_MACHINES/acme/machine$" "$NIX_CALLS"
 	assert_output 1
@@ -334,13 +339,13 @@ EOF
 @test "a running machine says so, and one that has stopped says that" {
 	run_fabriek up acme
 	assert_success
-	run_fabriek vm status
+	run_fabriek ps
 	assert_success
 	assert_output --partial "running"
 
 	run_fabriek down acme
 	assert_success
-	run_fabriek vm status
+	run_fabriek ps
 	assert_success
 	assert_output --partial "stopped"
 	refute_output --partial "running"

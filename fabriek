@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # fabriek -- run a factory of named roles over one repository.
 #
-# What an operator types. It files goals, reads back what is there, enters a
-# role by hand, and hands the factory's work to the operator's own repository.
-# None of it knows where the cages are: every machine command goes over ssh to
-# the machine fabriek built for that factory, and machine() is the only thing
-# here that touches the transport (ADR-018, ADR-019).
+# What an operator types: fabriek [-f FACTORY] VERB [ARGS] (ADR-047). It
+# starts and stops a factory's machine, files goals, reads back what is
+# there, enters a role by hand, and hands the factory's work to the
+# operator's own repository. None of it knows where the cages are: every
+# machine command goes over ssh to the machine fabriek built for that
+# factory, and machine() is the only thing here that touches the transport
+# (ADR-018, ADR-019).
 
 set -euo pipefail
 
@@ -39,22 +41,108 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 ## working tree.
 FABRIEK_SELF="${FABRIEK_SELF:-@self@}"
 
-RED=$'\033[0;31m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[1;33m'
-CYAN=$'\033[0;36m'
-BOLD=$'\033[1m'
-NC=$'\033[0m'
+## Colour only where somebody is looking: a line that goes to a pipe is
+## plain, so the output composes (ADR-047 point 3).
+if [[ -t 1 ]]; then
+  GREEN=$'\033[0;32m' CYAN=$'\033[0;36m' BOLD=$'\033[1m' NC=$'\033[0m'
+else
+  GREEN="" CYAN="" BOLD="" NC=""
+fi
 
-log_info() { echo -e "${CYAN}[fabriek]${NC} $*"; }
-log_ok()   { echo -e "${GREEN}[fabriek]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[fabriek]${NC} $*"; }
-log_err()  { echo -e "${RED}[fabriek]${NC} $*" >&2; }
+log_info() { echo -e "${CYAN}fabriek:${NC} $*"; }
+log_ok()   { echo -e "${GREEN}fabriek:${NC} $*"; }
+## Every line to stderr begins the same way, whoever is reading it.
+log_err()  { echo "fabriek: $*" >&2; }
 
 ## What builds a machine, locks its flake and reads the spec back out of it.
 ## Named once for the same reason as the above: everything nix does for a
 ## machine goes through it, so it is the one thing a test has to stand in for.
 NIX="${FABRIEK_NIX:-nix}"
+
+## The verbs and their one-line usages, the one table the help, -h and a
+## usage error all read from.
+usage_of() {
+  case "$1" in
+  up)      echo "usage: fabriek up [-u|--update] [FACTORY]" ;;
+  down)    echo "usage: fabriek down [FACTORY]" ;;
+  ps)      echo "usage: fabriek ps [--json]" ;;
+  check)   echo "usage: fabriek check [--json] [REPO]" ;;
+  ls)      echo "usage: fabriek ls [--json] [REPO]" ;;
+  show)    echo "usage: fabriek show [--json] NAME [REPO]   or   fabriek -f FACTORY show ROLE" ;;
+  enter)   echo "usage: fabriek [-f FACTORY] enter ROLE [-- CMD...]" ;;
+  stop)    echo "usage: fabriek [-f FACTORY] stop [-k] ROLE" ;;
+  steer)   echo "usage: fabriek [-f FACTORY] steer ROLE [TEXT|-]" ;;
+  log)     echo "usage: fabriek [-f FACTORY] log [-t] ROLE [SESSION]" ;;
+  file)    echo "usage: fabriek [-f FACTORY] file [-m BODY] WORKFLOW TITLE" ;;
+  console) echo "usage: fabriek [-f FACTORY] console" ;;
+  board)   echo "usage: fabriek [-f FACTORY] board" ;;
+  watch)   echo "usage: fabriek [-f FACTORY] watch [--from ID]" ;;
+  send)    echo "usage: fabriek [-f FACTORY] send [JSON|-]" ;;
+  mirror)  echo "usage: fabriek [-f FACTORY] mirror" ;;
+  *)       echo "usage: fabriek [-f FACTORY] VERB [ARGS]" ;;
+  esac
+}
+
+## A usage error is one line on stderr and exit 2; -h is the same line on
+## stdout and exit 0.
+usage_error() {
+  usage_of "$1" >&2
+  exit 2
+}
+
+## Whether -h or --help is among a verb's arguments.
+wants_help() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in -h | --help) return 0 ;; esac
+  done
+  return 1
+}
+
+## The factory a verb is about: the one named, else -f, else the
+## environment, else the only one registered here, else a refusal that
+## names the choices (ADR-047 point 1).
+FACTORY_OPT=""
+factory_of() {
+  local named="${1:-}"
+  if [[ -n "$named" ]]; then
+    printf '%s\n' "$named"
+    return 0
+  fi
+  if [[ -n "$FACTORY_OPT" ]]; then
+    printf '%s\n' "$FACTORY_OPT"
+    return 0
+  fi
+  if [[ -n "${FABRIEK_FACTORY:-}" ]]; then
+    printf '%s\n' "$FABRIEK_FACTORY"
+    return 0
+  fi
+  local registered
+  registered="$(fabriek_operator_factories "$(fabriek_operator_config_path)" 2>/dev/null || true)"
+  local count
+  count="$(printf '%s\n' "$registered" | grep -c . || true)"
+  if [[ "$count" -eq 1 ]]; then
+    printf '%s\n' "$registered"
+    return 0
+  fi
+  if [[ "$count" -eq 0 ]]; then
+    log_err "which factory? name it with -f FACTORY or FABRIEK_FACTORY; none is registered in $(fabriek_operator_config_path)"
+  else
+    log_err "which factory? -f $(printf '%s\n' "$registered" | paste -sd' ' - | sed 's/ / or -f /g')"
+  fi
+  return 1
+}
+
+## Text from an argument, or from stdin when the argument is - or absent
+## and stdin is not a terminal (ADR-047 point 3).
+text_or_stdin() {
+  local arg="${1:-}"
+  if [[ -n "$arg" && "$arg" != "-" ]]; then
+    printf '%s' "$arg"
+  elif [[ ! -t 0 ]]; then
+    cat
+  fi
+}
 
 ## Run a machine command on the factory's own machine and return its output.
 ##
@@ -98,148 +186,6 @@ machine() {
 
   printf '%s\0' "$@" |
     ssh "${ssh_args[@]}" root@localhost xargs -0 fabriek-container
-}
-
-## A goal, filed into a factory. The workflow's first stage says who takes it
-## and the decider says when; the operator never picks a role by hand. The
-## title and body reach the machine as words and become files there, so the
-## executor reads files and never argv (the second invariant).
-cmd_task() {
-  local sub="${1:-}"
-  shift || true
-  case "$sub" in
-  file)
-    local factory="${1:-}" workflow="${2:-}" title="${3:-}" body="${4:-}"
-    if [[ -z "$factory" || -z "$workflow" || -z "$title" ]]; then
-      log_err "usage: fabriek task file <factory> <workflow> <title> [body]"
-      exit 1
-    fi
-    machine task-file "$factory" "$workflow" "$title" "$body"
-    ;;
-  *)
-    log_err "usage: fabriek task file <factory> <workflow> <title> [body]"
-    exit 1
-    ;;
-  esac
-}
-
-## Enter a declared factory role by hand. Unlike a task run this is a person:
-## the session signs through their forwarded agent, exactly as entering an
-## ordinary project does, and ADR-009's cage key belongs to the run nobody
-## watches.
-cmd_role() {
-  ## 'role stop <factory> <role>' ends a role's running turn through the
-  ## executor (ADR-039); everything else here is a person entering by hand.
-  if [[ "${1:-}" == stop ]]; then
-    shift
-    local -a now=()
-    if [[ "${1:-}" == --now ]]; then
-      now=(--now)
-      shift
-    fi
-    local factory="${1:-}" role="${2:-}"
-    if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: fabriek role stop [--now] <factory> <role>"
-      exit 1
-    fi
-    machine role-stop "$factory" "$role" ${now[@]+"${now[@]}"}
-    return
-  fi
-  ## 'role transcript [--text] <factory> <role> [<session>]' reads the
-  ## sessions pi kept in the role's home on the machine, listed or one of
-  ## them, as it is or as the turns' text.
-  if [[ "${1:-}" == transcript ]]; then
-    shift
-    local -a as_text=()
-    if [[ "${1:-}" == --text ]]; then
-      as_text=(--text)
-      shift
-    fi
-    local factory="${1:-}" role="${2:-}" session="${3:-}"
-    if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: fabriek role transcript [--text] <factory> <role> [<session>]"
-      exit 1
-    fi
-    ## Flags trail on the wire: the machine program reads the factory as
-    ## its second word.
-    machine role-transcript "$factory" "$role" ${session:+"$session"} ${as_text[@]+"${as_text[@]}"}
-    return
-  fi
-  ## 'role show <factory> <role>' says what the role is composed of, at the
-  ## commit the registered repository is on, without a build.
-  if [[ "${1:-}" == show ]]; then
-    local factory="${2:-}" role="${3:-}" path system
-    if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: fabriek role show <factory> <role>"
-      exit 1
-    fi
-    path="$(fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory")" || exit 1
-    system="$(machine_system)" || exit 1
-    fabriek_role_show "$FABRIEK_SELF" "$system" "$path" "$role"
-    return
-  fi
-  ## 'role steer <factory> <role> <text>' speaks into a running turn; the
-  ## words go to the executor, which queues them at the next tool boundary.
-  if [[ "${1:-}" == steer ]]; then
-    local factory="${2:-}" role="${3:-}" text="${4:-}"
-    if [[ -z "$factory" || -z "$role" || -z "$text" ]]; then
-      log_err "usage: fabriek role steer <factory> <role> <text>"
-      exit 1
-    fi
-    machine role-steer "$factory" "$role" "$text"
-    return
-  fi
-
-  local factory="${1:-}" role="${2:-}"
-  if [[ -z "$factory" || -z "$role" ]]; then
-    log_err "usage: fabriek role <factory> <role> [-- cmd...]"
-    exit 1
-  fi
-  shift 2
-
-  # Accept both 'role f r -- cmd...' and 'role f r cmd...'.
-  [[ "${1:-}" == "--" ]] && shift
-
-  # The socket the session signs through lives on the far side of the
-  # transport, so it is named there rather than here: on macOS its path is the
-  # VM's and nothing on this side can spell it. Both programs are told, and
-  # they are told different things -- nixcage forwards the agent and carries
-  # the variable across sudo, fabriek-container reads it once it is there.
-  local -a forward=() use_agent=()
-  if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
-    forward=(-A)
-    use_agent=(--agent)
-  fi
-
-  if [[ $# -eq 0 ]]; then
-    log_info "Entering role $role of factory $factory..."
-    forward+=(-t)
-  fi
-
-  ## Where this factory's repository is, as a remote the machine can reach
-  ## (ADR-032). The register names a checkout on this host, which the machine
-  ## cannot open and which is not what it works from: the origin of that
-  ## checkout is. Read here rather than declared a second time, because two
-  ## places naming one remote are two places that can disagree.
-  ##
-  ## The machine needs it the first time only, since after that its clone records
-  ## where it was cloned from.
-  local repository=()
-  local origin
-  if fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory" >/dev/null 2>&1; then
-    origin="$(factory_origin "$factory")" || exit 1
-    repository=(--repository "$origin")
-  fi
-
-  local -a ssh_args=()
-  machine_ssh_args "$factory" ssh_args || exit 1
-
-  ## Same NUL framing as machine(), for the same reason: a session command is
-  ## words the declaration wrote and nothing re-splits them on the way.
-  printf '%s\0' role-enter ${use_agent[@]+"${use_agent[@]}"} \
-    ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@" |
-    ssh "${ssh_args[@]}" ${forward[@]+"${forward[@]}"} root@localhost \
-      xargs -0 fabriek-container
 }
 
 ## The machine is always Linux, whatever the operator is on. A machine that
@@ -338,50 +284,18 @@ EOF
   mv "$machine/flake.nix.new" "$machine/flake.nix"
 }
 
-## The machines on this host. A factory runs in one of its own (ADR-019), and
-## this says which of them are here and how each is reached.
-##
-## Only 'status' is here yet: building and booting a machine is the rest of
-## PRD-004 phase 2, and a verb that claimed to do it would be a verb that lied.
-## Build and boot one factory's machine. Idempotent: a machine already running
-## is the state this asks for, so saying so and stopping is the whole of it.
-## What up would refuse, said in seconds on this host: the declaration at
-## the commit and every specialist each role names (ADR-042).
-cmd_check() {
-  local repo="${1:-.}" system
-  system="$(machine_system)" || exit 1
-  fabriek_check_repo "$FABRIEK_SELF" "$repo" "$system"
-}
-
-## What a role can be, on this host, no build: the catalogues listed, one
-## specialist shown, one registered factory's role shown at its commit.
-cmd_catalogue() {
-  local verb="${1:-}" system
-  shift || true
-  system="$(machine_system)" || exit 1
-  case "$verb" in
-  list) fabriek_catalogue_list "$FABRIEK_SELF" "$system" "${1:-}" ;;
-  show)
-    if [[ -z "${1:-}" ]]; then
-      log_err "usage: fabriek catalogue show <specialist> [<repo>]"
-      exit 1
-    fi
-    fabriek_catalogue_show "$FABRIEK_SELF" "$system" "$1" "${2:-}"
-    ;;
-  *)
-    log_err "usage: fabriek catalogue list [<repo>] | show <specialist> [<repo>]"
-    exit 1
-    ;;
-  esac
-}
-
+## up [-u|--update] [FACTORY]
 cmd_up() {
-  local factory="${1:-}" update=""
-  if [[ -z "$factory" ]]; then
-    log_err "usage: fabriek up <factory> [--update]"
-    exit 1
-  fi
-  [[ "${2:-}" == --update ]] && update=1
+  local update="" factory=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    -u | --update) update=1 ;;
+    -*) usage_error up ;;
+    *) factory="$arg" ;;
+    esac
+  done
+  factory="$(factory_of "$factory")" || exit 2
   if fabriek_machine_running "$factory"; then
     log_ok "$factory is already running"
     return
@@ -433,7 +347,8 @@ cmd_up() {
   mv "$dir/spec.json.new" "$dir/spec.json"
   local note
   while IFS= read -r note; do
-    [[ -n "$note" ]] && log_info "$note"
+    ## A note already begins "fabriek:", as the clamp wrote it.
+    [[ -n "$note" ]] && echo "$note"
   done < <(jq -r '.notes[]?' "$dir/spec.json")
 
   ## Volumes are made in the working directory, which is why the runner is
@@ -522,12 +437,11 @@ give_credentials() {
 ## Stop a factory's machine by shutting it down. A stop that cannot
 ## complete is reported and the machine keeps running: ADR-017 exists because
 ## one was ended rather than shut down, and fabriek owns the stopping now.
+## down [FACTORY]
 cmd_down() {
-  local factory="${1:-}"
-  if [[ -z "$factory" ]]; then
-    log_err "usage: fabriek down <factory>"
-    exit 1
-  fi
+  [[ $# -le 1 ]] || usage_error down
+  local factory
+  factory="$(factory_of "${1:-}")" || exit 2
 
   if ! fabriek_machine_running "$factory"; then
     log_ok "$factory is not running"
@@ -563,187 +477,396 @@ cmd_down() {
   log_ok "$factory has stopped"
 }
 
-cmd_vm() {
-  local sub="${1:-}"
-  case "$sub" in
-  status)
-    local factory port dir
-    while IFS= read -r factory; do
-      [ -n "$factory" ] || continue
-      port="$(fabriek_machine_port "$factory" 2>/dev/null)" || port="-"
-      dir="$(fabriek_machine_dir "$factory")" || continue
-      local state="stopped"
-      fabriek_machine_running "$factory" && state="running"
-      if [ -f "$dir/pool.img" ]; then
-        printf '%s\tport %s\t%s\tdisk\n' "$factory" "$port" "$state"
-      else
-        printf '%s\tport %s\t%s\tno disk yet\n' "$factory" "$port" "$state"
-      fi
-    done < <(fabriek_machine_list)
-    ;;
-  *)
-    log_err "usage: fabriek vm status"
-    exit 1
-    ;;
-  esac
+## ps [--json]: the machines on this host, what each is doing, and the port
+## it answers on.
+cmd_ps() {
+  local json=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    --json) json=1 ;;
+    *) usage_error ps ;;
+    esac
+  done
+  local factory port dir state disk rows=()
+  while IFS= read -r factory; do
+    [ -n "$factory" ] || continue
+    port="$(fabriek_machine_port "$factory" 2>/dev/null)" || port="-"
+    dir="$(fabriek_machine_dir "$factory")" || continue
+    state="stopped"
+    fabriek_machine_running "$factory" && state="running"
+    disk="no disk yet"
+    [ -f "$dir/pool.img" ] && disk="disk"
+    if [[ -n "$json" ]]; then
+      rows+=("$(jq -cn --arg f "$factory" --arg p "$port" --arg s "$state" --arg d "$disk" \
+        '{factory: $f, port: ($p | tonumber? // null), state: $s, disk: ($d == "disk")}')")
+    else
+      printf '%s\tport %s\t%s\t%s\n' "$factory" "$port" "$state" "$disk"
+    fi
+  done < <(fabriek_machine_list)
+  if [[ -n "$json" ]]; then
+    printf '%s\n' "${rows[@]+"${rows[@]}"}" | jq -cs .
+  fi
 }
 
-## The factory as a whole: what it is doing, handing its work to the operator,
-## and starting it again after it stopped itself.
-cmd_factory() {
-  local sub="${1:-}" factory="${2:-}"
-  if [[ -z "$sub" || -z "$factory" ]]; then
-    log_err "usage: fabriek factory mirror|watch|send|console|board <factory>"
-    exit 1
+## check [--json] [REPO]: what up would refuse, said in seconds on this
+## host (ADR-042).
+cmd_check() {
+  local json="" repo=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    --json) json=1 ;;
+    -*) usage_error check ;;
+    *) repo="$arg" ;;
+    esac
+  done
+  local system
+  system="$(machine_system)" || exit 1
+  FABRIEK_JSON="$json" fabriek_check_repo "$FABRIEK_SELF" "${repo:-.}" "$system"
+}
+
+## ls [--json] [REPO]: every specialist and skill, fabriek's and the
+## repository's (ADR-042).
+cmd_ls() {
+  local json="" repo=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    --json) json=1 ;;
+    -*) usage_error ls ;;
+    *) repo="$arg" ;;
+    esac
+  done
+  local system
+  system="$(machine_system)" || exit 1
+  FABRIEK_JSON="$json" fabriek_catalogue_list "$FABRIEK_SELF" "$system" "$repo"
+}
+
+## show [--json] NAME [REPO], or with -f, show ROLE: what one specialist
+## brings, or what a registered factory's role is composed of, at its
+## commit, no build (ADR-042).
+cmd_show() {
+  local json="" name="" repo=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    --json) json=1 ;;
+    -*) usage_error show ;;
+    *) if [[ -z "$name" ]]; then name="$arg"; else repo="$arg"; fi ;;
+    esac
+  done
+  [[ -n "$name" ]] || usage_error show
+  local system
+  system="$(machine_system)" || exit 1
+  if [[ -n "$FACTORY_OPT" || -n "${FABRIEK_FACTORY:-}" ]]; then
+    local factory path
+    factory="$(factory_of "")" || exit 2
+    path="$(fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory")" || exit 1
+    FABRIEK_JSON="$json" fabriek_role_show "$FABRIEK_SELF" "$system" "$path" "$name"
+  else
+    FABRIEK_JSON="$json" fabriek_catalogue_show "$FABRIEK_SELF" "$system" "$name" "$repo"
   fi
-  case "$sub" in
-  mirror)
-    ## Merged main and the record leave the machine on the operator's word
-    ## and never before (ADR-036 point 7).
-    machine factory-mirror "$factory"
-    ;;
-  watch)
-    ## The bus as JSONL on stdout, relayed over the machine's ssh port; what
-    ## the TUI reads, and what any other client would (ADR-039 point 2).
-    machine factory-watch "$factory" "${@:3}"
-    ;;
-  send)
-    ## A command in the decider's vocabulary, from the operator, validated by
-    ## the executor as the decider's would be.
-    local json="${3:-}"
-    if [[ -z "$json" ]]; then
-      log_err "usage: fabriek factory send <factory> '<json command>'"
-      exit 1
-    fi
-    machine factory-send "$factory" "$json"
-    ;;
-  board)
-    ## Merging is a click in Forgejo's UI and has no verb (ADR-036), and the
-    ## UI is on the bridge, where only this factory's own ssh reaches: a
-    ## local port is tunnelled to it over the same key and port every other
-    ## verb uses, and held until interrupted. The machine says the address
-    ## and sets the operator's password fresh, so nothing here guesses one.
-    local answer addr password port
-    answer="$(machine factory-board "$factory")" || exit 1
-    addr="$(sed -n 1p <<<"$answer")"
-    password="$(sed -n 2p <<<"$answer")"
-    [[ -n "$addr" && -n "$password" ]] || { log_err "$factory did not say where its board is"; exit 1; }
-    port="$(free_local_port)"
-    local -a ssh_args=()
-    machine_ssh_args "$factory" ssh_args || exit 1
-    echo "http://127.0.0.1:$port/operator/$factory"
-    echo "log in as operator with the password $password"
-    echo "the tunnel holds until interrupted"
-    exec ssh "${ssh_args[@]}" -N -L "127.0.0.1:$port:$addr" root@localhost
-    ;;
-  console)
-    ## The one face (ADR-039 point 3): the TUI, on this host, over the relay.
-    ## Its roles come from the machine's declaration, over the same transport
-    ## that carries the relay.
-    local roles
-    roles="$(machine factory-roles "$factory")" || exit 1
-    # shellcheck disable=SC2086  # roles are one word each by construction
-    exec fabriek-tui "$factory" $roles
-    ;;
-  *)
-    log_err "usage: fabriek factory mirror|watch|send|console|board <factory>"
-    exit 1
-    ;;
-  esac
+}
+
+## enter ROLE [-- CMD...]: a declared role by hand. A person: the session
+## signs through their forwarded agent, exactly as entering an ordinary
+## project does, and ADR-009's cage key belongs to the run nobody watches.
+cmd_enter() {
+  local factory role="${1:-}"
+  [[ -n "$role" ]] || usage_error enter
+  factory="$(factory_of "")" || exit 2
+  shift
+  [[ "${1:-}" == "--" ]] && shift
+
+  # The socket the session signs through lives on the far side of the
+  # transport, so it is named there rather than here: on macOS its path is the
+  # VM's and nothing on this side can spell it. Both programs are told, and
+  # they are told different things: nixcage forwards the agent and carries
+  # the variable across sudo, fabriek-container reads it once it is there.
+  local -a forward=() use_agent=()
+  if [[ -n "${SSH_AUTH_SOCK:-}" && -e "${SSH_AUTH_SOCK}" ]]; then
+    forward=(-A)
+    use_agent=(--agent)
+  fi
+  if [[ $# -eq 0 ]]; then
+    log_info "Entering role $role of factory $factory..."
+    forward+=(-t)
+  fi
+
+  ## Where this factory's repository is, as a remote the machine can reach
+  ## (ADR-032). The register names a checkout on this host, which the machine
+  ## cannot open and which is not what it works from: the origin of that
+  ## checkout is. The machine needs it the first time only, since after that
+  ## its clone records where it was cloned from.
+  local repository=()
+  local origin
+  if fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory" >/dev/null 2>&1; then
+    origin="$(factory_origin "$factory")" || exit 1
+    repository=(--repository "$origin")
+  fi
+
+  local -a ssh_args=()
+  machine_ssh_args "$factory" ssh_args || exit 1
+
+  ## Same NUL framing as machine(), for the same reason: a session command is
+  ## words the declaration wrote and nothing re-splits them on the way.
+  printf '%s\0' role-enter ${use_agent[@]+"${use_agent[@]}"} \
+    ${repository[@]+"${repository[@]}"} "$factory" "$role" "$@" |
+    ssh "${ssh_args[@]}" ${forward[@]+"${forward[@]}"} root@localhost \
+      xargs -0 fabriek-container
+}
+
+## stop [-k] ROLE: end a role's running turn through the executor; -k ends
+## the cage itself at its scope (ADR-045), for a turn that no longer
+## answers. Quiet on success.
+cmd_stop() {
+  local kill="" role=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    -k | --kill) kill=1 ;;
+    -*) usage_error stop ;;
+    *) role="$arg" ;;
+    esac
+  done
+  [[ -n "$role" ]] || usage_error stop
+  local factory
+  factory="$(factory_of "")" || exit 2
+  machine role-stop "$factory" "$role" ${kill:+--now} >/dev/null
+}
+
+## steer ROLE [TEXT|-]: speak into a role's running turn; the words go to
+## the executor, which queues them at the next tool boundary.
+cmd_steer() {
+  local role="${1:-}"
+  [[ -n "$role" ]] || usage_error steer
+  local factory text
+  factory="$(factory_of "")" || exit 2
+  text="$(text_or_stdin "${2:-}")"
+  [[ -n "$text" ]] || usage_error steer
+  machine role-steer "$factory" "$role" "$text" >/dev/null
+}
+
+## log [-t] ROLE [SESSION]: the sessions pi kept in the role's home on the
+## machine, or one of them, as it is or as the turns' text.
+cmd_log() {
+  local text="" role="" session=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    -t | --text) text=1 ;;
+    -*) usage_error log ;;
+    *) if [[ -z "$role" ]]; then role="$arg"; else session="$arg"; fi ;;
+    esac
+  done
+  [[ -n "$role" ]] || usage_error log
+  local factory
+  factory="$(factory_of "")" || exit 2
+  ## Flags trail on the wire: the machine program reads the factory as its
+  ## second word.
+  machine role-transcript "$factory" "$role" ${session:+"$session"} ${text:+--text}
+}
+
+## file [-m BODY] WORKFLOW TITLE: a goal, filed into a factory. The
+## workflow's first stage says who takes it and the decider says when; the
+## title and body reach the machine as words and become files there, so the
+## executor reads files and never argv (the second invariant). The body
+## comes from -m or from stdin.
+cmd_file() {
+  local body="" workflow="" title=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -m | --message)
+      body="${2:-}"
+      shift 2 || usage_error file
+      ;;
+    -*) usage_error file ;;
+    *)
+      if [[ -z "$workflow" ]]; then workflow="$1"; elif [[ -z "$title" ]]; then title="$1"; else usage_error file; fi
+      shift
+      ;;
+    esac
+  done
+  [[ -n "$workflow" && -n "$title" ]] || usage_error file
+  [[ -n "$body" ]] || body="$(text_or_stdin "")"
+  local factory
+  factory="$(factory_of "")" || exit 2
+  machine task-file "$factory" "$workflow" "$title" "$body"
+}
+
+## The factory as a whole: its one face, its board, its bus, a command from
+## the operator, and its work handed to the operator's repository.
+cmd_console() {
+  [[ $# -eq 0 ]] || usage_error console
+  local factory roles
+  factory="$(factory_of "")" || exit 2
+  ## The one face (ADR-039 point 3): the TUI, on this host, over the relay.
+  ## Its roles come from the machine's declaration, over the same transport
+  ## that carries the relay.
+  roles="$(machine factory-roles "$factory")" || exit 1
+  # shellcheck disable=SC2086  # roles are one word each by construction
+  exec fabriek-tui "$factory" $roles
+}
+
+cmd_board() {
+  [[ $# -eq 0 ]] || usage_error board
+  local factory
+  factory="$(factory_of "")" || exit 2
+  ## Merging is a click in Forgejo's UI and has no verb (ADR-036), and the
+  ## UI is on the bridge, where only this factory's own ssh reaches: a
+  ## local port is tunnelled to it over the same key and port every other
+  ## verb uses, and held until interrupted. The machine says the address
+  ## and sets the operator's password fresh, so nothing here guesses one.
+  local answer addr password port
+  answer="$(machine factory-board "$factory")" || exit 1
+  addr="$(sed -n 1p <<<"$answer")"
+  password="$(sed -n 2p <<<"$answer")"
+  [[ -n "$addr" && -n "$password" ]] || { log_err "$factory did not say where its board is"; exit 1; }
+  port="$(free_local_port)"
+  local -a ssh_args=()
+  machine_ssh_args "$factory" ssh_args || exit 1
+  echo "http://127.0.0.1:$port/operator/$factory"
+  echo "log in as operator with the password $password"
+  echo "the tunnel holds until interrupted"
+  exec ssh "${ssh_args[@]}" -N -L "127.0.0.1:$port:$addr" root@localhost
+}
+
+cmd_watch() {
+  local factory
+  factory="$(factory_of "")" || exit 2
+  ## The bus as JSONL on stdout, relayed over the machine's ssh port; what
+  ## the TUI reads, and what any other client would (ADR-039 point 2).
+  machine factory-watch "$factory" "$@"
+}
+
+cmd_send() {
+  [[ $# -le 1 ]] || usage_error send
+  local factory json
+  factory="$(factory_of "")" || exit 2
+  json="$(text_or_stdin "${1:-}")"
+  [[ -n "$json" ]] || usage_error send
+  ## A command in the decider's vocabulary, from the operator, validated by
+  ## the executor as the decider's would be.
+  machine factory-send "$factory" "$json" >/dev/null
+}
+
+cmd_mirror() {
+  [[ $# -eq 0 ]] || usage_error mirror
+  local factory
+  factory="$(factory_of "")" || exit 2
+  ## Merged main and the record leave the machine on the operator's word
+  ## and never before (ADR-036 point 7).
+  machine factory-mirror "$factory"
 }
 
 cmd_help() {
   cat <<HELP
-${BOLD}fabriek${NC} v${FABRIEK_VERSION} -- a factory of named roles over one repository
+${BOLD}fabriek${NC} v${FABRIEK_VERSION}: a factory of named roles over one repository
 
 ${BOLD}Usage:${NC}
-  fabriek <command> [args...]
+  fabriek [-f FACTORY] VERB [ARGS]
+
+  The factory a verb is about: -f, else FABRIEK_FACTORY, else the one
+  factory registered here. Every verb takes -h.
 
 ${BOLD}Commands:${NC}
-  role <factory> <role> [-- cmd...]
-                     Enter a declared role in its own worktree and uid, by hand
-  role stop <factory> <role> [--now]
-                     End a role's running turn, through the executor
-  task file <factory> <workflow> <title> [body]
-                     File a goal; the decider assigns it and nothing is typed
-                     after it
-  factory mirror <factory>
-                     Push merged main and the record to the repository's origin
-  factory watch <factory> [--from <id>]
-                     The factory's bus as JSON lines, live, until interrupted
-  factory send <factory> '<json>'
-                     A command in the decider's vocabulary, from you
-  factory console <factory>
-                     The one face: roles, board, live stream, and the keys
-                     that file, steer, stop, retry, block, push and mirror
-  factory board <factory>
-                     Forgejo's UI on a local port, for merging; prints the
-                     URL and the operator's login, holds until interrupted
-  role steer <factory> <role> <text>
-                     Speak into a role's running turn
-  check [<repo>]     What up would refuse: the declaration at its commit and
+  up [-u] [FACTORY]  Build and boot the machine a factory runs in, pinned to
+                     the repository's commit; -u moves the pin to HEAD
+  down [FACTORY]     Shut it down, reporting a stop that cannot complete
+  ps [--json]        The machines on this host, and how each is reached
+  check [REPO]       What up would refuse: the declaration at its commit and
                      every specialist each role names, in seconds, no build
-  catalogue list [<repo>]
-                     Every specialist and skill, fabriek's and the repository's
-  catalogue show <specialist> [<repo>]
-                     What a specialist brings: order, tools, skills, servers,
-                     tests and its prompt, no build
-  role show <factory> <role>
-                     The same for a registered factory's role at its commit
-  role transcript [--text] <factory> <role> [<session>]
-                     The sessions pi kept for a role on the machine, or one
-                     of them, as it is or as the turns' text
-  up <factory> [--update]
-                     Build and boot the machine a factory runs in, pinned to
-                     the repository's commit; --update moves the pin to HEAD
-  down <factory>     Shut it down, reporting a stop that cannot complete
-  vm status          The machines on this host, and how each is reached
-  version            Print version
-  help               Show this help
+  ls [REPO]          Every specialist and skill, fabriek's and the repository's
+  show NAME [REPO]   What a specialist brings; with -f, what a role of the
+                     factory is composed of, at its commit
+  enter ROLE [-- CMD...]
+                     Enter a declared role in its own worktree and uid, by hand
+  stop [-k] ROLE     End a role's running turn through the executor; -k ends
+                     the cage at its scope
+  steer ROLE [TEXT]  Speak into a role's running turn; TEXT or stdin
+  log [-t] ROLE [SESSION]
+                     The sessions pi kept for a role, or one of them, as it
+                     is or, with -t, as the turns' text
+  file [-m BODY] WORKFLOW TITLE
+                     File a goal; the body from -m or stdin; the decider
+                     assigns it and nothing is typed after
+  console            The one face: roles, board, live stream, and the keys
+  board              Forgejo's UI on a local port, for merging
+  watch [--from ID]  The factory's bus as JSON lines, for any client
+  send [JSON]        A command in the decider's vocabulary, from you
+  mirror             Push merged main and the record to the repository's origin
+  version            Print the version
+  help               This
 
 ${BOLD}Configuration:${NC}
-  A repository declares the factory that works it, as the 'fabriek' output
-  of its own flake, and it is read from the commit rather than the working
-  tree:
-
-    fabriek = {
-      name = "acme";
-      roles.builder = { command = [ "claude" ]; provides = [ "build" ]; };
-      workflows.ship.stages = [ { needs = "build"; } ];
-    };
-
-  Your own config is one file, ~/.config/fabriek/config.toml, saying what a
-  factory may cost here and which factories live here:
-
-    [caps]
-    memory = "16G"
-    [factories.acme]
-    path = "/home/me/Src/acme"
-
-  A factory works a clone of that repository rather than your checkout;
-  what it merges reaches the repository's origin with 'fabriek factory
-  mirror', and only then.
+  $(fabriek_operator_config_path)
+  [caps] what a factory may cost here; [factories.NAME] path = its checkout;
+  [credentials.HOST] header and file; [models] HOST = the model to start on.
 HELP
 }
 
 main() {
+  ## -f FACTORY is taken wherever it stands before a "--", so it reads the
+  ## same before and after the verb; everything else is the verb's.
+  local -a rest=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -f | --factory)
+      FACTORY_OPT="${2:-}"
+      [[ -n "$FACTORY_OPT" ]] || usage_error ""
+      shift 2
+      ;;
+    -f?*) FACTORY_OPT="${1#-f}"; shift ;;
+    --)
+      rest+=("$@")
+      break
+      ;;
+    *)
+      rest+=("$1")
+      shift
+      ;;
+    esac
+  done
+  set -- ${rest[@]+"${rest[@]}"}
+  ## Then the global flags that stand alone, before any verb.
+  case "${1:-}" in
+  -h | --help) cmd_help; exit 0 ;;
+  -v | --version) echo "fabriek $FABRIEK_VERSION"; exit 0 ;;
+  -*) usage_error "" ;;
+  esac
   local command="${1:-help}"
   shift || true
+  if wants_help "$@"; then
+    case "$command" in
+    help | version) cmd_help ;;
+    *) usage_of "$command" ;;
+    esac
+    exit 0
+  fi
   case "$command" in
-  role)    cmd_role "$@" ;;
   up)      cmd_up "$@" ;;
-  check)   cmd_check "$@" ;;
-  catalogue) cmd_catalogue "$@" ;;
   down)    cmd_down "$@" ;;
-  vm)      cmd_vm "$@" ;;
-  task)    cmd_task "$@" ;;
-  factory) cmd_factory "$@" ;;
-  version | --version | -v) echo "fabriek $FABRIEK_VERSION" ;;
-  help | --help | -h) cmd_help ;;
+  ps)      cmd_ps "$@" ;;
+  check)   cmd_check "$@" ;;
+  ls)      cmd_ls "$@" ;;
+  show)    cmd_show "$@" ;;
+  enter)   cmd_enter "$@" ;;
+  stop)    cmd_stop "$@" ;;
+  steer)   cmd_steer "$@" ;;
+  log)     cmd_log "$@" ;;
+  file)    cmd_file "$@" ;;
+  console) cmd_console "$@" ;;
+  board)   cmd_board "$@" ;;
+  watch)   cmd_watch "$@" ;;
+  send)    cmd_send "$@" ;;
+  mirror)  cmd_mirror "$@" ;;
+  version) echo "fabriek $FABRIEK_VERSION" ;;
+  help)    cmd_help ;;
   *)
-    log_err "Unknown command: $command"
-    cmd_help
-    exit 1
+    log_err "unknown verb: $command"
+    cmd_help >&2
+    exit 2
     ;;
   esac
 }

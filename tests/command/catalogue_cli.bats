@@ -43,8 +43,8 @@ fab() {
 	run bash "$FABRIEK_ROOT/fabriek" "$@"
 }
 
-@test "catalogue list names every shipped specialist with its parents and every skill with its description" {
-	fab catalogue list
+@test "ls names every shipped specialist with its parents and every skill with its description" {
+	fab ls
 	assert_success
 	assert_line --partial "django: extends python"
 	assert_line --partial "developer:"
@@ -52,15 +52,15 @@ fab() {
 	refute_output --partial "  local:"
 }
 
-@test "catalogue list with a repository adds its own entries, read at the commit" {
-	fab catalogue list "$REPO"
+@test "ls with a repository adds its own entries, read at the commit" {
+	fab ls "$REPO"
 	assert_success
 	assert_line --partial "local: extends python"
 	assert_line --partial "release-here: Cut a release"
 }
 
-@test "catalogue show says what a specialist brings: order, tools, skills, servers, tests, and the prompt" {
-	fab catalogue show springboot
+@test "show says what a specialist brings: order, tools, skills, servers, tests, and the prompt" {
+	fab show springboot
 	assert_success
 	assert_line --partial "order: developer, java, springboot"
 	assert_line --partial "tools:"
@@ -72,17 +72,24 @@ fab() {
 	assert_output --partial "You develop Spring Boot applications."
 }
 
-@test "catalogue show of a name no catalogue has is refused naming what is offered" {
-	fab catalogue show rust
+@test "show of a name no catalogue has is refused naming what is offered" {
+	fab show rust
 	assert_failure
 	assert_output --partial "offers: architect, developer"
 }
 
-@test "role show composes a registered factory's role at its commit, its own catalogue included" {
-	fab role show acme backend
+@test "show -f composes a registered factory's role at its commit, its own catalogue included" {
+	fab -f acme show backend
 	assert_success
 	assert_line --partial "order: developer, python, local"
 	assert_line --partial "release-here: Cut a release"
 	assert_line --partial "servers: basedpyright"
 	assert_output --partial "I release here."
+}
+
+@test "ls --json is the same listing as a structure" {
+	fab ls --json
+	assert_success
+	run jq -r '.specialists.django | join(",")' <<<"$output"
+	assert_output "python"
 }

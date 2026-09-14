@@ -9,7 +9,8 @@
 ## a build.
 ##
 ## Sourced by store path into fabriek beside repo-declaration.sh, whose
-## reader and validator this uses.
+## reader and validator this uses. With FABRIEK_JSON set, each verb prints
+## the structure its text is made from and nothing else (ADR-047).
 
 ## A Nix expression over `cat`, the catalogues of fabriek and of the
 ## repository at its commit when one is given, evaluated as JSON. On
@@ -68,17 +69,27 @@ fabriek_check_repo() {
 	local self="$1" repo="$2" system="$3" composed name
 	fabriek_check_read "$repo" || return 1
 	name="$(printf '%s' "$FABRIEK_CHECK_DECLARATION" | jq -r .name)"
-	echo "checked $name at $(git -C "$FABRIEK_CHECK_REPO" rev-parse --short "$FABRIEK_CHECK_REV")"
-	if [ -n "$(git -C "$FABRIEK_CHECK_REPO" status --porcelain 2>/dev/null)" ]; then
-		echo "note: the working tree differs from that commit; fabriek up reads the commit"
+	if [ -z "${FABRIEK_JSON:-}" ]; then
+		echo "checked $name at $(git -C "$FABRIEK_CHECK_REPO" rev-parse --short "$FABRIEK_CHECK_REV")"
+		if [ -n "$(git -C "$FABRIEK_CHECK_REPO" status --porcelain 2>/dev/null)" ]; then
+			echo "note: the working tree differs from that commit; fabriek up reads the commit"
+		fi
 	fi
 	composed="$(fabriek_catalogue_eval "$self" "$system" "$FABRIEK_CHECK_REPO" "$FABRIEK_CHECK_REV" \
 		'builtins.mapAttrs (name: role: (cat.compose { role = name; specialists = role.specialists or [ ]; }).order) decl.roles')" || return 1
+	if [ -n "${FABRIEK_JSON:-}" ]; then
+		printf '%s' "$composed" | jq -c --arg name "$name" --arg rev "$FABRIEK_CHECK_REV" '{factory: $name, rev: $rev, roles: .}'
+		return 0
+	fi
 	printf '%s' "$composed" | jq -r 'to_entries[] | "  \(.key): \(if .value == [] then "(no specialists)" else (.value | join(", ")) end)"'
 }
 
-## One composed role or specialist, as a person reads it.
+## One composed role or specialist, as a person reads it, or as it is.
 fabriek_catalogue_print() {
+	if [ -n "${FABRIEK_JSON:-}" ]; then
+		jq -c .
+		return 0
+	fi
 	jq -r '
 	  "order: \(.order | join(", "))",
 	  "tools: \(.tools | unique | join(", "))",
@@ -101,6 +112,10 @@ fabriek_catalogue_list() {
 	listed="$(fabriek_catalogue_eval "$self" "$system" "$repo" "$rev" \
 		'{ specialists = builtins.mapAttrs (_: s: map (p: p.name) (s.extends or [ ])) cat.specialists;
 		   skills = builtins.mapAttrs (_: s: s.description) cat.skillsDescribed; }')" || return 1
+	if [ -n "${FABRIEK_JSON:-}" ]; then
+		printf '%s' "$listed" | jq -c .
+		return 0
+	fi
 	printf '%s' "$listed" | jq -r '
 	  "specialists:",
 	  (.specialists | to_entries[] | "  \(.key): \(if .value == [] then "extends nothing" else "extends " + (.value | join(", ")) end)"),

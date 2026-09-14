@@ -19,7 +19,7 @@ teardown() {
 }
 
 @test "a host with no factories started has no machines, and says so quietly" {
-	run_fabriek vm status
+	run_fabriek ps
 	assert_success
 	assert_output ""
 }
@@ -32,7 +32,7 @@ teardown() {
 	fabriek_machine_ensure acme >/dev/null
 	fabriek_machine_ensure widgets >/dev/null
 
-	run_fabriek vm status
+	run_fabriek ps
 	assert_success
 	assert_line --index 0 --regexp '^acme	port [0-9]+	stopped	no disk yet$'
 	assert_line --index 1 --regexp '^widgets	port [0-9]+	stopped	no disk yet$'
@@ -46,20 +46,32 @@ teardown() {
 	fabriek_machine_ensure acme >/dev/null
 	: >"$FABRIEK_MACHINES/acme/pool.img"
 
-	run_fabriek vm status
+	run_fabriek ps
 	assert_success
 	assert_output --partial "disk"
 	refute_output --partial "no disk yet"
 }
 
-@test "an unknown vm verb explains itself rather than being passed through" {
-	run_fabriek vm boot
-	assert_failure
-	assert_output --partial "usage"
+@test "ps takes no arguments, and says so with a usage exit" {
+	run_fabriek ps extra
+	[ "$status" -eq 2 ]
+	assert_output --partial "usage: fabriek ps"
 }
 
-@test "vm is in the help, since it is a verb the dispatcher accepts" {
+@test "ps --json is the same machines as a structure" {
+	# shellcheck source=../../modules/names.sh
+	source "$FABRIEK_ROOT/modules/names.sh"
+	# shellcheck source=../../modules/machine.sh
+	source "$FABRIEK_ROOT/modules/machine.sh"
+	fabriek_machine_ensure acme >/dev/null
+	run_fabriek ps --json
+	assert_success
+	run jq -c '[.[0].factory, .[0].state, (.[0].port | type)]' <<<"$output"
+	assert_output '["acme","stopped","number"]'
+}
+
+@test "ps is in the help, since it is a verb the dispatcher accepts" {
 	run_fabriek help
 	assert_success
-	assert_output --partial "vm status"
+	assert_output --partial "  ps"
 }

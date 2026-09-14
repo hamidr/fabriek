@@ -18,7 +18,7 @@ teardown() {
 }
 
 @test "factory board tunnels a local port to the board over the factory's own ssh and prints the URL and the login" {
-	run_fabriek factory board acme
+	run_fabriek -f acme board
 	assert_success
 	assert_output --regexp 'http://127\.0\.0\.1:[0-9]+/operator/acme'
 	assert_output --partial "operator"
@@ -30,7 +30,7 @@ teardown() {
 }
 
 @test "factory board asks the machine for the address rather than guessing one" {
-	run_fabriek factory board acme
+	run_fabriek -f acme board
 	assert_success
 	run nixcage_calls
 	assert_line "fabriek-container factory-board acme"
