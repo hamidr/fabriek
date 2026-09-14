@@ -56,15 +56,41 @@ works:
 ```nix
 fabriek = {
   name = "acme";
-  roles.builder = { command = [ "claude" ]; provides = [ "build" ]; };
-  workflows.ship.stages = [ { needs = "build"; } ];
+  roles.backend = { provides = [ "build" ]; specialists = [ "django" ]; };
+  roles.reviewer = { provides = [ "review" ]; specialists = [ "reviewer" ]; };
+  workflows.ship.stages = [ { needs = "build"; } { needs = "review"; } ];
 };
 ```
 
-It is read from the commit rather than from the working tree, so the factory
-working a repository is the one its history declares. `examples/factory-project`
-is a complete one, with its declaration in `fabriek.nix` beside the devShells
-its roles name.
+A role is what it provides and who it is. It runs pi (ADR-029) unless it
+declares a `command`; it may name a devShell of the same flake (`shell`)
+for the project's own build environment. It is read from the commit rather
+than from the working tree, so the factory working a repository is the one
+its history declares. `examples/factory-project` is a complete one, with
+its declaration in `fabriek.nix` beside the devShells its roles name and a
+catalogue of its own.
+
+## Who a role is
+
+`specialists` names entries of the catalogue (ADR-042): fabriek's own
+under `catalogue/`, and the repository's under the directory its
+`catalogue` field names. A specialist is a directory: a `PROMPT.md`, the
+tools it brings, the skills it knows (Agent Skills format, the same
+`SKILL.md` pi, Claude Code and Codex read), the language servers it runs
+(ADR-043, through `pi-lsp`), and what a test is in its language (ADR-044).
+Specialists compose: `[ "springboot" "python" ]` is one role with both
+kits, each prompt once, in that order. Adding a specialist is adding a
+directory; nothing else lists them.
+
+Shipped: `developer` (the base every other one extends), `python`,
+`flask`, `django`, `java`, `springboot`, `scala`, `frontend`, `react`,
+`architect` (the glossary, the decision records and the overview of the
+product, with Quint, Alloy 6 and Lean 4 to check a design), `reviewer`.
+
+Every specialist is held to test first, domain placement, one reason to
+change and a pure core: as skills it reads, as a review that blocks, and
+as the loop's guard, which refuses production code before a failing test
+and done before a passing run (ADR-044).
 
 The operator's side is `~/.config/fabriek/config.toml`, the same file on Linux
 and on macOS:
@@ -139,9 +165,11 @@ nix develop
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/
 nix build .#factory
+nix develop --command bats tests/command/catalogue.bats   # the catalogue, built for real
 nix develop --command tests/system/journey.sh   # the whole factory on this host, no model
 docmeta-check docs && docmeta-tracker --check docs
 quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 ```
 
 `docs/TRACKER.md` indexes every decision. ADR-001 through ADR-008 describe code
