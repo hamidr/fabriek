@@ -1,5 +1,5 @@
 // The operator's one face (ADR-039 point 3), on the operator's host. Reads
-// the relay through `fabriek factory watch`, folds every line into the
+// the relay through `fabriek -f FACTORY watch`, folds every line into the
 // model, draws the view, and writes through the CLI: every key here is a
 // fabriek command, so every intervention passes the executor and is
 // recorded. Nothing here reaches the machine any other way.
@@ -7,7 +7,8 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fold, initial, type State } from "./model.js";
 import { render } from "./view.js";
-import { keepWatching, watchArgs } from "./watch.js";
+import { keepWatching } from "./watch.js";
+import { cliArgs, watchArgs } from "./cli.js";
 import { parseLine } from "../relay/format.js";
 
 const ESC = String.fromCharCode(27);
@@ -62,38 +63,38 @@ async function key(k: string): Promise<void> {
       const title = await ask("title:");
       const body = await ask("body:");
       const workflow = await ask("workflow:");
-      if (title && workflow) notice = await run(["task", "file", factory, workflow, title, body]);
+      if (title && workflow) notice = await run(cliArgs(factory, "file", [...(body ? ["-m", body] : []), workflow, title]));
       break;
     }
     case "s": {
       const role = await ask("steer which role:");
       const text = await ask("say:");
-      if (role && text) notice = await run(["role", "steer", factory, role, text]);
+      if (role && text) notice = await run(cliArgs(factory, "steer", [role, text]));
       break;
     }
     case "x": {
       const role = await ask("stop which role:");
-      if (role) notice = await run(["role", "stop", factory, role]);
+      if (role) notice = await run(cliArgs(factory, "stop", [role]));
       break;
     }
     case "r": {
       const issue = await ask("retry which issue:");
-      if (issue) notice = await run(["factory", "send", factory, JSON.stringify({ verb: "retry", issue: Number(issue) })]);
+      if (issue) notice = await run(cliArgs(factory, "send", [JSON.stringify({ verb: "retry", issue: Number(issue) })]));
       break;
     }
     case "b": {
       const issue = await ask("block which issue:");
       const on = await ask("on which issue:");
-      if (issue && on) notice = await run(["factory", "send", factory, JSON.stringify({ verb: "block", issue: Number(issue), on: Number(on) })]);
+      if (issue && on) notice = await run(cliArgs(factory, "send", [JSON.stringify({ verb: "block", issue: Number(issue), on: Number(on) })]));
       break;
     }
     case "p": {
       const role = await ask("push which role's branch:");
-      if (role) notice = await run(["factory", "send", factory, JSON.stringify({ verb: "push", role })]);
+      if (role) notice = await run(cliArgs(factory, "send", [JSON.stringify({ verb: "push", role })]));
       break;
     }
     case "m":
-      notice = await run(["factory", "mirror", factory]);
+      notice = await run(cliArgs(factory, "mirror", []));
       break;
     default:
       break;

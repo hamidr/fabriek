@@ -21,15 +21,6 @@ export interface WatchOptions {
   pause(): Promise<void>;
 }
 
-/**
- * The CLI line that starts a watch: from 0-0, so what the bus still holds
- * is replayed and the board, which reaches the TUI only as the executor's
- * periodic event, is on screen at open rather than at the next tick.
- */
-export function watchArgs(factory: string): string[] {
-  return ["factory", "watch", factory, "--from", "0-0"];
-}
-
 export function keepWatching(o: WatchOptions): void {
   const start = (): void => {
     o.onStart();

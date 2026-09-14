@@ -80,7 +80,9 @@ let
         --replace-fail '@lib@' '${lib'}' \
         --replace-fail '@self@' '${self}'
       chmod +x $out/bin/fabriek
+      ## The TUI types its commands at this program by path (console).
       wrapProgram $out/bin/fabriek \
+        --set-default FABRIEK_CLI $out/bin/fabriek \
         --prefix PATH : ${
           pkgs.lib.makeBinPath (
             with pkgs;

@@ -705,6 +705,10 @@ cmd_console() {
   ## Its roles come from the machine's declaration, over the same transport
   ## that carries the relay.
   roles="$(machine factory-roles "$factory")" || exit 1
+  ## Every key in the TUI is a launcher command, typed at this launcher by
+  ## path: "fabriek" is on no PATH the operator is obliged to have. The
+  ## package sets it to the wrapped program; from the tree it is this file.
+  export FABRIEK_CLI="${FABRIEK_CLI:-$(readlink -f "$0")}"
   # shellcheck disable=SC2086  # roles are one word each by construction
   exec fabriek-tui "$factory" $roles
 }
