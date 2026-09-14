@@ -42,6 +42,12 @@ describe("the declaration on the machine", () => {
     assert.equal(stageOf(d, "ship", "deploy"), null);
   });
 
+  it("a role that names no command runs pi (ADR-029) and is read as declared", () => {
+    const d = readDeclaration(JSON.stringify({ ...acme, roles: { architect: { provides: ["design"], specialists: ["architect"] } } }));
+    assert.deepEqual(Object.keys(d.roles), ["architect"]);
+    assert.equal(d.roles.architect?.command, undefined);
+  });
+
   it("a file that is not a declaration is refused, naming what is wrong", () => {
     assert.throws(() => readDeclaration("{not json"), DeclarationError);
     assert.throws(() => readDeclaration(JSON.stringify({ name: "acme" })), /roles/);

@@ -6,7 +6,8 @@
 import { isName, isRoleName } from "./names.js";
 
 export interface Role {
-  command: string[];
+  /** Absent means pi, the agent fabriek supports (ADR-029). */
+  command?: string[];
   provides: string[];
   shell?: string;
 }
@@ -74,10 +75,13 @@ export function readDeclaration(text: string): Declaration {
   for (const [name, r] of Object.entries(raw["roles"])) {
     if (!isRoleName(name)) refuse(`role ${name}: not a usable role name`);
     if (!isRecord(r)) refuse(`role ${name}: not an object`);
-    if (!Array.isArray(r["command"]) || !r["command"].every((w) => typeof w === "string")) {
-      refuse(`role ${name}: command must be argv`);
+    const role: Role = { provides: names(r["provides"], `role ${name}: provides`) };
+    if (r["command"] !== undefined) {
+      if (!Array.isArray(r["command"]) || !r["command"].every((w) => typeof w === "string")) {
+        refuse(`role ${name}: command must be argv`);
+      }
+      role.command = r["command"] as string[];
     }
-    const role: Role = { command: r["command"] as string[], provides: names(r["provides"], `role ${name}: provides`) };
     if (r["shell"] !== undefined) {
       if (typeof r["shell"] !== "string") refuse(`role ${name}: shell must be a name`);
       role.shell = r["shell"];
