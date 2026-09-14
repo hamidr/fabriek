@@ -25,7 +25,8 @@ export function render(s: State, screen: Screen): string {
   lines.push("roles");
   for (const [name, r] of Object.entries(s.roles)) {
     const where = r.issue !== undefined && r.state !== "idle" ? ` #${r.issue}` : "";
-    lines.push(`  ${name.padEnd(14)}${(r.state + where).padEnd(16)}${String(s.spend[name] ?? 0).padStart(7)}  ${r.last}`);
+    const guard = r.guard ? `  guard ${r.guard.count}${r.guard.repeats >= 3 ? " repeat" : ""}` : "";
+    lines.push(`  ${name.padEnd(14)}${(r.state + where).padEnd(16)}${String(s.spend[name] ?? 0).padStart(7)}  ${r.last}${guard}`);
   }
   lines.push("");
   lines.push("board");

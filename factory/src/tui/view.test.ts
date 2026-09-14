@@ -22,6 +22,22 @@ describe("the TUI's view", () => {
     }
   });
 
+  it("shows a role's guard refusals for the task beside its last line, and flags a repeat", () => {
+    const s = fold(
+      fold(initial(["builder"]), { stream: "control:builder", id: "1-0", fields: { kind: "ready", capabilities: "build" } }),
+      { stream: "events:builder", id: "2-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } },
+    );
+    let text = render(s, { factory: "acme", rows: 40, columns: 120 });
+    assert.match(text, /builder .*guard 1/);
+    assert.doesNotMatch(text, /repeat/);
+    const stuck = [1, 2].reduce(
+      (st, i) => fold(st, { stream: "events:builder", id: `${i + 2}-0`, fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } }),
+      s,
+    );
+    text = render(stuck, { factory: "acme", rows: 40, columns: 120 });
+    assert.match(text, /guard 3 repeat/);
+  });
+
   it("says when routing is stopped at the soft limit, and shows spend in total, for the decider and beside each role", () => {
     let s = initial(["builder", "reviewer"]);
     s = fold(s, { stream: "events:executor", id: "3-0", fields: { kind: "event", name: "board", json: JSON.stringify({ issues: [], ready: [], routing: false }) } });

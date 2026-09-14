@@ -9,6 +9,11 @@ export interface RoleView {
   state: "unknown" | "idle" | "working" | "blocked";
   issue?: number;
   last: string;
+  /** The loop's test-first guard (ADR-044) on this task: the last refusal,
+   *  how many since the task began, and how many times in a row the same
+   *  rule hit the same path. A correct loop refuses a little every task;
+   *  a repeat is what the operator acts on. */
+  guard?: { rule: string; path: string; count: number; repeats: number };
 }
 
 export interface BoardIssue {
@@ -90,6 +95,14 @@ export function fold(s: State, line: Line): State {
       if (role === "executor") return foldExecutor(s, line);
       const payload = tryJson(line.fields["json"]) as Record<string, unknown> | null;
       const eventName = line.fields["name"] ?? "event";
+      if (eventName === "guard_refused") {
+        const rule = String(payload?.["rule"] ?? "");
+        const path = typeof payload?.["path"] === "string" ? payload["path"] : "";
+        const before = view(role).guard;
+        const same = before !== undefined && before.rule === rule && before.path === path;
+        const guard = { rule, path, count: (before?.count ?? 0) + 1, repeats: same ? before.repeats + 1 : 1 };
+        return withRole(role, { ...view(role), guard, last: `guard ${rule}${path ? ` ${path}` : ""}` });
+      }
       const tool = payload && typeof payload["toolName"] === "string" ? ` ${payload["toolName"]}` : "";
       return withRole(role, { ...view(role), last: `${eventName}${tool}` });
     }

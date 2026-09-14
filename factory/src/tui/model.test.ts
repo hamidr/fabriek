@@ -36,6 +36,31 @@ describe("the TUI's model", () => {
     assert.equal(s.roles["builder"]?.last, "tool_call bash");
   });
 
+  it("a guard refusal is the role's last line and is counted for the task; the same rule on the same path three times is a repeat", () => {
+    let s = after([
+      { stream: "control:builder", id: "1-0", fields: { kind: "ready", capabilities: "build" } },
+      { stream: "control:builder", id: "2-0", fields: { kind: "ack", issue: "7" } },
+      { stream: "events:builder", id: "3-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } },
+    ]);
+    assert.equal(s.roles["builder"]?.last, "guard run-before-code src/a.py");
+    assert.deepEqual(s.roles["builder"]?.guard, { rule: "run-before-code", path: "src/a.py", count: 1, repeats: 1 });
+    s = fold(s, { stream: "events:builder", id: "4-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } });
+    s = fold(s, { stream: "events:builder", id: "5-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } });
+    assert.deepEqual(s.roles["builder"]?.guard, { rule: "run-before-code", path: "src/a.py", count: 3, repeats: 3 });
+    s = fold(s, { stream: "events:builder", id: "6-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"done-is-green","tool":"report_outcome","status":"done"}' } });
+    assert.deepEqual(s.roles["builder"]?.guard, { rule: "done-is-green", path: "", count: 4, repeats: 1 });
+  });
+
+  it("a new task starts the guard's count over, since a correct test-first loop refuses a little every task", () => {
+    let s = after([
+      { stream: "control:builder", id: "1-0", fields: { kind: "ready", capabilities: "build" } },
+      { stream: "control:builder", id: "2-0", fields: { kind: "ack", issue: "7" } },
+      { stream: "events:builder", id: "3-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } },
+    ]);
+    s = fold(s, { stream: "control:builder", id: "4-0", fields: { kind: "ack", issue: "8" } });
+    assert.equal(s.roles["builder"]?.guard, undefined);
+  });
+
   it("the board is what the executor last published, grouped by stage", () => {
     const s = after([
       { stream: "events:executor", id: "9-0", fields: { kind: "event", name: "board", json: JSON.stringify({ issues: [{ number: 7, title: "Add importer", stage: "build", assignee: "builder", blocked: false }, { number: 8, title: "Review", stage: "review", assignee: null, blocked: false }], ready: ["reviewer"], routing: true }) } },
