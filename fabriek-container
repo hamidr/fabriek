@@ -38,6 +38,8 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/role-guidance.sh"
 # shellcheck source=modules/machine-plan.sh
 . "$FABRIEK_LIB/machine-plan.sh"
+# shellcheck source=modules/transcript.sh
+. "$FABRIEK_LIB/transcript.sh"
 # shellcheck source=modules/forge.sh
 . "$FABRIEK_LIB/forge.sh"
 # shellcheck source=modules/bus.sh
@@ -111,7 +113,8 @@ usage: fabriek-container
   role-worktree <factory> <role> <repo>
   task-file <factory> <workflow> <title> [body]
   factory-prepare <factory> [origin]
-  role-stop [--now] <factory> <role>
+  role-stop <factory> <role> [--now]
+  role-transcript <factory> <role> [<session>] [--text]
   factory-mirror <factory>
   factory-watch <factory> [--from <id>]
   role-steer <factory> <role> <text>
@@ -535,13 +538,9 @@ cmd_task_file() {
 ## task with the role. --now ends the cage itself at its scope (nixcage
 ## ADR-012), for a turn that no longer answers the bus.
 cmd_role_stop() {
-	local now=""
-	if [ "${1:-}" = "--now" ]; then
-		now=1
-		shift
-	fi
-	local factory="${1:-}" role="${2:-}"
-	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop [--now] <factory> <role>"
+	local factory="${1:-}" role="${2:-}" now=""
+	[ "${3:-}" = "--now" ] && now=1
+	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop <factory> <role> [--now]"
 	fabriek_role_name_ok "$role" || die "invalid role name: $role"
 	if [ -n "$now" ]; then
 		nixcage-container stop "$role" || exit 1
@@ -551,6 +550,16 @@ cmd_role_stop() {
 	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" '{verb: "stop", role: $r}')" || exit 1
 	echo "$factory: stop sent to $role"
+}
+
+## A role's sessions as pi kept them in its home, read-only.
+cmd_role_transcript() {
+	local factory="${1:-}" role="${2:-}"
+	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-transcript <factory> <role> [<session>] [--text]"
+	shift 2
+	fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+	fabriek_role_name_ok "$role" || die "invalid role name: $role"
+	fabriek_transcript "$STATE_DIR" "$factory" "$role" "$@"
 }
 
 ## The bus as JSONL on stdout, for as long as the caller listens (ADR-039
@@ -643,6 +652,7 @@ main() {
 	task-file) cmd_task_file "$@" ;;
 	factory-prepare) cmd_factory_prepare "$@" ;;
 	role-stop) cmd_role_stop "$@" ;;
+	role-transcript) cmd_role_transcript "$@" ;;
 	factory-mirror) cmd_factory_mirror "$@" ;;
 	factory-watch) cmd_factory_watch "$@" ;;
 	factory-board) cmd_factory_board "$@" ;;

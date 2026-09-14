@@ -126,3 +126,23 @@ EOF
 	assert_line "https://example.invalid/acme.git"
 	refute_line "$repo"
 }
+
+# A role's transcript is the session pi kept in its home on the machine; the
+# host asks the machine program and prints what it prints (task 6).
+@test "role transcript asks the machine for the role's sessions, and for one session as text when asked" {
+	run_fabriek role transcript acme builder
+	assert_success
+	run nixcage_calls
+	assert_output --partial "fabriek-container role-transcript acme builder"
+	run_fabriek role transcript --text acme builder 2026-09-14T10-00-00-aaaa.jsonl
+	assert_success
+	run nixcage_calls
+	assert_output --partial "fabriek-container role-transcript acme builder 2026-09-14T10-00-00-aaaa.jsonl --text"
+}
+
+@test "role stop --now reaches the machine with the flag after the factory and the role" {
+	run_fabriek role stop --now acme builder
+	assert_success
+	run nixcage_calls
+	assert_output --partial "fabriek-container role-stop acme builder --now"
+}

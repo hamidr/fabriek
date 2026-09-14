@@ -142,7 +142,27 @@ cmd_role() {
       log_err "usage: fabriek role stop [--now] <factory> <role>"
       exit 1
     fi
-    machine role-stop ${now[@]+"${now[@]}"} "$factory" "$role"
+    machine role-stop "$factory" "$role" ${now[@]+"${now[@]}"}
+    return
+  fi
+  ## 'role transcript [--text] <factory> <role> [<session>]' reads the
+  ## sessions pi kept in the role's home on the machine, listed or one of
+  ## them, as it is or as the turns' text.
+  if [[ "${1:-}" == transcript ]]; then
+    shift
+    local -a as_text=()
+    if [[ "${1:-}" == --text ]]; then
+      as_text=(--text)
+      shift
+    fi
+    local factory="${1:-}" role="${2:-}" session="${3:-}"
+    if [[ -z "$factory" || -z "$role" ]]; then
+      log_err "usage: fabriek role transcript [--text] <factory> <role> [<session>]"
+      exit 1
+    fi
+    ## Flags trail on the wire: the machine program reads the factory as
+    ## its second word.
+    machine role-transcript "$factory" "$role" ${session:+"$session"} ${as_text[@]+"${as_text[@]}"}
     return
   fi
   ## 'role show <factory> <role>' says what the role is composed of, at the
@@ -640,7 +660,7 @@ ${BOLD}Usage:${NC}
 ${BOLD}Commands:${NC}
   role <factory> <role> [-- cmd...]
                      Enter a declared role in its own worktree and uid, by hand
-  role stop [--now] <factory> <role>
+  role stop <factory> <role> [--now]
                      End a role's running turn, through the executor
   task file <factory> <workflow> <title> [body]
                      File a goal; the decider assigns it and nothing is typed
@@ -668,6 +688,9 @@ ${BOLD}Commands:${NC}
                      tests and its prompt, no build
   role show <factory> <role>
                      The same for a registered factory's role at its commit
+  role transcript [--text] <factory> <role> [<session>]
+                     The sessions pi kept for a role on the machine, or one
+                     of them, as it is or as the turns' text
   up <factory> [--update]
                      Build and boot the machine a factory runs in, pinned to
                      the repository's commit; --update moves the pin to HEAD

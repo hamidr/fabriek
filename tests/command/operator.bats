@@ -84,7 +84,7 @@ sent_json() {
 @test "role-stop --now ends the cage through nixcage and sends nothing on the bus" {
 	printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\n' "$TEST_TEMP_DIR/nixcage.calls" >"$STUB_DIR/nixcage-container"
 	chmod +x "$STUB_DIR/nixcage-container"
-	run_fabriek_container role-stop --now acme builder
+	run_fabriek_container role-stop acme builder --now
 	assert_success
 	run cat "$TEST_TEMP_DIR/nixcage.calls"
 	assert_output "stop builder"

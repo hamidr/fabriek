@@ -55,7 +55,7 @@ A change to what a role session is shows up there as a diff.
 
 - `fabriek`: the operator's launcher: `check`, `catalogue list|show`, `up`,
   `down`, `vm status`, `role`, `role show`, `role stop`, `role steer`,
-  `task file`, `factory mirror|watch|send|console|board`.
+  `role transcript`, `task file`, `factory mirror|watch|send|console|board`.
   Reaches the machine program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
@@ -63,8 +63,9 @@ A change to what a role session is shows up there as a diff.
   (`role-enter`, `role-worktree`), prepares the factory on the machine
   (`factory-prepare`), and writes the operator's interventions to the bus
   (`task-file`, `role-stop`, `role-steer`, `factory-mirror`, `factory-send`,
-  `factory-watch`). A real script rather than a Nix string so shellcheck reads
-  it and bats drives it.
+  `factory-watch`) and reads a role's transcript (`role-transcript`,
+  `modules/transcript.sh`). A real script rather than a Nix string so
+  shellcheck reads it and bats drives it.
 - `factory/`: the TypeScript package, one for all of the executor
   (`src/executor`), the loop as a pi extension (`src/extension`), the decider
   (`src/decider`), the relay (`src/relay`), the TUI (`src/tui`) and the two

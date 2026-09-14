@@ -132,6 +132,7 @@ handing numbers out is the only one that can promise never to reissue one.
 | `fabriek role <factory> <role> [-- cmd]` | Enter a role by hand, in its own worktree and uid |
 | `fabriek role stop <factory> <role>` | End a role's running turn; its task stays with it |
 | `fabriek role steer <factory> <role> <text>` | Speak into a role's running turn |
+| `fabriek role transcript [--text] <factory> <role> [<session>]` | The sessions pi kept for a role, or one of them as it is or as the turns' text |
 | `fabriek task file <factory> <workflow> <title> [body]` | File a goal; the decider assigns it and nothing is typed after |
 | `fabriek factory console <factory>` | The one face: roles, board, live stream, and the keys |
 | `fabriek factory board <factory>` | Forgejo's UI on a local port, for merging; prints the URL and the login |
