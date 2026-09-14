@@ -166,12 +166,30 @@ describe("an actor", () => {
     assert.deepEqual(f.calls.slice(-2), ["steer:focus on the tests", "abort"]);
   });
 
-  it("a steer while idle is not delivered, because there is no turn to deliver it to", async () => {
+  it("a steer while idle is a question from the operator: answered in a turn of its own, the actor still idle after", async () => {
     const f = fakes();
     const actor = new Actor({ role: "builder", capabilities, ...f });
     await actor.start();
-    await actor.handle({ kind: "steer", text: "hello" });
-    assert.equal(f.calls.length, 0);
+    await actor.handle({ kind: "steer", text: "status?" });
+    assert.deepEqual(f.calls, ["prompt:The operator asks: status?"]);
+    const prompt = (f.agent as { lastPrompt?: string }).lastPrompt ?? "";
+    assert.ok(prompt.includes("Answer in words; you hold no task, so change nothing and report no outcome."), prompt);
+    await actor.settled();
+    assert.deepEqual(actor.state, { kind: "idle" });
+    assert.equal(f.calls.includes("finish"), false);
+    assert.deepEqual(f.comments, []);
+  });
+
+  it("a steer while blocked is answered the same way, and the actor keeps holding its task", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    await actor.reportOutcome({ status: "blocked", summary: "needs the schema" });
+    await actor.settled();
+    await actor.handle({ kind: "steer", text: "what do you need?" });
+    assert.equal(f.calls.at(-1), "prompt:The operator asks: what do you need?");
+    assert.deepEqual(actor.state, { kind: "blocked", issue: 7, attempt: 1 });
   });
 
   it("at reconciliation it answers with what it holds, working or blocked, and nothing when idle", async () => {

@@ -103,6 +103,7 @@ export class Actor {
         return this.assigned(m.issue, m.attempt);
       case "steer":
         if (this.state.kind === "working") this.o.agent.steer(m.text);
+        else this.o.agent.prompt(this.question(m.text));
         return;
       case "abort":
         if (this.state.kind === "working") this.o.agent.abort();
@@ -148,6 +149,18 @@ export class Actor {
       "with done, blocked or failed and a summary; call update_memory with what the next task should know.",
     ];
     return lines.join("\n");
+  }
+
+  /** An operator's words to a role with no turn to steer: a question, put
+   *  as one, answered in a turn of its own. The state does not move, so
+   *  settling after it writes no outcome and ends no process, and an
+   *  assignment that arrives meanwhile is taken as ever. */
+  private question(text: string): string {
+    return [
+      `The operator asks: ${text}`,
+      "",
+      "Answer in words; you hold no task, so change nothing and report no outcome.",
+    ].join("\n");
   }
 
   /** The agent's report_outcome tool. */
