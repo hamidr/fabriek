@@ -1,20 +1,30 @@
 # shellcheck shell=bash
 ## What the kernel says a role ran, onto the bus (ADR-038 point 3).
 ##
-## bpftrace prints one line per exec, exit or connect with the uid the kernel
-## saw; each becomes one entry on the probes stream carrying that uid, the
-## role it belongs to and the line. The role is the machine's to name, since
-## nixcage allocated the uid (ADR-041) and answers by name and nothing off
-## the machine can. Written as the probes user, which may write this stream
-## and nothing else, so the third source stays independent of every role.
+## bpftrace prints one line per exec, exit or connect with the cgroup the
+## kernel saw; each becomes one entry on the probes stream carrying that
+## cgroup, the role whose cage it is and the line. A cage is its scope's
+## cgroup (nixcage ADR-012), which nixcage names from the cage's scope and
+## nothing off the machine can; a process that changed uid inside a cage is
+## still that cage's, which a uid table could not say. Written as the probes
+## user, which may write this stream and nothing else, so the third source
+## stays independent of every role.
 ##
 ## Sourced by store path into fabriek-container beside names.sh and bus.sh.
 
-## The table's age before a uid nobody owns makes it be asked again, in
-## seconds: a role's uid is allocated when the factory is prepared, which is
-## after this unit starts, and a process of a service that is no role
-## should not cost the primitive a call per line.
+## The table's age before a cgroup nobody owns makes it be asked again, in
+## seconds: a cage's scope exists only while it runs, and a line from a
+## service that is no role should not cost a call per line.
 FABRIEK_PROBES_REFRESH=60
+
+## Where the kernel's cgroup tree is; a variable so the suite points it at
+## a fixture.
+FABRIEK_CGROUP_ROOT="${FABRIEK_CGROUP_ROOT:-/sys/fs/cgroup}"
+
+## A cgroup's id is its directory's inode.
+fabriek_probes_cgroup_id() {
+	stat -c %i "$FABRIEK_CGROUP_ROOT/$1" 2>/dev/null
+}
 
 ## fabriek_probes_publish <state> <plan.json> <declaration.json>
 ## Reads bpftrace's lines on stdin until it closes. Before the probes user
@@ -32,26 +42,33 @@ fabriek_probes_publish() {
 
 	local -A role_of=()
 	local asked=0
-	local line uid role now
+	local line cgroup role now
 	while IFS= read -r line; do
-		uid="${line#* uid=}"
-		uid="${uid%% *}"
+		cgroup="${line#* cgroup=}"
+		cgroup="${cgroup%% *}"
 		now="$(date +%s)"
-		if [ -z "${role_of[$uid]+x}" ] && [ $((now - asked)) -ge "$FABRIEK_PROBES_REFRESH" ]; then
+		if [ -z "${role_of[$cgroup]+x}" ] && [ $((now - asked)) -ge "$FABRIEK_PROBES_REFRESH" ]; then
 			role_of=()
 			for r in "${roles[@]}"; do
-				local u
-				u="$(nixcage-container uid "$r" 2>/dev/null)" && role_of[$u]="$r"
+				local status path id
+				status="$(nixcage-container status "$r" 2>/dev/null)" || continue
+				case "$status" in
+				running\ *)
+					read -r _ _ path <<<"$status"
+					id="$(fabriek_probes_cgroup_id "$path")"
+					[ -n "$id" ] && role_of[$id]="$r"
+					;;
+				esac
 			done
 			asked="$now"
 		fi
-		role="${role_of[$uid]:-}"
+		role="${role_of[$cgroup]:-}"
 		if [ -s "$password" ]; then
 			## The password reaches valkey-cli through its environment rather
 			## than its arguments, which /proc shows to every uid on the machine.
 			VALKEYCLI_AUTH="$(cat "$password")" valkey-cli -h "$host" -p "$port" \
 				--user probes --no-auth-warning \
-				XADD probes MAXLEN '~' "$FABRIEK_PROBES_CAP" '*' uid "$uid" role "$role" event "$line" >/dev/null
+				XADD probes MAXLEN '~' "$FABRIEK_PROBES_CAP" '*' cgroup "$cgroup" role "$role" event "$line" >/dev/null
 		else
 			printf '%s\n' "$line"
 		fi

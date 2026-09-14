@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 # What the kernel says a role ran, onto the bus (ADR-038 point 3): each
 # bpftrace line becomes one entry on the probes stream, written as the probes
-# user, carrying the uid the kernel saw and the role that uid belongs to,
-# which only the machine can say. valkey-cli and nixcage-container are stubbed.
+# user, carrying the cgroup the kernel saw and the role whose cage that is,
+# which nixcage says from the cage's scope (nixcage ADR-012). valkey-cli and
+# nixcage-container are stubbed; the cgroup tree is a fixture.
 
 load ../test_helper/common
 
@@ -31,13 +32,23 @@ printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/bus-calls"
 printf '%s\n' "\${VALKEYCLI_AUTH:-}" >>"$TEST_TEMP_DIR/bus-auth"
 echo "1-0"
 STUB
-	# The uids the machine allocated, asked by name; a role not yet made has none.
+	# Each running cage's scope, asked by name; a role whose cage is not
+	# running is stopped and owns no cgroup.
+	export FABRIEK_CGROUP_ROOT="$TEST_TEMP_DIR/cgroup"
+	mkdir -p "$FABRIEK_CGROUP_ROOT/machine.slice/machine-builder.scope" "$FABRIEK_CGROUP_ROOT/machine.slice/machine-decider.scope"
+	BUILDER_CG="$(inode "$FABRIEK_CGROUP_ROOT/machine.slice/machine-builder.scope")"
+	DECIDER_CG="$(inode "$FABRIEK_CGROUP_ROOT/machine.slice/machine-decider.scope")"
 	cat >"$STUB_DIR/nixcage-container" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/uid-calls"
-case "\$2" in builder) echo 60000 ;; reviewer) echo 60064 ;; decider) echo 60192 ;; *) exit 1 ;; esac
+printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/status-calls"
+case "\$2" in builder) echo "running 4001 machine.slice/machine-builder.scope" ;; decider) echo "running 4002 machine.slice/machine-decider.scope" ;; *) echo stopped ;; esac
 STUB
 	chmod +x "$STUB_DIR/valkey-cli" "$STUB_DIR/nixcage-container"
+}
+
+## A directory's inode, which is what the kernel calls its cgroup's id.
+inode() {
+	stat -c %i "$1"
 }
 
 teardown() {
@@ -48,21 +59,21 @@ publish() {
 	bash "$FABRIEK_CONTAINER_BIN" probes-publish acme
 }
 
-@test "given a bus password, each kernel line is one entry on the probes stream with its uid, its role and the line" {
+@test "given a bus password, each kernel line is one entry on the probes stream with its cgroup, its role and the line" {
 	echo probes-pass >"$STATE/bus/probes"
-	run publish <<'LINES'
-exec uid=60000 pid=4242 comm=git
-connect uid=60192 pid=4300 comm=node
+	run publish <<LINES
+exec cgroup=$BUILDER_CG uid=60000 pid=4242 comm=git
+connect cgroup=$DECIDER_CG uid=60192 pid=4300 comm=node
 LINES
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_line --index 0 --partial "XADD probes MAXLEN ~ 10000 * uid 60000 role builder event exec uid=60000 pid=4242 comm=git"
-	assert_line --index 1 --partial "uid 60192 role decider event connect uid=60192 pid=4300 comm=node"
+	assert_line --index 0 --partial "XADD probes MAXLEN ~ 10000 * cgroup $BUILDER_CG role builder event exec cgroup=$BUILDER_CG uid=60000 pid=4242 comm=git"
+	assert_line --index 1 --partial "cgroup $DECIDER_CG role decider event connect cgroup=$DECIDER_CG uid=60192 pid=4300 comm=node"
 }
 
 @test "the entry is written as the probes user, with the password in the environment and not on argv" {
 	echo probes-pass >"$STATE/bus/probes"
-	run publish <<<"exec uid=60000 pid=1 comm=sh"
+	run publish <<<"exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=sh"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
 	assert_output --partial "--user probes"
@@ -71,31 +82,39 @@ LINES
 	assert_output "probes-pass"
 }
 
-@test "a uid no role owns is published with an empty role rather than dropped" {
+@test "a cgroup no cage owns is published with an empty role rather than dropped" {
 	echo probes-pass >"$STATE/bus/probes"
-	run publish <<<"exec uid=999 pid=1 comm=forgejo"
+	run publish <<<"exec cgroup=999 uid=999 pid=1 comm=forgejo"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_output --partial "uid 999 role  event exec uid=999"
+	assert_output --partial "cgroup 999 role  event exec cgroup=999"
 }
 
-@test "the machine is asked for each role's uid once, not once per line" {
+@test "a process that changed uid inside a cage is still that cage's" {
 	echo probes-pass >"$STATE/bus/probes"
-	run publish <<'LINES'
-exec uid=60000 pid=1 comm=a
-exec uid=60000 pid=2 comm=b
-exec uid=60064 pid=3 comm=c
+	run publish <<<"exec cgroup=$BUILDER_CG uid=0 pid=7 comm=setpriv"
+	assert_success
+	run cat "$TEST_TEMP_DIR/bus-calls"
+	assert_output --partial "role builder"
+}
+
+@test "the machine is asked for each role's scope once, not once per line" {
+	echo probes-pass >"$STATE/bus/probes"
+	run publish <<LINES
+exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=a
+exec cgroup=$BUILDER_CG uid=60000 pid=2 comm=b
+exec cgroup=$DECIDER_CG uid=60192 pid=3 comm=c
 LINES
 	assert_success
-	run sort "$TEST_TEMP_DIR/uid-calls"
-	assert_output "uid builder
-uid decider
-uid reviewer"
+	run sort "$TEST_TEMP_DIR/status-calls"
+	assert_output "status builder
+status decider
+status reviewer"
 }
 
 @test "before the bus has a password for the probes, the lines go to stdout instead" {
-	run publish <<<"exec uid=60000 pid=1 comm=sh"
+	run publish <<<"exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=sh"
 	assert_success
-	assert_output "exec uid=60000 pid=1 comm=sh"
+	assert_output "exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=sh"
 	[ ! -f "$TEST_TEMP_DIR/bus-calls" ]
 }

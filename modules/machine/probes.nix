@@ -24,20 +24,23 @@ in
     environment.etc."fabriek/probes.bt".text = ''
       /* Filtered here rather than downstream: a predicate compiles into the
        * program, so an event the machine does not want never leaves the
-       * kernel. uid 0 is the machine itself; no role is ever root. */
+       * kernel. uid 0 is the machine itself; no role is ever root. The
+       * cgroup is the cage (nixcage ADR-012): every process a cage starts
+       * is in its scope, whatever uid it takes, and the publisher names
+       * the role from it. */
       tracepoint:sched:sched_process_exec / uid != 0 /
       {
-        printf("exec uid=%d pid=%d comm=%s\n", uid, pid, comm);
+        printf("exec cgroup=%d uid=%d pid=%d comm=%s\n", cgroup, uid, pid, comm);
       }
 
       tracepoint:sched:sched_process_exit / uid != 0 /
       {
-        printf("exit uid=%d pid=%d comm=%s\n", uid, pid, comm);
+        printf("exit cgroup=%d uid=%d pid=%d comm=%s\n", cgroup, uid, pid, comm);
       }
 
       kprobe:tcp_connect / uid != 0 /
       {
-        printf("connect uid=%d pid=%d comm=%s\n", uid, pid, comm);
+        printf("connect cgroup=%d uid=%d pid=%d comm=%s\n", cgroup, uid, pid, comm);
       }
     '';
 

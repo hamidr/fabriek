@@ -25,6 +25,9 @@ nixpkgs.lib.nixosSystem {
   modules = [
     microvm.nixosModules.microvm
     nixcage.nixosModules.host
+    ## The name nixcage gives a cage's veth is nixcage's function (ADR-013);
+    ## the bridge's rules key on it.
+    { _module.args.vethHostName = nixcage.lib.vethHostName; }
     ./machine
     ## Built from the same package.nix the flake's own overlay imports, so
     ## there is one description of the program even though there are two places

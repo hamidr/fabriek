@@ -83,13 +83,19 @@ machine_text() {
 @test "the bridge drops a packet whose source is not its port's address, and drops cage to cage" {
 	run machine_text 'c.networking.nftables.tables.fabriek-cages.content'
 	assert_success
-	# nspawn names a bridged veth's host end vb-<cage>, not ve-<cage>; a rule
-	# keyed on the wrong prefix matches nothing and drops nothing.
-	assert_output --partial '"vb-builder" . 10.77.0.10'
-	assert_output --partial '"vb-reviewer" . 10.77.0.11'
-	assert_output --partial 'iifname "vb-*" ether type ip iifname . ip saddr != @cages drop'
-	assert_output --partial 'iifname "vb-*" oifname "vb-*" drop'
+	# nixcage names a bridged veth's host end from a hash of the cage's
+	# name (nixcage ADR-013) and exports the function; a rule keyed on a
+	# prefix it does not use matches nothing and drops nothing.
+	local builder reviewer
+	builder="$(nix eval --raw --impure --expr "(builtins.getFlake \"path:$FABRIEK_ROOT\").inputs.nixcage.lib.vethHostName \"builder\"" 2>/dev/null)"
+	reviewer="$(nix eval --raw --impure --expr "(builtins.getFlake \"path:$FABRIEK_ROOT\").inputs.nixcage.lib.vethHostName \"reviewer\"" 2>/dev/null)"
+	[ -n "$builder" ]
+	assert_output --partial "\"$builder\" . 10.77.0.10"
+	assert_output --partial "\"$reviewer\" . 10.77.0.11"
+	assert_output --partial 'iifname "nc-*" ether type ip iifname . ip saddr != @cages drop'
+	assert_output --partial 'iifname "nc-*" oifname "nc-*" drop'
 	refute_output --partial 've-'
+	refute_output --partial 'vb-'
 	run machine_eval 'c.networking.nftables.tables.fabriek-cages.family'
 	assert_output '"bridge"'
 }
@@ -164,12 +170,15 @@ machine_text() {
 	assert_output --partial 'remote_addr'
 }
 
-@test "the probes go through the machine program, which names the role each uid belongs to" {
+@test "the probes go through the machine program, which names the role each cgroup belongs to" {
 	run machine_text 'c.systemd.services.fabriek-probes.script'
 	assert_success
 	assert_output --partial 'bpftrace'
 	assert_output --partial '| fabriek-container probes-publish acme'
 	refute_output --partial 'LogNamespace'
+	run machine_text 'c.environment.etc."fabriek/probes.bt".text'
+	assert_output --partial 'printf("exec cgroup=%d uid=%d'
+	assert_output --partial 'printf("connect cgroup=%d uid=%d'
 }
 
 # A cage binds the directory and has no /etc/static of its own, so a symlink
