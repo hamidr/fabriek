@@ -20,7 +20,7 @@ const spend = (await import("./spend.js")).default;
 /** One response from one address, delivered in the given chunks. */
 function respond(addr, id, chunks) {
   const sent = [];
-  const r = { variables: { request_id: id, remote_addr: addr }, sendBuffer: (d, f) => sent.push([d, f]) };
+  const r = { variables: { connection: id, connection_requests: 1, remote_addr: addr }, sendBuffer: (d, f) => sent.push([d, f]) };
   chunks.forEach((c, i) => spend.count(r, c, { last: i === chunks.length - 1 }));
   return sent;
 }
@@ -89,14 +89,44 @@ test("given two addresses, when each answers, then each is counted apart and the
 
 test("given two responses in flight at once, when their chunks interleave, then neither figure lands on the other", () => {
   globalThis.ngx.shared.spend = dict();
-  const r1 = { variables: { request_id: "h", remote_addr: "10.77.0.10" }, sendBuffer() {} };
-  const r2 = { variables: { request_id: "i", remote_addr: "10.77.0.11" }, sendBuffer() {} };
+  const r1 = { variables: { connection: "h", connection_requests: 1, remote_addr: "10.77.0.10" }, sendBuffer() {} };
+  const r2 = { variables: { connection: "i", connection_requests: 1, remote_addr: "10.77.0.11" }, sendBuffer() {} };
   spend.count(r1, streamed[0], { last: false });
   spend.count(r2, plain.slice(0, 40), { last: false });
   spend.count(r1, streamed.slice(1).join(""), { last: true });
   spend.count(r2, plain.slice(40), { last: true });
   assert.equal(ngx.shared.spend.get("10.77.0.10"), 45);
   assert.equal(ngx.shared.spend.get("10.77.0.11"), 35);
+});
+
+// An OpenAI-compatible endpoint (DeepSeek among them) reports usage as
+// prompt_tokens and completion_tokens: once at the end of a stream, and in
+// a plain answer.
+const chatPlain = JSON.stringify({
+  id: "chatcmpl-1", object: "chat.completion", model: "deepseek-v4-flash",
+  choices: [{ index: 0, message: { role: "assistant", content: "Hi" }, finish_reason: "stop" }],
+  usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+});
+
+const chatStreamed = [
+  'data: {"id":"chatcmpl-2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n',
+  'data: {"id":"chatcmpl-2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+  'data: {"id":"chatcmpl-2","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+  'data: {"id":"chatcmpl-2","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":40,"completion_tokens":9,"total_tokens":49}}\n\n',
+  'data: [DONE]\n\n',
+];
+
+test("given a plain chat completion, when it ends, then prompt plus completion tokens are on the address", () => {
+  globalThis.ngx.shared.spend = dict();
+  respond("10.77.0.2", "k", [chatPlain]);
+  assert.equal(ngx.shared.spend.get("10.77.0.2"), 20);
+  assert.equal(ngx.shared.spend.get("total"), 20);
+});
+
+test("given a streamed chat completion whose usage comes last, when it ends, then that usage is counted", () => {
+  globalThis.ngx.shared.spend = dict();
+  respond("10.77.0.2", "l", chatStreamed);
+  assert.equal(ngx.shared.spend.get("10.77.0.2"), 49);
 });
 
 test("given an error answer with no usage, when it ends, then nothing is spent", () => {

@@ -1,8 +1,10 @@
 // Tokens spent, per source address and in total. The upstream reports
-// usage in every response: once for a plain one, and for a stream in
-// message_start (input, and the output so far) and then message_delta
-// (output, cumulative). Input is added when first seen; output is the
-// last figure seen, added when the response ends.
+// usage in every response: the Messages API once for a plain one, and for
+// a stream in message_start (input, and the output so far) and then
+// message_delta (output, cumulative); an OpenAI-compatible endpoint as
+// prompt_tokens and completion_tokens, at the end of a stream. Input is
+// added when first seen; output is the last figure seen, added when the
+// response ends.
 //
 // A chunk boundary can fall inside a key or a figure, so each chunk is
 // scanned with the tail of the one before it. Rescanning a figure the tail
@@ -11,17 +13,24 @@
 var pending = {};
 var TAIL = 32;
 
+// A response is told apart by its connection and its place on it, not by
+// $request_id: njs makes a fresh one on every read, and a filter that
+// keyed on it saw every chunk as a new response and counted none.
+function responseId(r) {
+  return r.variables.connection + ":" + r.variables.connection_requests;
+}
+
 function count(r, data, flags) {
-  var id = r.variables.request_id;
+  var id = responseId(r);
   var p = pending[id];
   if (!p) { p = pending[id] = { input: 0, output: 0, inputSeen: false, tail: "" }; }
   var text = p.tail + data;
   var m;
   if (!p.inputSeen) {
-    m = /"input_tokens"\s*:\s*(\d+)/.exec(text);
+    m = /"(?:input|prompt)_tokens"\s*:\s*(\d+)/.exec(text);
     if (m) { p.input = parseInt(m[1]); p.inputSeen = true; }
   }
-  var re = /"output_tokens"\s*:\s*(\d+)/g;
+  var re = /"(?:output|completion)_tokens"\s*:\s*(\d+)/g;
   while ((m = re.exec(text)) !== null) { p.output = parseInt(m[1]); }
   p.tail = text.slice(-TAIL);
   if (flags.last) {

@@ -53,7 +53,7 @@ in
       ## the credential is.
       commonHttpConfig = ''
         js_import spend from /etc/fabriek/spend.js;
-        js_shared_dict_zone zone=spend:256k;
+        js_shared_dict_zone zone=spend:256k type=number;
         js_set $spend_over spend.over;
 
         log_format fabriek_egress

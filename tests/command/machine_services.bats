@@ -167,7 +167,9 @@ machine_text() {
 	run machine_eval 'map (m: m.name) c.services.nginx.additionalModules'
 	assert_output --partial njs
 	run machine_text 'c.services.nginx.commonHttpConfig'
-	assert_output --partial 'js_shared_dict_zone'
+	# incr() throws "shared dict is not a number dict" on the default string
+	# dict, and the throw cut every streamed answer short.
+	assert_output --partial 'js_shared_dict_zone zone=spend:256k type=number;'
 	assert_output --partial 'js_set $spend_over'
 	run machine_text 'c.services.nginx.virtualHosts.fabriek-egress.extraConfig'
 	assert_output --partial 'set $spend_ceiling 500000;'
@@ -175,8 +177,8 @@ machine_text() {
 	assert_output --partial 'js_body_filter'
 	assert_output --partial 'return 429'
 	run machine_text 'c.environment.etc."fabriek/spend.js".text'
-	assert_output --partial 'output_tokens'
-	assert_output --partial 'input_tokens'
+	assert_output --partial 'output|completion)_tokens'
+	assert_output --partial 'input|prompt)_tokens'
 	assert_output --partial 'remote_addr'
 }
 
