@@ -124,6 +124,8 @@ handing numbers out is the only one that can promise never to reissue one.
 | Command | Description |
 |---|---|
 | `fabriek check [<repo>]` | What `up` would refuse, in seconds: the declaration at its commit and every specialist each role names |
+| `fabriek catalogue list [<repo>]`, `catalogue show <specialist> [<repo>]` | Every specialist and skill, and what one brings: order, tools, skills, servers, tests, prompt; no build |
+| `fabriek role show <factory> <role>` | The same for a registered factory's role at its commit |
 | `fabriek up <factory>` | Build and boot the machine that factory runs in |
 | `fabriek down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
 | `fabriek vm status` | The machines on this host, what each is doing, and the port it answers on |

@@ -145,6 +145,19 @@ cmd_role() {
     machine role-stop ${now[@]+"${now[@]}"} "$factory" "$role"
     return
   fi
+  ## 'role show <factory> <role>' says what the role is composed of, at the
+  ## commit the registered repository is on, without a build.
+  if [[ "${1:-}" == show ]]; then
+    local factory="${2:-}" role="${3:-}" path system
+    if [[ -z "$factory" || -z "$role" ]]; then
+      log_err "usage: fabriek role show <factory> <role>"
+      exit 1
+    fi
+    path="$(fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory")" || exit 1
+    system="$(machine_system)" || exit 1
+    fabriek_role_show "$FABRIEK_SELF" "$system" "$path" "$role"
+    return
+  fi
   ## 'role steer <factory> <role> <text>' speaks into a running turn; the
   ## words go to the executor, which queues them at the next tool boundary.
   if [[ "${1:-}" == steer ]]; then
@@ -316,6 +329,28 @@ cmd_check() {
   local repo="${1:-.}" system
   system="$(machine_system)" || exit 1
   fabriek_check_repo "$FABRIEK_SELF" "$repo" "$system"
+}
+
+## What a role can be, on this host, no build: the catalogues listed, one
+## specialist shown, one registered factory's role shown at its commit.
+cmd_catalogue() {
+  local verb="${1:-}" system
+  shift || true
+  system="$(machine_system)" || exit 1
+  case "$verb" in
+  list) fabriek_catalogue_list "$FABRIEK_SELF" "$system" "${1:-}" ;;
+  show)
+    if [[ -z "${1:-}" ]]; then
+      log_err "usage: fabriek catalogue show <specialist> [<repo>]"
+      exit 1
+    fi
+    fabriek_catalogue_show "$FABRIEK_SELF" "$system" "$1" "${2:-}"
+    ;;
+  *)
+    log_err "usage: fabriek catalogue list [<repo>] | show <specialist> [<repo>]"
+    exit 1
+    ;;
+  esac
 }
 
 cmd_up() {
@@ -615,6 +650,13 @@ ${BOLD}Commands:${NC}
                      Speak into a role's running turn
   check [<repo>]     What up would refuse: the declaration at its commit and
                      every specialist each role names, in seconds, no build
+  catalogue list [<repo>]
+                     Every specialist and skill, fabriek's and the repository's
+  catalogue show <specialist> [<repo>]
+                     What a specialist brings: order, tools, skills, servers,
+                     tests and its prompt, no build
+  role show <factory> <role>
+                     The same for a registered factory's role at its commit
   up <factory> [--update]
                      Build and boot the machine a factory runs in, pinned to
                      the repository's commit; --update moves the pin to HEAD
@@ -655,6 +697,7 @@ main() {
   role)    cmd_role "$@" ;;
   up)      cmd_up "$@" ;;
   check)   cmd_check "$@" ;;
+  catalogue) cmd_catalogue "$@" ;;
   down)    cmd_down "$@" ;;
   vm)      cmd_vm "$@" ;;
   task)    cmd_task "$@" ;;
