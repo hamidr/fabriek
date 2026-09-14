@@ -4,15 +4,17 @@ A factory of named roles working one git repository, each in a cage of its own.
 
 A role is a worker, not a project: it has its own uid, its own permanent
 worktree, its own home and its own signing key. Roles share the repository's
-object database and are partitioned by ref -- a role writes only
+object database and are partitioned by ref: a role writes only
 `refs/heads/<role>/*`, and `main` is writable by no cage at all. Work reaches a
 role as files and its outcome leaves as files, so nothing a role writes ever
-becomes part of a command line.
+becomes part of a command line. Who a role is, its tools, its prompt, its
+skills and its language servers, is declared in a catalogue and built into
+the machine; nothing is installed or found in the tree.
 
 fabriek runs on [nixcage](https://github.com/hamidr/nixcage), which owns the
-cages. Everything about isolation, uid mapping, binds, environment selection,
-secrets and storage is nixcage's; everything that exists only because several
-named workers share one repository is here.
+cages. Everything about isolation, uid mapping, binds, secrets and storage
+is nixcage's; everything that exists only because several named workers
+share one repository is here.
 
 The machine is fabriek' own. A factory runs in a NixOS VM of its own on
 Linux and macOS alike, so the isolation a factory gets does not depend on
@@ -30,7 +32,9 @@ fabriek task file acme ship "Add an importer" "handles empty files"
      +-- an issue on the machine's forge, labelled with the first stage
      +-- the decider, a cage of its own, chooses a ready role and asks
      +-- the executor validates the ask and sends a pointer on the bus
-     +-- the role's cage acks, works, commits on its branch, comments its outcome
+     +-- the role's cage acks and runs pi as who its specialists say, with
+     |     their tools, skills and language servers; the loop refuses code
+     |     before a failing test; it commits on its branch, comments its outcome
      +-- the executor checks the commit and moves the label; the decider goes on
      |
 fabriek factory console acme     one screen: roles, board, live stream, keys
@@ -155,8 +159,11 @@ claim the executor checks against its own board.
 
 `docs/roadmap.md` keeps the list. The record is exported to origin and read
 back on a fresh machine without its comments; the TUI shows what the bus
-carries and not yet the forge's own views; the real-machine proofs have not
-yet passed.
+carries and not yet the forge's own views; the real-machine proofs, the
+specialists' among them, have not yet passed. A cage has no network, so a
+language whose build tool fetches dependencies (sbt, Maven, pnpm) works
+only when the project's devShell carries the cache; no per-factory
+artifact cache exists.
 
 ## Development
 
