@@ -129,12 +129,18 @@ cmd_role() {
   ## 'role stop <factory> <role>' ends a role's running turn through the
   ## executor (ADR-039); everything else here is a person entering by hand.
   if [[ "${1:-}" == stop ]]; then
-    local factory="${2:-}" role="${3:-}"
+    shift
+    local -a now=()
+    if [[ "${1:-}" == --now ]]; then
+      now=(--now)
+      shift
+    fi
+    local factory="${1:-}" role="${2:-}"
     if [[ -z "$factory" || -z "$role" ]]; then
-      log_err "usage: fabriek role stop <factory> <role>"
+      log_err "usage: fabriek role stop [--now] <factory> <role>"
       exit 1
     fi
-    machine role-stop "$factory" "$role"
+    machine role-stop ${now[@]+"${now[@]}"} "$factory" "$role"
     return
   fi
   ## 'role steer <factory> <role> <text>' speaks into a running turn; the
@@ -578,7 +584,7 @@ ${BOLD}Usage:${NC}
 ${BOLD}Commands:${NC}
   role <factory> <role> [-- cmd...]
                      Enter a declared role in its own worktree and uid, by hand
-  role stop <factory> <role>
+  role stop [--now] <factory> <role>
                      End a role's running turn, through the executor
   task file <factory> <workflow> <title> [body]
                      File a goal; the decider assigns it and nothing is typed

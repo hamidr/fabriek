@@ -79,6 +79,18 @@ sent_json() {
 	assert_output '{"verb":"stop","role":"builder"}'
 }
 
+# A turn that stops answering the bus is ended at its scope (nixcage
+# ADR-012): the cage's processes are gone, the task stays with the role.
+@test "role-stop --now ends the cage through nixcage and sends nothing on the bus" {
+	printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\n' "$TEST_TEMP_DIR/nixcage.calls" >"$STUB_DIR/nixcage-container"
+	chmod +x "$STUB_DIR/nixcage-container"
+	run_fabriek_container role-stop --now acme builder
+	assert_success
+	run cat "$TEST_TEMP_DIR/nixcage.calls"
+	assert_output "stop builder"
+	[ ! -e "$TEST_TEMP_DIR/bus-calls" ]
+}
+
 @test "factory-mirror asks the executor to mirror, which is not a verb of the decider's" {
 	run_fabriek_container factory-mirror acme
 	assert_success
