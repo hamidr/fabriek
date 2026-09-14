@@ -106,12 +106,21 @@ cores = 8
 roleQuota = "50G"
 concurrency = 4
 
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+file = "/home/me/.secrets/anthropic"
+
+[models]
+"api.anthropic.com" = "claude-opus-5"
+
 [factories.acme]
 path = "/home/me/Src/acme"
 ```
 
 A repository states what it needs and this caps it; fabriek says which field
-it clamped rather than sizing down quietly. Both files are closed schemas: a key
+it clamped rather than sizing down quietly. Which endpoints a factory may
+reach, which credential opens each, and which model a session starts on are
+the operator's alone; a declaration names none of them (ADR-025, ADR-029). Both files are closed schemas: a key
 fabriek does not recognise is refused with its own name rather than ignored,
 which is what stops a repository reaching the machine it is given.
 

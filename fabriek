@@ -300,9 +300,10 @@ machine_flake() {
   }
   mkdir -p "$machine"
 
-  local caps creds
+  local caps creds models
   caps="$(fabriek_operator_caps "$config")" || return 1
   creds="$(fabriek_operator_credentials "$config")" || return 1
+  models="$(fabriek_operator_models "$config")" || return 1
   jq -n \
     --arg factory "$factory" \
     --arg system "$(machine_system)" \
@@ -310,10 +311,11 @@ machine_flake() {
     --argjson port "$(cat "$dir/port")" \
     --arg key "$(cat "$dir/id_ed25519.pub")" \
     --argjson caps "$caps" \
-    --argjson creds "$creds" '
+    --argjson creds "$creds" \
+    --argjson models "$models" '
       { factory: $factory, system: $system, hostSystem: $hostSystem,
         sshPort: $port, authorizedKey: $key, caps: $caps,
-        credentials: ($creds | map_values(.header)) }' >"$machine/local.json.new" || return 1
+        credentials: ($creds | map_values(.header)), models: $models }' >"$machine/local.json.new" || return 1
   mv "$machine/local.json.new" "$machine/local.json"
 
   cat >"$machine/flake.nix.new" <<EOF

@@ -269,3 +269,58 @@ TOML
 	assert_failure
 	assert_output --partial "command"
 }
+
+# The model a session starts on is the operator's to name, beside the
+# endpoints and credentials it allows (task 7); the declaration cannot name
+# one (ADR-029). Keyed by endpoint like a credential is.
+with_models() {
+	cat >"$CONFIG" <<TOML
+[caps]
+egress = ["api.anthropic.com"]
+
+[models]
+"api.anthropic.com" = "claude-opus-5"
+"api.openai.com" = "gpt-5"
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+}
+
+@test "the operator names the model a session starts on, per endpoint" {
+	with_models
+	run fabriek_operator_models "$CONFIG"
+	assert_success
+	run jq -c . <<<"$output"
+	assert_output '{"api.anthropic.com":"claude-opus-5","api.openai.com":"gpt-5"}'
+}
+
+@test "an operator naming no model names none, and the machine keeps its own table" {
+	write_config
+	run fabriek_operator_models "$CONFIG"
+	assert_success
+	assert_output "{}"
+}
+
+@test "a model that is not a model id, or for something that is not a host, is refused" {
+	cat >"$CONFIG" <<TOML
+[caps]
+[models]
+"not a host" = "claude-opus-5"
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run fabriek_operator_models "$CONFIG"
+	assert_failure
+	assert_output --partial "not a host"
+	cat >"$CONFIG" <<TOML
+[caps]
+[models]
+"api.anthropic.com" = ""
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run fabriek_operator_models "$CONFIG"
+	assert_failure
+	assert_output --partial "api.anthropic.com"
+}

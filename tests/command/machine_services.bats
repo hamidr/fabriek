@@ -38,7 +38,8 @@ NIX
   "sshPort": 2222, "authorizedKey": "ssh-ed25519 AAAA acme",
   "caps": { "memory": "16G", "cores": 8, "recordQuota": "8G", "tokens": 1000000,
             "egress": ["api.anthropic.com"] },
-  "credentials": { "api.anthropic.com": "x-api-key" } }
+  "credentials": { "api.anthropic.com": "x-api-key" },
+  "models": { "api.anthropic.com": "claude-opus-5" } }
 JSON
 }
 
@@ -224,7 +225,7 @@ machine_text() {
 @test "every supervised session starts on a model of the routed provider and trusts no project settings" {
 	run machine_text 'c.environment.etc."fabriek/pi-decider/settings.json".text'
 	assert_output --partial '"defaultProvider":"anthropic"'
-	assert_output --partial '"defaultModel":"claude-sonnet-4-5"'
+	assert_output --partial '"defaultModel":"claude-opus-5"'
 	assert_output --partial '"defaultProjectTrust":"never"'
 	run machine_eval 'c.environment.etc."fabriek/pi-decider/settings.json".mode'
 	assert_output '"0444"'

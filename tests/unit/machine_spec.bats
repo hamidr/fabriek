@@ -26,7 +26,8 @@ JSON
 { "factory": "acme", "system": "aarch64-linux", "hostSystem": "aarch64-darwin",
   "sshPort": 2222, "authorizedKey": "ssh-ed25519 AAAA acme",
   "caps": { "memory": "16G", "cores": 8, "egress": ["api.anthropic.com"] },
-  "credentials": { "api.anthropic.com": "x-api-key", "api.other.com": "authorization" } }
+  "credentials": { "api.anthropic.com": "x-api-key", "api.other.com": "authorization" },
+  "models": { "api.anthropic.com": "claude-opus-5", "api.openai.com": "gpt-5" } }
 JSON
 }
 
@@ -57,6 +58,11 @@ spec() { fabriek_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 	run jq -c '.egress, .egressHeaders' <<<"$(spec)"
 	assert_line --index 0 '["api.anthropic.com"]'
 	assert_line --index 1 '{"api.anthropic.com":"x-api-key"}'
+}
+
+@test "the model the operator named rides in the spec only for an endpoint the factory reaches" {
+	run jq -c '.egressModels' <<<"$(spec)"
+	assert_output '{"api.anthropic.com":"claude-opus-5"}'
 }
 
 @test "the spec carries the clamped declaration, so the machine reads it from a file and never evaluates it" {

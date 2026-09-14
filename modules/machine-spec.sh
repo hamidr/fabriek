@@ -68,6 +68,9 @@ fabriek_machine_spec() {
 		     , egressHeaders:
 		         ( ($l.credentials // {})
 		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
+		     , egressModels:
+		         ( ($l.models // {})
+		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
 		     }
 		   else {} end)'
 	rm -f "$notes"

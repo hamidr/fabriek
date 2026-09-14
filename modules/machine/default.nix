@@ -123,6 +123,15 @@ in
         about a credential is in the store or in a build log.
       '';
     };
+    egressModels = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = ''
+        The model a session starts on, per endpoint, as the operator's own
+        config names it; absent, the machine's own table in floor.nix
+        decides. The declaration cannot name one (ADR-029).
+      '';
+    };
     egressPort = lib.mkOption {
       type = lib.types.port;
       default = 8118;

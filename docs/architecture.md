@@ -299,8 +299,9 @@ machine is the cage, the bridge, the proxy's count and pi.
   there on a credential the endpoint accepts; see `docs/roadmap.md` 5.1.
   Everything after the assignment is proved on this host by
   `tests/system/journey.sh` with scripted actors, on Gitea on a Mac.
-- Which model a session starts on is the machine's choice, a table in
-  `modules/machine/floor.nix`; a declaration cannot name one.
+- Which model a session starts on is the operator's, per endpoint in
+  their config (`[models]`), with a table in `modules/machine/floor.nix`
+  standing when they name none; a declaration cannot name one.
 - A cage has no network, and sbt, Maven, pnpm and Metals fetch dependencies
   over one. A language specialist works only when the project's devShell
   carries the cache; otherwise the first build is a blocked outcome. No

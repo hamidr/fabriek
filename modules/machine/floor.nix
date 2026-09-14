@@ -25,16 +25,18 @@ let
   ## Where a session starts: on a model of the first routed provider, in
   ## declaration order of the table above. pi starts on no model unless
   ## told one, and a session with nobody at the keyboard cannot be asked.
-  ## Which model is the machine's choice for now; a declaration cannot name
-  ## one (ADR-029 pins the agent, not the model).
+  ## Which model is the operator's to name per endpoint in their own config
+  ## (egressModels); this table is what stands when they name none. A
+  ## declaration cannot name one (ADR-029 pins the agent, not the model).
   defaultModels = {
     anthropic = "claude-sonnet-4-5";
     openai = "gpt-5";
   };
   startOn = lib.head ((lib.attrValues routed) ++ [ "anthropic" ]);
+  startHost = lib.head ((lib.attrNames routed) ++ [ "api.anthropic.com" ]);
   settingsText = builtins.toJSON {
     defaultProvider = startOn;
-    defaultModel = defaultModels.${startOn};
+    defaultModel = cfg.egressModels.${startHost} or defaultModels.${startOn};
     ## A repository's own .pi is not the machine's to run: a session asks
     ## nobody, and what a role runs is declared, not found in the tree.
     defaultProjectTrust = "never";

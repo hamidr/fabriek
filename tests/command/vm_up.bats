@@ -219,6 +219,14 @@ EOF
 	refute_line --index 1 --partial "while evaluating"
 }
 
+@test "the model the operator named for an endpoint reaches the build in the local facts" {
+	printf '\n[models]\n"api.anthropic.com" = "claude-opus-5"\n' >>"$FABRIEK_CONFIG"
+	run_fabriek up acme
+	assert_success
+	run jq -r '.models["api.anthropic.com"]' "$FABRIEK_MACHINES/acme/machine/local.json"
+	assert_output "claude-opus-5"
+}
+
 @test "up builds the runner from the machine flake and keeps the spec the build produced" {
 	run_fabriek up acme
 	assert_success

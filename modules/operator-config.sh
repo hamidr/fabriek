@@ -32,7 +32,7 @@ fabriek_operator_config_program() {
 	printf 'def capFields: %s;\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
 def schema:
-  { top: ["caps", "factories", "credentials"]
+  { top: ["caps", "factories", "credentials", "models"]
   , factory: ["path"]
   , credential: ["header", "file"]
   };
@@ -56,7 +56,15 @@ def schema:
           then ["credential \($e): says no header to carry it in"] else [] end),
          (if ($v.file? | type) != "string" or ($v.file | length) == 0
           then ["credential \($e): says no file to read it from"] else [] end)
-       ] | cat) | cat)
+       ] | cat) | cat),
+    ## The model a session starts on, per endpoint, the operator's to name
+    ## beside what it allows and holds a credential for (ADR-029 pins the
+    ## agent, not the model). A model id is one word.
+    ((if ($c.models | type) == "object" then $c.models else {} end)
+     | to_entries | map(
+       .key as $e | .value as $v |
+       (if ($v | type) != "string" or ($v | test("^[A-Za-z0-9][A-Za-z0-9._:-]*$") | not)
+        then ["model for \($e): is not a model id"] else [] end)) | cat)
   ] | cat | .[]
 JQ
 }
@@ -107,6 +115,16 @@ fabriek_operator_config() {
 	done < <(printf '%s' "$json" |
 		jq -r '(.credentials // {}) | to_entries[]? | "\(.key)\t\(.value.header // "")"')
 
+	## A model is keyed by the endpoint it is asked of, which reaches the
+	## same places a credential's does.
+	while IFS= read -r endpoint; do
+		[ -n "$endpoint" ] || continue
+		if ! fabriek_host_ok "$endpoint"; then
+			echo "fabriek: $file names a model for $endpoint, which is not a host" >&2
+			failed=1
+		fi
+	done < <(printf '%s' "$json" | jq -r '(.models // {}) | keys[]?')
+
 	[ "$failed" -eq 0 ] || return 1
 	printf '%s\n' "$json"
 }
@@ -155,4 +173,11 @@ fabriek_operator_credentials() {
 	local json
 	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq '.credentials // {}'
+}
+
+## The model a session starts on, per endpoint; none is not an error.
+fabriek_operator_models() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq '.models // {}'
 }
