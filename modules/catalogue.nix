@@ -92,6 +92,23 @@ let
     };
   });
 
+  ## The description a skill's frontmatter carries, which is what pi shows
+  ## the model and what a listing shows a person; read at evaluation so
+  ## nothing has to be built to say it. Empty when the file has none, which
+  ## the build refuses.
+  describe =
+    skill:
+    let
+      lines = lib.splitString "\n" (builtins.readFile "${skill.src}/SKILL.md");
+      described = lib.filter (l: lib.hasPrefix "description:" l) lines;
+    in
+    skill
+    // {
+      description =
+        if described == [ ] then "" else lib.trim (lib.removePrefix "description:" (lib.head described));
+    };
+  skillsDescribed = lib.mapAttrs (_: describe) catalogue.skills;
+
   ## Parents before children, left to right, each name once; so a diamond
   ## yields its top once. The path from a root is carried so that a cycle
   ## is refused as the cycle rather than as infinite recursion.
@@ -216,9 +233,14 @@ let
           "lspJson"
           "testsJson"
         ];
+        ## What the role is, said at evaluation: a check on the operator's
+        ## host and a listing read these and build nothing.
         passthru = {
           order = map (node: node.name) order;
           tools = lib.concatMap toolsOf order;
+          skillsDescribed = map describe skills;
+          servers = map (s: s.id) servers.list;
+          promptText = prompt;
         };
       }
       ''
@@ -260,5 +282,5 @@ let
 in
 {
   inherit (catalogue) specialists skills;
-  inherit compose;
+  inherit skillsDescribed compose;
 }

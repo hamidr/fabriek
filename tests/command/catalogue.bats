@@ -203,3 +203,24 @@ description: the first' ''
 	assert_output --partial "skill nodesc"
 	assert_output --partial "description"
 }
+
+# What a role is composed of, at evaluation and without a build, so that a
+# check on the operator's host and a listing can say it in seconds (task 1).
+@test "a composed role says its order, tools, skills with descriptions, servers and prompt without a build" {
+	run catalogue_eval 'let c = cat.compose { role = "backend"; specialists = [ "springboot" "django" ]; }; in
+	  { inherit (c) order; tools = map (t: t.pname or t.name) c.tools;
+	    skills = map (s: { inherit (s) name; hasDescription = s.description != ""; }) c.skillsDescribed;
+	    servers = c.servers; hasPrompt = builtins.stringLength c.promptText > 100; }'
+	assert_success
+	run jq -c '[.order, (.tools | index("maven") != null), (.skills | map(.name)), (.skills | all(.hasDescription)), .servers, .hasPrompt]' <<<"$output"
+	assert_output '[["developer","java","springboot","python","django"],true,["tool-missing","tdd","ddd","solid-fp","jvm-profile","spring-boot-run","django-migrate"],true,["jdtls","basedpyright"],true]'
+}
+
+@test "the catalogue lists every skill with the description pi shows for it" {
+	run catalogue_eval 'builtins.attrNames cat.skillsDescribed'
+	assert_success
+	assert_output --partial '"tdd"'
+	run catalogue_eval 'cat.skillsDescribed.tdd.description'
+	assert_success
+	assert_output --partial "failing test first"
+}
