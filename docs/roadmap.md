@@ -278,6 +278,10 @@ One package, built through the flake, tests in its own runner.
 - 6.4 The same proof's nixcage scenario (ADR-045): status from the scope,
   MemoryMax on it, a hand inside the actor's cage, and enter --print-argv
   against seam.bats. Not run as of 2026-09-14.
+- 6.5 ADR-046's cache: a derivation per lockfile the commit has, bound
+  read-only into every session with the tools told to work offline; the
+  npm shape first, the JVM shapes behind a lockfile convention. Proposed,
+  not started, as of 2026-09-14.
 
 ## Where the log's open items landed (its section 6)
 

@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 046
+**Next ADR number:** 047
 
 ## PRDs
 
@@ -70,3 +70,4 @@ document, then regenerate.
 | [ADR-043](ADR-043-a-specialist-declares-its-language-servers.md) | A specialist declares its language servers, and pi-lsp starts them | implemented | -- | ADR-029, ADR-030, ADR-031, ADR-042 | language-server tools come from the pi-lsp extension in the floor, configured per role from what its specialists declare |  |
 | [ADR-044](ADR-044-the-loop-refuses-code-before-a-failing-test.md) | The loop refuses production code before a failing test, and done before a passing run | implemented | -- | ADR-033, ADR-035, ADR-038, ADR-042 | the loop's test-first guard refuses edits and done by the order of test edits, runs and code edits, per specialist |  |
 | [ADR-045](ADR-045-nixcage-answers-for-a-running-cage.md) | nixcage answers for a running cage, bounds it, names its veth, and puts a hand inside it | proposed | -- | ADR-018, ADR-037, ADR-038, ADR-043 | four primitives move upstream: leader and stop from the scope, memory and cpu bounds, the veth's name, exec into a cage |  |
+| [ADR-046](ADR-046-a-dependency-cache-warmed-from-the-commit.md) | A factory's dependency cache is warmed at the machine build from the commit's lockfiles | proposed | -- | ADR-031, ADR-037, ADR-040, ADR-042 | build tools read a cache the machine build filled from the commit's lockfiles; nothing fetches on a cage's word |  |
