@@ -133,6 +133,15 @@ machine_text() {
 	assert_output --partial 'systemd-tmpfiles --create --prefix=/var/lib/nixcage/forgejo'
 }
 
+@test "the forge's secrets are made after the record's dataset is mounted, not beside it" {
+	# Made beside it, two of the three landed under the mount and Forgejo
+	# failed at LoadCredential on every boot after the first.
+	run machine_eval 'c.systemd.services.forgejo-secrets.after'
+	assert_output --partial 'fabriek-record.service'
+	run machine_eval 'c.systemd.services.forgejo-secrets.requires'
+	assert_output --partial 'fabriek-record.service'
+}
+
 @test "the journal namespace and its ledger are gone" {
 	run machine_eval 'c.systemd.targets.sockets.wants'
 	refute_output --partial 'journald@acme'

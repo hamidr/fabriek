@@ -69,6 +69,14 @@ in
       };
     };
 
+    ## The forge's secrets are written into the record's dataset, so they wait
+    ## for it: written beside its mount, they were hidden under it on the
+    ## next boot and Forgejo failed at LoadCredential.
+    systemd.services.forgejo-secrets = {
+      requires = [ "fabriek-record.service" ];
+      after = [ "fabriek-record.service" ];
+    };
+
     ## Where the record lives, asked for through the primitive rather than
     ## with zfs, and before Forgejo opens it. The forge's uid is allocated by
     ## NixOS, so it is resolved when this runs rather than named.
