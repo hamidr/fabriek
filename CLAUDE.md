@@ -53,8 +53,9 @@ A change to what a role session is shows up there as a diff.
 
 ## Repository layout
 
-- `fabriek`: the operator's launcher: `up`, `down`, `vm status`, `role`,
-  `role stop`, `role steer`, `task file`, `factory mirror|watch|send|console|board`.
+- `fabriek`: the operator's launcher: `check`, `up`, `down`, `vm status`,
+  `role`, `role stop`, `role steer`, `task file`,
+  `factory mirror|watch|send|console|board`.
   Reaches the machine program over ssh to the factory's own machine, argv
   NUL-framed through `xargs -0`, and knows nothing else about where the cages
   are.
@@ -99,7 +100,9 @@ A change to what a role session is shows up there as a diff.
   `factory-clone.sh`, `factory-config.sh` are a role's worktree, key, clone
   and command; `repo-declaration.sh`, `schema.sh`, `resources.sh`, `sizes.sh`,
   `operator-config.sh` are the declaration's and the operator's schemas and
-  the clamp between them; `machine.sh` is where a machine lives on the host.
+  the clamp between them; `machine.sh` is where a machine lives on the host;
+  `check.sh` is `fabriek check`, the declaration and every specialist
+  resolved at the commit, evaluation only.
 - `modules/factory.nix`: `lib.factory`, one factory's machine from the
   repository it works and the facts only the host knows (ADR-040). Validation
   and the clamp run inside a derivation by the same shell modules.

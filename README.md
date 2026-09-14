@@ -123,6 +123,7 @@ handing numbers out is the only one that can promise never to reissue one.
 
 | Command | Description |
 |---|---|
+| `fabriek check [<repo>]` | What `up` would refuse, in seconds: the declaration at its commit and every specialist each role names |
 | `fabriek up <factory>` | Build and boot the machine that factory runs in |
 | `fabriek down <factory>` | Shut it down, reporting a stop that cannot complete rather than forcing one |
 | `fabriek vm status` | The machines on this host, what each is doing, and the port it answers on |

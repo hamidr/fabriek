@@ -30,6 +30,8 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/repo-declaration.sh"
 # shellcheck source=modules/machine.sh
 . "$FABRIEK_LIB/machine.sh"
+# shellcheck source=modules/check.sh
+. "$FABRIEK_LIB/check.sh"
 
 ## The flake a machine is built from: fabriek' own. Substituted at package
 ## time so an installed fabriek builds the machine its own revision
@@ -308,6 +310,14 @@ EOF
 ## PRD-004 phase 2, and a verb that claimed to do it would be a verb that lied.
 ## Build and boot one factory's machine. Idempotent: a machine already running
 ## is the state this asks for, so saying so and stopping is the whole of it.
+## What up would refuse, said in seconds on this host: the declaration at
+## the commit and every specialist each role names (ADR-042).
+cmd_check() {
+  local repo="${1:-.}" system
+  system="$(machine_system)" || exit 1
+  fabriek_check_repo "$FABRIEK_SELF" "$repo" "$system"
+}
+
 cmd_up() {
   local factory="${1:-}" update=""
   if [[ -z "$factory" ]]; then
@@ -603,6 +613,8 @@ ${BOLD}Commands:${NC}
                      URL and the operator's login, holds until interrupted
   role steer <factory> <role> <text>
                      Speak into a role's running turn
+  check [<repo>]     What up would refuse: the declaration at its commit and
+                     every specialist each role names, in seconds, no build
   up <factory> [--update]
                      Build and boot the machine a factory runs in, pinned to
                      the repository's commit; --update moves the pin to HEAD
@@ -642,6 +654,7 @@ main() {
   case "$command" in
   role)    cmd_role "$@" ;;
   up)      cmd_up "$@" ;;
+  check)   cmd_check "$@" ;;
   down)    cmd_down "$@" ;;
   vm)      cmd_vm "$@" ;;
   task)    cmd_task "$@" ;;
