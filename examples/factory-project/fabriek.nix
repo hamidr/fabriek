@@ -117,6 +117,9 @@
     ## This one meets its ceiling by intersection, and an operator who has
     ## named no endpoints allows none. Declaring more here cannot widen what
     ## this factory reaches on somebody else's machine.
-    egress = [ "api.anthropic.com" ];
+    egress = [
+      "api.anthropic.com"
+      "api.deepseek.com"
+    ];
   };
 }
