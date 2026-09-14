@@ -53,7 +53,10 @@ fabriek_bus_rules() {
 ## unauthenticated, which is what the first machine's executor found as
 ## WRONGPASS. On a second run the default is already off and the bus answers
 ## NOAUTH, so the script speaks as the executor, whose password reaches
-## valkey-cli through its environment and not argv.
+## valkey-cli through its environment and not argv. The default stays on
+## until the executor exists: the unit runs at boot before prepare has
+## written a password, and a bus with the default off and no executor is one
+## nothing can speak to again.
 ##
 ## fabriek_bus_apply <state> <plan.json> <declaration.json>
 fabriek_bus_apply() {
@@ -85,5 +88,6 @@ fabriek_bus_apply() {
 		valkey-cli -h "$host" -p "$port" ${as[@]+"${as[@]}"} \
 			ACL SETUSER "$user" on ">$(cat "$dir/$user")" $rules | grep -q OK || return 1
 	done < <(fabriek_bus_users "$declaration")
+	[ -s "$dir/executor" ] || return 0
 	valkey-cli -h "$host" -p "$port" ${as[@]+"${as[@]}"} ACL SETUSER default off | grep -q OK
 }

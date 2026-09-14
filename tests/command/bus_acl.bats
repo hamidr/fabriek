@@ -99,3 +99,11 @@ acl_calls() {
 	assert_failure
 	assert_output --partial "executor"
 }
+
+@test "before prepare has written the executor's password, the default user stays on: turned off then, nothing could turn it back" {
+	rm "$STATE/bus/executor"
+	run_fabriek_container bus-acl acme
+	assert_success
+	run grep "SETUSER default off" "$TEST_TEMP_DIR/bus-calls"
+	assert_failure
+}
