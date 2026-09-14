@@ -243,6 +243,19 @@ machine_text() {
 	assert_output 500000
 }
 
+# pi's deepseek provider is OpenAI-compatible with an api key; the proxy
+# carries the header, so pi is pointed at the proxy like the other two.
+@test "a factory allowed api.deepseek.com starts on pi's deepseek provider through the proxy" {
+	sed -i.bak 's/"egress": \["api.anthropic.com"\]/"egress": ["api.deepseek.com"]/' "$TEST_TEMP_DIR/local.json" && rm "$TEST_TEMP_DIR/local.json.bak"
+	sed -i.bak 's/egress = \[ "api.anthropic.com" \]/egress = [ "api.deepseek.com" ]/' "$REPO/flake.nix" && rm "$REPO/flake.nix.bak"
+	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm deepseek
+	run machine_text 'c.environment.etc."fabriek/pi-decider/models.json".text'
+	assert_output --partial '"deepseek":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.deepseek.com"}'
+	run machine_text 'c.environment.etc."fabriek/pi-decider/settings.json".text'
+	assert_output --partial '"defaultProvider":"deepseek"'
+	assert_output --partial '"defaultModel":"deepseek-v4-flash"'
+}
+
 @test "every supervised session is handed the loop and a models.json that points pi at the proxy" {
 	run machine_text 'c.environment.etc."fabriek/pi-decider/extensions/fabriek/index.ts".text'
 	assert_output --partial 'fabriek-factory'

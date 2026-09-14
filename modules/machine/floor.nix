@@ -20,6 +20,7 @@ let
   providers = {
     "api.anthropic.com" = "anthropic";
     "api.openai.com" = "openai";
+    "api.deepseek.com" = "deepseek";
   };
   routed = lib.filterAttrs (host: _: lib.elem host cfg.egress) providers;
   ## Where a session starts: on a model of the first routed provider, in
@@ -31,6 +32,7 @@ let
   defaultModels = {
     anthropic = "claude-sonnet-4-5";
     openai = "gpt-5";
+    deepseek = "deepseek-v4-flash";
   };
   startOn = lib.head ((lib.attrValues routed) ++ [ "anthropic" ]);
   startHost = lib.head ((lib.attrNames routed) ++ [ "api.anthropic.com" ]);

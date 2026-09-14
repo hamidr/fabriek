@@ -110,6 +110,10 @@ concurrency = 4
 header = "x-api-key"
 file = "/home/me/.secrets/anthropic"
 
+[credentials."api.deepseek.com"]
+header = "Authorization"
+file = "/home/me/.secrets/deepseek"   # holds the whole header value: "Bearer sk-..."
+
 [models]
 "api.anthropic.com" = "claude-opus-5"
 
