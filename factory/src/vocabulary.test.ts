@@ -51,7 +51,8 @@ describe("the decider's vocabulary", () => {
 
   it("when a role name could reach a path, a ref or an interface, the command is refused", () => {
     assert.throws(() => parseCommand({ verb: "assign", issue: 1, role: "../etc" }), /role/);
-    assert.throws(() => parseCommand({ verb: "assign", issue: 1, role: "a-role-of-thirteen" }), /12/);
+    assert.throws(() => parseCommand({ verb: "assign", issue: 1, role: "r".repeat(65) }), /64/);
+    assert.doesNotThrow(() => parseCommand({ verb: "assign", issue: 1, role: "a-role-name-well-past-twelve-characters" }));
     assert.throws(() => parseCommand({ verb: "push", role: "" }), /role/);
   });
 

@@ -135,14 +135,17 @@ validate_with() {
 	assert_failure
 }
 
-@test "a role name longer than an interface can carry is refused, naming the role" {
-	# A role is its cage's name, and nspawn names the cage's veth after it
-	# within the kernel's fifteen characters (ADR-037). Twelve is what is left.
-	run validate_with '{name, roles: {"a-role-of-thirteen": .roles.backend}}'
+@test "a role name longer than a machine name can carry is refused, naming the role" {
+	# A role is its cage's name, a machine name to nspawn, sixty-four
+	# characters at most. The veth carries a hash of it, so an interface
+	# name bounds nothing any more (nixcage ADR-013).
+	local long
+	long="$(printf 'r%.0s' $(seq 1 65))"
+	run validate_with "{name, roles: {\"$long\": .roles.backend}}"
 	assert_failure
-	assert_output --partial "a-role-of-thirteen"
-	assert_output --partial "12"
-	run validate_with '{name, roles: {"twelve-chars": .roles.backend}}'
+	assert_output --partial "$long"
+	assert_output --partial "64"
+	run validate_with '{name, roles: {"a-role-name-well-past-twelve-characters": .roles.backend}}'
 	assert_success
 }
 

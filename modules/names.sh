@@ -22,11 +22,10 @@ fabriek_name_ok() {
 	[[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]]
 }
 
-## A role's name is also its cage's name, and nspawn names the cage's veth
-## "ve-<cage>" within the fifteen characters the kernel gives an interface
-## (ADR-037). Twelve is what is left, and a longer name would be silently
-## shortened into one the bridge's rules could not match.
-FABRIEK_ROLE_NAME_MAX=12
+## A role's name is also its cage's name, a machine name to nspawn, which
+## takes sixty-four characters. The cage's veth carries a hash of the name
+## (nixcage ADR-013), so no interface name bounds it any more.
+FABRIEK_ROLE_NAME_MAX=64
 fabriek_role_name_ok() {
 	fabriek_name_ok "$1" && [ "${#1}" -le "$FABRIEK_ROLE_NAME_MAX" ]
 }

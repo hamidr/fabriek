@@ -7,8 +7,8 @@
 /** Factory, role and capability names share one alphabet (names.sh). */
 export const NAME = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
 
-/** A role is also its cage, whose veth nspawn names within fifteen characters. */
-export const ROLE_NAME_MAX = 12;
+/** A role is also its cage, a machine name to nspawn (names.sh). */
+export const ROLE_NAME_MAX = 64;
 
 export function isName(value: unknown): value is string {
   return typeof value === "string" && NAME.test(value);
