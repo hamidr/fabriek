@@ -191,6 +191,34 @@ EOF
 	assert_output 0
 }
 
+# A build that fails prints a trace with the thrown message at its end,
+# which is the one line the operator can act on (task 5).
+@test "when the build fails, the thrown message is printed first and the trace after it" {
+	cat >"$STUB_DIR/cw-nix" <<EOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+"build "*)
+	cat >&2 <<'TRACE'
+error:
+       ... while evaluating the attribute 'config'
+         at /nix/store/xxx-source/modules/factory.nix:150:3:
+       ... while calling 'compose'
+       error: role backend names specialist rust, which no catalogue declares; the catalogue offers: architect, developer
+TRACE
+	exit 1
+	;;
+"flake lock") dir="\${3#path:}"; echo '{"stub":true}' >"\$dir/flake.lock" ;;
+"flake update") dir="\${5#path:}"; echo "{\"stub\":\"\$3\"}" >"\$dir/flake.lock" ;;
+esac
+EOF
+	chmod +x "$STUB_DIR/cw-nix"
+	run_fabriek up acme
+	assert_failure
+	assert_line --index 1 --partial "role backend names specialist rust"
+	assert_output --partial "while calling 'compose'"
+	refute_line --index 1 --partial "while evaluating"
+}
+
 @test "up builds the runner from the machine flake and keeps the spec the build produced" {
 	run_fabriek up acme
 	assert_success

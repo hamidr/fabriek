@@ -387,10 +387,21 @@ cmd_up() {
   "$NIX" flake update fabriek --flake "path:$machine" || exit 1
 
   log_info "Building the machine $factory runs in..."
-  runner="$("$NIX" build --no-link --print-out-paths "path:$machine#runner")" || {
+  ## nix ends a failed build's trace with the thrown message, which is the
+  ## one line the operator can act on; it is printed first, the trace after.
+  local build_err
+  build_err="$(mktemp)"
+  runner="$("$NIX" build --no-link --print-out-paths "path:$machine#runner" 2>"$build_err")" || {
+    local thrown
+    thrown="$(grep -E '^[[:space:]]*error: .' "$build_err" | tail -1 | sed 's/^[[:space:]]*error: //')"
+    [[ -n "$thrown" ]] && log_err "$thrown"
+    cat "$build_err" >&2
+    rm -f "$build_err"
     log_err "could not build the machine $factory runs in"
     exit 1
   }
+  cat "$build_err" >&2
+  rm -f "$build_err"
   ## The spec the build composed, read back for what this side still does
   ## with it: filing credentials, and saying what the clamp changed.
   "$NIX" eval --json "path:$machine#spec" >"$dir/spec.json.new" || {
