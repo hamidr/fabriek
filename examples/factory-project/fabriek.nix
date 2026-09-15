@@ -40,6 +40,13 @@
       provides = [ "design" ];
       specialists = [ "architect" ];
     };
+    ## Splits a goal from the architect's record and tends the policy, the
+    ## guidance and this repository's own catalogue; assigns nothing, the
+    ## decider does (ADR-050).
+    manager = {
+      provides = [ "plan" ];
+      specialists = [ "manager" ];
+    };
     backend = {
       provides = [ "build" ];
       specialists = [
@@ -69,7 +76,11 @@
     stages = [
       {
         needs = "design";
-        done = "the approach is written down and the work is split";
+        done = "the approach is a record, with every decision a builder would need";
+      }
+      {
+        needs = "plan";
+        done = "the outcome lists the tasks, each with done and must-not-touch, in dependency order";
       }
       {
         needs = "build";
@@ -90,6 +101,7 @@
     ## Who may ask whom. Unlike the pipeline this may point backwards, because
     ## the role that can answer a question is usually the one before.
     consults.backend = [ "architect" ];
+    consults.manager = [ "architect" ];
   };
 
   ## What this factory asks of the machine it is given. Every one of these is

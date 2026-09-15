@@ -56,7 +56,7 @@ catalogue_build() {
 @test "the shipped catalogue offers its specialists by directory name" {
 	run catalogue_eval 'builtins.attrNames cat.specialists'
 	assert_success
-	assert_output '["architect","committer","developer","django","flask","frontend","java","python","react","reviewer","scala","springboot"]'
+	assert_output '["architect","committer","developer","django","flask","frontend","java","manager","python","react","reviewer","scala","springboot"]'
 }
 
 @test "the shipped java and python specialists declare their language servers, composed into one lsp.json" {

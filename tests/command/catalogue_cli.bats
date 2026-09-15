@@ -49,6 +49,8 @@ fab() {
 	assert_line --partial "django: extends python"
 	assert_line --partial "committer:"
 	assert_line --partial "developer: extends committer"
+	assert_line --partial "manager: extends committer"
+	assert_line --partial "workflow-tuning:"
 	assert_line --partial "tdd: Write the failing test first"
 	refute_output --partial "  local:"
 }
@@ -99,3 +101,24 @@ fab() {
 	assert_output "python"
 }
 
+# ADR-050: the root of the tree is who works in a worktree, not a builder;
+# the roles that write no code extend it and carry no builder's voice.
+@test "architect, reviewer and manager extend committer and carry no test-first paragraph" {
+	local s
+	for s in architect reviewer manager; do
+		fab show "$s"
+		assert_success
+		assert_line --partial "order: committer, $s"
+		refute_output --partial "## developer"
+		refute_output --partial "Test first."
+	done
+}
+
+@test "show manager says it owns the policy, the guidance and the repository's catalogue, and assigns nothing" {
+	fab show manager
+	assert_success
+	assert_line --partial "workflow-tuning:"
+	assert_output --partial "decider"
+	assert_output --partial "factory-guidance.md"
+	assert_output --partial "next machine build"
+}

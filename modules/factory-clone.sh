@@ -101,7 +101,7 @@ fabriek_factory_clone_ensure() {
 
 ## Where a repository keeps the guidance for roles working it. The baseline
 ## fabriek ships states properties of the cage; this states the conventions of
-## this factory, which are the architect's to maintain and the operator's to
+## this factory, which are the manager's to maintain and the operator's to
 ## accept, like any other document in that repository.
 fabriek_factory_guidance_path() {
 	echo "$1/docs/factory-guidance.md"
