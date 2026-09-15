@@ -24,6 +24,8 @@ let state: State = initial(roles);
 let draw = true;
 /** The role the operator has picked: its stream on screen, s and x aimed at it. */
 let selected = 0;
+/** Whether the stream's lines are shown whole or cut at the pane's edge. */
+let wrap = false;
 const selectedRole = (): string | undefined => Object.keys(state.roles)[selected];
 
 const cli = process.env["FABRIEK_CLI"] ?? "fabriek";
@@ -85,6 +87,9 @@ async function key(k: string): Promise<void> {
     case `${ESC}[A`:
       selected = Math.max(0, selected - 1);
       break;
+    case "w":
+      wrap = !wrap;
+      break;
     case "s": {
       const role = selectedRole();
       if (!role) break;
@@ -131,6 +136,7 @@ function paint(): void {
     factory,
     selected: selectedRole(),
     notice,
+    wrap,
     color: process.stdout.isTTY === true && process.env["NO_COLOR"] === undefined,
   };
   process.stdout.write(CLEAR + render(state, screen));

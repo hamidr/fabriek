@@ -15,9 +15,11 @@ export interface Screen {
   /** The last command's answer, beside the keys. */
   notice?: string | undefined;
   color?: boolean;
+  /** Show the stream's lines whole, over several rows, rather than cut. */
+  wrap?: boolean;
 }
 
-const KEYS = "j/k role  s steer  x stop  f file  r retry  b block  p push  m mirror  q quit";
+const KEYS = "j/k role  w wrap  s steer  x stop  f file  r retry  b block  p push  m mirror  q quit";
 
 /** Box glyphs, by code point so the source stays ASCII. */
 const G = {
@@ -72,12 +74,39 @@ interface Pane {
   title: string;
   lines: string[];
   tail?: boolean;
+  /** Lines wider than the pane go over several rows instead of being cut. */
+  wrap?: boolean;
+}
+
+/** A line as rows of at most w columns, colour codes carried whole. */
+function wrapLine(line: string, w: number): string[] {
+  const rows: string[] = [];
+  let row = "";
+  let cols = 0;
+  for (const part of line.split(new RegExp(`(${ESC}\\[[0-9;]*m)`))) {
+    if (part.startsWith(ESC)) {
+      row += part;
+      continue;
+    }
+    for (const ch of part) {
+      if (cols === w) {
+        rows.push(row);
+        row = "";
+        cols = 0;
+      }
+      row += ch;
+      cols++;
+    }
+  }
+  rows.push(row);
+  return rows;
 }
 
 function box(p: Pane, w: number, h: number, c: ReturnType<typeof paint>): string[] {
   const inner = Math.max(1, w - 2);
   const body = Math.max(0, h - 2);
-  const shown = p.tail ? p.lines.slice(-body) : p.lines.slice(0, body);
+  const lines = p.wrap ? p.lines.flatMap((l) => wrapLine(l, inner)) : p.lines;
+  const shown = p.tail ? lines.slice(-body) : lines.slice(0, body);
   while (shown.length < body) shown.push("");
   const title = fit(` ${p.title} `, Math.min(inner, width(p.title) + 2));
   const top = G.tl + G.h + title + G.h.repeat(Math.max(0, inner - width(title) - 1)) + G.tr;
@@ -127,19 +156,21 @@ function activityPane(s: State, c: ReturnType<typeof paint>): Pane {
   return { title: "activity", lines: s.activity.map((a) => activityLine(a, c)), tail: true };
 }
 
-function streamPane(s: State, selected: string | undefined): Pane {
+function streamPane(s: State, selected: string | undefined, wrap: boolean): Pane {
   const role = selected ?? Object.keys(s.roles)[0] ?? "";
-  return { title: role || "stream", lines: s.stream[role] ?? [], tail: true };
+  return { title: role || "stream", lines: s.stream[role] ?? [], tail: true, wrap };
 }
 
-/** Rows for panes stacked in one column: each its content, the rest to the last. */
+/** Rows for panes stacked in one column: each its content, the rest to the
+ *  last. The first pane is the roles, and every role stays on screen: what
+ *  gives way is the tallest of the others. */
 function stackHeights(panes: Pane[], rows: number, min = 3): number[] {
   const wanted = panes.map((p) => p.lines.length + 2);
   const heights = wanted.map((w) => Math.max(min, w));
   let over = heights.reduce((a, b) => a + b, 0) - rows;
-  // Take from the tallest first, never below the minimum.
   while (over > 0) {
-    const i = heights.indexOf(Math.max(...heights));
+    const rest = heights.slice(1);
+    const i = rest.indexOf(Math.max(...rest)) + 1;
     if (heights[i]! <= min) break;
     heights[i]!--;
     over--;
@@ -164,7 +195,7 @@ export function render(s: State, screen: Screen): string {
   const header = fit(` fabriek  ${screen.factory}  ${routing}  spend ${short(s.spend["total"] ?? 0)}  decider ${short(s.spend["decider"] ?? 0)}`, w);
 
   const left = [rolesPane(s, screen.selected, c), boardPane(s, c), activityPane(s, c)];
-  const stream = streamPane(s, screen.selected);
+  const stream = streamPane(s, screen.selected, screen.wrap === true);
 
   let lines: string[];
   if (w >= 80) {

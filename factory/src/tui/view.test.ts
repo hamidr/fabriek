@@ -27,7 +27,7 @@ describe("the TUI's view", () => {
     assert.match(out, /  reviewer +unknown/);
     assert.match(out, /build\b[\s\S]*#7 Add importer \(builder\)/);
     assert.match(out, /builder .*\n[\s\S]*bash {2}pwd && ls/);
-    for (const key of ["j/k role", "s steer", "x stop", "f file", "r retry", "b block", "p push", "m mirror", "q quit"]) {
+    for (const key of ["j/k role", "w wrap", "s steer", "x stop", "f file", "r retry", "b block", "p push", "m mirror", "q quit"]) {
       assert.ok(out.includes(key), `keys show ${key}`);
     }
   });
@@ -85,6 +85,27 @@ describe("the TUI's view", () => {
     s = fold(s, { stream: "events:executor", id: "3-0", fields: { kind: "event", name: "command", json: '{"from":"commands","command":{"verb":"merge","issue":7},"result":{"ok":false,"reason":"not reviewed"}}' } });
     const out = render(s, wide);
     assert.match(out, /decider +assign 7 builder[\s\S]*builder +importer done[\s\S]*executor +refused merge 7: not reviewed/);
+  });
+
+  it("with wrap on, a long stream line is shown whole over several rows, newest still at the bottom", () => {
+    let s = initial(["builder"]);
+    s = fold(s, { stream: "events:builder", id: "1-0", fields: { kind: "event", name: "tool_call", json: JSON.stringify({ toolName: "bash", input: { command: "x".repeat(150) } }) } });
+    s = fold(s, { stream: "events:builder", id: "2-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"read","input":{"path":"last.py"}}' } });
+    const cut = render(s, { ...wide, rows: 30 });
+    assert.match(cut, /x+~/);
+    const wrapped = render(s, { ...wide, rows: 30, wrap: true });
+    assert.doesNotMatch(wrapped, /x+~/);
+    const xs = (wrapped.match(/x{2,}/g) ?? []).join("").length;
+    assert.equal(xs, 150, "every character of the long line is on screen");
+    assert.match(wrapped, /read {2}last\.py/);
+    for (const line of wrapped.split("\n")) assert.ok([...line].length <= 120, `line fits: ${[...line].length}`);
+  });
+
+  it("every role is on screen whatever the height; the board and the activity give way first", () => {
+    let s = initial(["a", "b", "c", "d", "e", "f", "g"]);
+    for (let i = 0; i < 20; i++) s = fold(s, { stream: "commands", id: `${i}-0`, fields: { json: `{"verb":"assign","issue":${i},"role":"a"}` } });
+    const out = render(s, { ...wide, rows: 18 });
+    for (const r of ["a", "b", "c", "d", "e", "f", "g"]) assert.match(out, new RegExp(`\\b${r} +unknown`), `role ${r} shown`);
   });
 
   it("keeps the keys on the last row whatever the height, and a notice beside them", () => {
