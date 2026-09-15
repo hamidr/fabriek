@@ -45,6 +45,8 @@ or issues yourself: file makes an issue from files you write first.
 
 Rules the machine holds you to:
 - A task goes to a ready role that provides what its stage needs.
+- No more tasks are in flight at once than the declaration allows; an
+  assign past that is refused, so finish or free one first.
 - A task that failed may be retried up to the declared attempts; retry goes
   back to the same role. A task past its attempts is one to block or leave.
 - A blocked task waits on something; say what with block.
@@ -82,6 +84,7 @@ export class Decider {
       "workflows:",
       ...workflows,
       `attempts per task: ${d.resources.taskAttempts}`,
+      `tasks in flight at once: ${d.resources.concurrency > 0 ? d.resources.concurrency : "one per role"}`,
       "",
       "# Board",
       ...issues,

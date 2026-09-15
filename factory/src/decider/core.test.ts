@@ -45,6 +45,15 @@ describe("the decider", () => {
     }
   });
 
+  // ADR-055: the decider is told the ceiling on tasks in flight, so it does
+  // not ask for what the executor will refuse.
+  it("the prompt says how many tasks may be in flight, or that every role may hold one", () => {
+    const capped = readDeclaration(JSON.stringify({ ...JSON.parse(JSON.stringify(declaration)), resources: { taskAttempts: 3, concurrency: 1 } }));
+    assert.match(new Decider({ declaration: capped, policy: null, commands: fakes().commands }).prompt(snapshot), /^tasks in flight at once: 1$/m);
+    assert.match(new Decider({ declaration, policy: null, commands: fakes().commands }).prompt(snapshot), /^tasks in flight at once: one per role$/m);
+    assert.match(new Decider({ declaration, policy: null, commands: fakes().commands }).prompt(snapshot), /in flight/);
+  });
+
   it("without a policy file, the prompt says so rather than leaving the section out", () => {
     const d = new Decider({ declaration, policy: null, commands: fakes().commands });
     assert.match(d.prompt(snapshot), /# Policy\n\(the repository declares none\)/);

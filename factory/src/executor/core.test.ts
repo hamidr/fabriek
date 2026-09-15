@@ -328,6 +328,36 @@ describe("the executor", () => {
     assert.ok(!f.issues.get(1)?.thread.some((c) => /no commit/.test(c.body)));
   });
 
+  // ADR-055: concurrency is how many tasks may be in flight, held by the
+  // executor; the machine sizes each cage by the same number.
+  it("an assignment past the declared concurrency is refused naming the number, and one within it goes through", async () => {
+    const f = fakes();
+    const d = readDeclaration(JSON.stringify({ ...JSON.parse(JSON.stringify(declaration)), resources: { taskAttempts: 2, tokens: 1000, concurrency: 1 } }));
+    const x = new Executor({ declaration: d, workflow: "ship", ...f, reconcileTimeoutMs: 10 });
+    await f.board.create("a", "", "build");
+    await f.board.create("b", "", "review");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    x.heard("reviewer", { kind: "ready", capabilities: ["review"] });
+    assert.deepEqual(await x.apply({ verb: "assign", issue: 1, role: "builder" }), { ok: true });
+    const r = await x.apply({ verb: "assign", issue: 2, role: "reviewer" });
+    assert.match(r.ok ? "" : r.reason, /concurrency is 1.*1 role.* holds work/);
+    x.heard("builder", { kind: "ack", issue: 1 });
+    await x.settle();
+    f.roleComment(1, "builder", "outcome: failed\n\nno");
+    await x.checkOutcomes();
+    assert.deepEqual(await x.apply({ verb: "assign", issue: 2, role: "reviewer" }), { ok: true });
+  });
+
+  it("with no concurrency declared, every ready role may hold work at once", async () => {
+    const { x, f } = await executor();
+    await f.board.create("a", "", "build");
+    await f.board.create("b", "", "review");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    x.heard("reviewer", { kind: "ready", capabilities: ["review"] });
+    assert.deepEqual(await x.apply({ verb: "assign", issue: 1, role: "builder" }), { ok: true });
+    assert.deepEqual(await x.apply({ verb: "assign", issue: 2, role: "reviewer" }), { ok: true });
+  });
+
   it("a blocked outcome labels the issue blocked and the role keeps it", async () => {
     const { x, f } = await executor();
     await f.board.create("t", "b", "build");

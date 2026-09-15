@@ -199,6 +199,11 @@ export class Executor {
     return (await this.o.board.open()).some((i) => i.assignee === role && (i.labels.includes(ASSIGNING) || i.labels.includes(ASSIGNED)));
   }
 
+  /** How many roles hold work now: the tasks in flight (ADR-055). */
+  private async inFlight(): Promise<number> {
+    return new Set((await this.o.board.open()).filter((i) => i.assignee && (i.labels.includes(ASSIGNING) || i.labels.includes(ASSIGNED))).map((i) => i.assignee)).size;
+  }
+
   private async assign(issue: number, role: string): Promise<Result> {
     if (!(role in this.o.declaration.roles)) return refuse(`no role ${role} is declared`);
     let i: BoardIssue;
@@ -212,6 +217,13 @@ export class Executor {
     if (!capableRoles(this.o.declaration, stage).includes(role)) return refuse(`role ${role} does not provide ${stage}`);
     if (await this.holds(role)) return refuse(`role ${role} holds work already`);
     if (!this.ready.has(role)) return refuse(`role ${role} is not ready`);
+    // The declared concurrency is the ceiling on tasks in flight (ADR-055);
+    // the machine sized every cage by it. Zero is undeclared: one per role.
+    const ceiling = this.o.declaration.resources.concurrency;
+    if (ceiling > 0) {
+      const holding = await this.inFlight();
+      if (holding >= ceiling) return refuse(`the factory's concurrency is ${ceiling} and ${holding} role${holding === 1 ? "" : "s"} hold${holding === 1 ? "s" : ""} work`);
+    }
     const attempts = this.attemptsOf(i);
     if (attempts >= this.o.declaration.resources.taskAttempts) return refuse(`issue ${issue} has used its ${attempts} attempts`);
     if (!(await this.mayRoute())) return refuse("the soft limit is reached; nothing new is routed");
