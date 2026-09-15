@@ -102,6 +102,10 @@ change and a pure core: as skills it reads, as a review that blocks, and
 as the loop's guard, which refuses production code before a failing test
 and done before a passing run (ADR-044).
 
+A role with `replicas = N` is N roles, `backend-1` to `backend-N`, each
+with a cage, a worktree, a key and an account of its own (ADR-053); the
+decider spreads a stage's tasks across them.
+
 The operator's side is `~/.config/fabriek/config.toml`, the same file on Linux
 and on macOS:
 

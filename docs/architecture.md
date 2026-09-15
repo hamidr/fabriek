@@ -73,7 +73,12 @@ and its skills as values) and one per skill (`SKILL.md` in the Agent Skills
 format and a `default.nix` naming its tools). A repository may carry a
 second one with the same layout, named by `catalogue` in its `fabriek.nix`.
 A role names its specialists in `fabriek.nix` and nothing else; `command`
-defaults to pi. `modules/catalogue.nix` reads both, flattens what a role
+defaults to pi. A role may declare `replicas = N` (ADR-053): the shell
+validator expands it into `<role>-1` to `<role>-N`, each the same
+declaration, before anything else reads the file, so the build, the
+machine and the executor see N roles and no `replicas`; a declared
+`concurrency` below the expanded count is refused, as is a hand-declared
+role under a replica's name. `modules/catalogue.nix` reads both, flattens what a role
 names once per name, parents first, and builds one derivation per role. A
 specialist may declare language servers (`lsp`), unioned by id into the
 role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043),

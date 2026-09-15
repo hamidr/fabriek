@@ -1,7 +1,7 @@
 ---
 id: ADR-053
 title: A role declares replicas, and each replica is a role in everything but its declaration
-status: proposed
+status: implemented
 date: 2026-09-15
 status_date: 2026-09-15
 summary: replicas = N expands one declared role into N named roles before anything reads the declaration; nothing else changes
