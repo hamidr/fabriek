@@ -10,7 +10,7 @@
 //                         command can name files the executor can open
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { bindDecider, fromEnvironment, type BoundDecider } from "./bind.js";
 
 export default function decider(pi: ExtensionAPI): void {
@@ -27,8 +27,21 @@ export default function decider(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     context = ctx;
+    // What the last process thought about, in the home that outlives it.
+    const remembered = `${homeInside}/.fabriek-decided`;
+    const memory = {
+      read: () => {
+        try {
+          return readFileSync(remembered, "utf8");
+        } catch {
+          return null;
+        }
+      },
+      write: (snapshot: string) => writeFileSync(remembered, snapshot),
+    };
     bound = bindDecider({
       ...world,
+      memory,
       async think(prompt) {
         // A model still on the last prompt is not given the next; the tick brings it back.
         if (context?.isIdle()) pi.sendUserMessage(prompt);
@@ -39,6 +52,19 @@ export default function decider(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     bound?.stop();
+  });
+
+  // A thought is a session, and the session ends with it: the prompt
+  // carries the rules, the policy, the declaration and the board whole
+  // (ADR-034 point 5), so history adds nothing, and a session that kept
+  // every earlier board sent it all again with each one. Measured on a
+  // machine: four hundred kilobytes a request, the factory's ceiling spent
+  // by the one role that does no work. The executor starts the next
+  // process (ADR-035 point 4 as amended), which thinks once on start and
+  // then on change.
+  pi.on("agent_settled", async () => {
+    bound?.stop();
+    context?.shutdown();
   });
 
   const result = (r: { ok: true } | { ok: false; reason: string }) => ({

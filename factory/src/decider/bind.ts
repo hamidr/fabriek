@@ -41,6 +41,8 @@ export interface DeciderBindOptions {
   think(prompt: string, snapshot: Snapshot): Promise<void>;
   tickMs?: number;
   retryMs?: number;
+  /** What the last thought was about, kept across processes; absent means nothing kept. */
+  memory?: { read(): string | null; write(snapshot: string): void };
 }
 
 export interface BoundDecider {
@@ -103,7 +105,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
    *  change the streams did not carry, and a model asked the same question
    *  every thirty seconds spent the factory's whole ceiling answering it. */
   let again = false;
-  let last = "";
+  let last = o.memory?.read() ?? "";
   async function think(force = false): Promise<void> {
     if (stopped) return;
     if (busy) {
@@ -118,6 +120,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
         const key = JSON.stringify(s);
         if (!force && key === last) break;
         last = key;
+        o.memory?.write(key);
         await o.think(core.prompt(s), s);
       } while (again && !stopped);
     } catch (e) {
@@ -164,7 +167,9 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       client = await o.connect();
       void listen();
       setInterval(() => void think(), o.tickMs ?? 30000).unref();
-      await think(true);
+      // Forced only when nothing is remembered: a fresh process on the
+      // board the last one decided has nothing new to say.
+      await think(last === "");
     },
     stop() {
       stopped = true;

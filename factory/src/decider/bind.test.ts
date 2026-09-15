@@ -126,6 +126,38 @@ describe("binding a decider", () => {
     }
   });
 
+  // The decider's process ends with each thought (index.ts) and the next
+  // one starts here; what the last one thought about is kept so the new
+  // process does not decide the same board again on start.
+  it("given what the last process thought about, then a start on the same board thinks nothing, and on a changed board thinks", async () => {
+    const thought: Snapshot[] = [];
+    let remembered: string | null = null;
+    const memory = { read: () => remembered, write: (s: string) => void (remembered = s) };
+    const first = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    await first.start();
+    await tick();
+    first.stop();
+    assert.equal(thought.length, 1);
+    const second = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    await second.start();
+    await tick();
+    second.stop();
+    assert.equal(thought.length, 1, "the same board is not thought about again by a fresh process");
+    let assignee: { login: string }[] = [{ login: "builder" }];
+    const moving: DeciderForge = {
+      ...forge,
+      call: async <T,>(_method: string, path: string): Promise<T> => {
+        if (path.includes("/issues?")) return [{ number: 7, title: "Add importer", labels: [{ name: "build" }], assignees: assignee }] as T;
+        throw new Error(`unscripted ${path}`);
+      },
+    };
+    const third = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    await third.start();
+    await tick();
+    third.stop();
+    assert.equal(thought.length, 2, "a changed board is thought about by a fresh process");
+  });
+
   it("given a command through the core, then it lands on the commands stream as JSON, and one the gate refuses does not", async () => {
     const bus = scriptedBus([]);
     const bound = bindDecider({ declaration, policy: null, connect: async () => bus, forge, think: async () => {}, tickMs: 60000, retryMs: 1 });

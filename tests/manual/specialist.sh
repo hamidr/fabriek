@@ -184,12 +184,16 @@ if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ] && [ "$concurrency" -ge 1 ] 2>/dev/null &&
 		sleep 3
 	done
 	# shellcheck disable=SC2329  # invoked through eventually
+	## The watch ends by timeout, so under pipefail the pipeline fails
+	## whatever grep found; the answer is read from grep's output instead.
 	refused() {
-		timeout 20 bash fabriek -f "$F" watch --from "$since" --stream events:executor 2>/dev/null |
+		local found
+		found="$(timeout 20 bash fabriek -f "$F" watch --from "$since" --stream events:executor 2>/dev/null |
 			jq -r 'select(.stream == "events:executor" and .fields.name == "command") | .fields.json | fromjson | select(.command.verb == "assign" and .result.ok == false) | .result.reason' |
-			grep -m1 "concurrency is $concurrency and $concurrency roles hold work" >/dev/null && echo refused
+			grep -m1 -c "concurrency is $concurrency and $concurrency roles hold work")"
+		[ "${found:-0}" -ge 1 ] && echo refused
 	}
-	check "the executor refuses the assign past the ceiling, naming both numbers" "refused" "$(eventually 20 refused refused)"
+	check "the executor refuses the assign past the ceiling, naming both numbers" "refused" "$(eventually 6 refused refused)"
 	echo "  note: $((concurrency + 1)) tasks were filed at $busy_stage and are left on the board"
 else
 	gated "the concurrency refusal on a live board" "set FABRIEK_PROOF_MODEL=1 with concurrency declared below the roles providing some stage; the proof files one goal more than the ceiling there, assigns each, and reads the refusal off the bus"
