@@ -29,8 +29,10 @@ check "the floor is still under it" "yes" "$(in_cage "$ROLE" sh -c 'command -v s
 
 scenario "pi reads the role's own directory: the prompt and the skills"
 when "the session lists what PI_CODING_AGENT_DIR carries"
-check "APPEND_SYSTEM.md opens with the first specialist's heading" "## developer" \
+check "APPEND_SYSTEM.md opens with the guidance every role gets (ADR-054)" "# Working as a factory role" \
 	"$(in_cage "$ROLE" sh -c 'head -1 "$PI_CODING_AGENT_DIR/APPEND_SYSTEM.md"')"
+check "the specialists' headings follow it, in the declared order" "## committer,## developer,## java" \
+	"$(in_cage "$ROLE" sh -c 'grep -E "^## (committer|developer|java)$" "$PI_CODING_AGENT_DIR/APPEND_SYSTEM.md" | paste -sd,')"
 check "the java skill is where pi discovers skills" "yes" \
 	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/skills/jvm-profile/SKILL.md" && echo yes')"
 check "the loop is beside them" "yes" \
@@ -58,7 +60,30 @@ check "codegraph is on the role's PATH and answers" "1.6.0" \
 	"$(in_cage "$ROLE" sh -c 'codegraph --version')"
 check "the extension is beside the loop" "yes" \
 	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/pi-codegraph/index.ts" && echo yes')"
-gated "codegraph_explore answers from the index" "needs a model: ask the role where a symbol is called from; the transcript shows codegraph_explore with call paths and no grep"
+## The model step, when the operator allows it: the role, idle, is asked a
+## question only the graph answers well, and its stream is read for the
+## tools it reached for. Wants a symbol the worked repository defines and
+## calls; the example's importer has parse_line. Off unless
+## FABRIEK_PROOF_MODEL=1, because it spends tokens.
+if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ]; then
+	symbol="${SYMBOL:-parse_line}"
+	since="$(date +%s)000-0"
+	when "the operator asks the idle role where $symbol is called from and what a change reaches"
+	bash fabriek -f "$F" steer "$ROLE" "Where is $symbol called from, and what would a change to its return type reach? Use the codegraph tools, not grep." 2>/dev/null
+	# shellcheck disable=SC2329  # invoked through eventually
+	answered() {
+		timeout 15 bash fabriek -f "$F" watch --from "$since" 2>/dev/null |
+			jq -r 'select(.stream == "events:'"$ROLE"'" and .fields.name == "agent_end") | "ended"' | head -1
+	}
+	check "the role answers in a turn of its own" "ended" "$(eventually 180 ended answered)"
+	tools="$(timeout 15 bash fabriek -f "$F" watch --from "$since" 2>/dev/null |
+		jq -r 'select(.stream == "events:'"$ROLE"'" and .fields.name == "tool_call") | .fields.json | fromjson | .toolName' | sort -u | paste -sd,)"
+	check "it reached for the graph" "yes" "$(printf '%s' "$tools" | grep -q 'codegraph_' && echo yes)"
+	check "and not for grep" "yes" "$(printf '%s' "$tools" | grep -qv '^bash$' && echo yes)"
+	echo "  tools: $tools"
+else
+	gated "codegraph_explore answers from the index" "set FABRIEK_PROOF_MODEL=1 to ask the idle role about a symbol and read its tools off the bus; spends tokens"
+fi
 
 scenario "The test-first guard reads what the specialists declared (ADR-044)"
 when "the session reads tests.json beside the loop"
@@ -68,12 +93,14 @@ gated "an edit without a test is refused" "needs a model: ask the role to add a 
 
 scenario "nixcage answers for the running cage (ADR-045)"
 when "the machine is asked about the role's cage through nixcage"
-check "status says running with the role's scope" "yes" \
-	"$(sshm "nixcage-container status $ROLE" 2>/dev/null | grep -q "^running .* machine.slice/machine-$ROLE.scope\$" && echo yes)"
+## The scope's spelling is nixcage's to know (ADR-012 as amended): read
+## off status and asked back, never composed here.
+scope="$(sshm "nixcage-container status $ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
+check "status says running with a scope under machine.slice" "yes" "$([ -n "$scope" ] && echo yes)"
 check "the scope carries the memory bound" "yes" \
-	"$(sshm "systemctl show -p MemoryMax --value machine-$ROLE.scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
+	"$(sshm "systemctl show -p MemoryMax --value $scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
 check "a hand lands inside the actor's cage" "yes" \
-	"$(in_cage "$ROLE" sh -c 'grep -q "machine-'"$ROLE"'.scope" /proc/1/cgroup && echo yes')"
+	"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
 gated "enter --print-argv matches seam.bats" "compare nixcage-container enter --print-argv for the role against the line seam.bats asserts; needs the role's uid and paths from the machine"
 
 scenario "pi itself lists the skill in its system prompt"
