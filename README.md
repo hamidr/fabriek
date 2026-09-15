@@ -54,25 +54,36 @@ fabriek is two programs. There is no NixOS module to import and no rebuild to
 run: a repository declares the factory that works it, and the operator keeps one
 file saying what a factory may cost here.
 
-The repository's own flake gains a `fabriek` output. The shortest one that
+The repository gains `fabriek.toml` at its root. The shortest one that
 works:
 
-```nix
-fabriek = {
-  name = "acme";
-  roles.backend = { provides = [ "build" ]; specialists = [ "django" ]; };
-  roles.reviewer = { provides = [ "review" ]; specialists = [ "reviewer" ]; };
-  workflows.ship.stages = [ { needs = "build"; } { needs = "review"; } ];
-};
+```toml
+name = "acme"
+
+[roles.backend]
+provides = ["build"]
+specialists = ["django"]
+
+[roles.reviewer]
+provides = ["review"]
+specialists = ["reviewer"]
+
+[[workflows.ship.stages]]
+needs = "build"
+
+[[workflows.ship.stages]]
+needs = "review"
 ```
 
 A role is what it provides and who it is. It runs pi (ADR-029) unless it
-declares a `command`; it may name a devShell of the same flake (`shell`)
-for the project's own build environment. It is read from the commit rather
-than from the working tree, so the factory working a repository is the one
-its history declares. `examples/factory-project` is a complete one, with
-its declaration in `fabriek.nix` beside the devShells its roles name and a
-catalogue of its own.
+declares a `command`; it may name a devShell of the repository's flake
+(`shell`) for the project's own build environment, and a repository whose
+roles name none needs no flake. The file is data: it is read from the
+commit rather than from the working tree, so the factory working a
+repository is the one its history declares, and nothing of the
+repository's is evaluated to read it. `examples/factory-project` is a
+complete one, with its `fabriek.toml` beside the devShells its roles name
+and a catalogue of its own.
 
 ## Who a role is
 

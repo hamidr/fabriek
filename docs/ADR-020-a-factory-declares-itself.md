@@ -157,3 +157,13 @@ what the suite reads: `tests/unit/repo_declaration.bats` asserts that a valid
 declaration parses, that an unknown key is refused rather than ignored, that a
 `resources` field over its cap is clamped and reported, and that a repository
 with no `fabriek` output is rejected with the error of point 6.
+
+## Amended by ADR-058 (2026-09-15)
+
+The placement stands; the mechanism of points 1, 2 and 3a does not. The
+declaration is `fabriek.toml` at the repository's root, not a flake output;
+it is read from the commit with `git show <rev>:fabriek.toml` and parsed by
+`builtins.fromTOML` over the text, not by evaluating the repository's
+flake; the `fabriek` output is never read, and a repository still
+declaring through it is told so. Point 3 was withdrawn by ADR-040 and
+returns under ADR-057. Everything else here stands.

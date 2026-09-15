@@ -1,7 +1,7 @@
 ---
 id: ADR-058
 title: The declaration is fabriek.toml at the repository root, and no expression of the repository's is evaluated to read it
-status: proposed
+status: implemented
 date: 2026-09-15
 status_date: 2026-09-15
 summary: fabriek.toml replaces fabriek.nix and the flake's fabriek output; read from the commit with git show and fromTOML
@@ -144,3 +144,14 @@ check` on the example passes with no `nix eval` of the repository in the
 stubbed nix's calls. `tests/command/factory_flake.bats` and, under
 ADR-057, the prepare test read the example's TOML. The example's
 `flake.nix` carries no `fabriek` output.
+
+Implemented 2026-09-15 (commits 8bab82b, 8340e47, 3583d9f): the reader in
+`repo-declaration.sh` (`fabriek_toml_json`, `fabriek_declaration_read`),
+shared with `operator-config.sh`; `check.sh` composing the repository's
+catalogue from `builtins.fetchGit` at the rev and refusing a `shell` the
+flake lacks; `factory.nix` reading the file at the pinned source; the
+example's `fabriek.toml`, checked identical as JSON to the `fabriek.nix`
+it replaced. `declaration_read.bats` 9, `check.bats` 8,
+`repo_declaration.bats` 46, `factory_flake.bats` and
+`machine_services.bats` 33; the full suite ran 445 of 447 before the
+two example scenarios moved to the file, and those two green after.

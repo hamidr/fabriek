@@ -81,7 +81,7 @@ A change to what a role session is shows up there as a diff.
   `PROMPT.md` and a `default.nix` (a function of `pkgs`, `specialists`,
   `skills`) naming tools, parents and skills as values; `skills/<name>/` is
   a `SKILL.md` in the Agent Skills format and a `default.nix` naming its
-  tools. A role names specialists in `fabriek.nix`; `modules/catalogue.nix`
+  tools. A role names specialists in `fabriek.toml`; `modules/catalogue.nix`
   composes them into one derivation per role at the machine build, and
   `floor.nix` puts the result where pi reads it. A repository may add a
   catalogue of its own with the same layout. Adding a specialist is adding

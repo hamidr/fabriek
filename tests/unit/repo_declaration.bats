@@ -240,12 +240,14 @@ validate_with() {
 	assert_output --partial "ship"
 }
 
-## The example a person copies. Kept in a file of its own so this can evaluate
-## it without the flake's inputs, which is also why a repository can check its
-## own declaration cheaply.
+## The example a person copies: fabriek.toml, read by the one TOML reader,
+## which is also why a repository can check its own declaration cheaply.
+example_json() {
+	fabriek_toml_json "$FABRIEK_ROOT/examples/factory-project/fabriek.toml"
+}
+
 validate_example() {
-	nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
-		fabriek_declaration_validate
+	example_json | fabriek_declaration_validate
 }
 
 @test "the example repository declares a factory this reader accepts" {
@@ -274,8 +276,7 @@ validate_example() {
 		[ -n "$shell" ] || continue
 		run printf '%s\n' "$defined"
 		assert_line "$shell"
-	done < <(nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
-		jq -r '[.roles[].shell // empty] | .[]')
+	done < <(example_json | jq -r '[.roles[].shell // empty] | .[]')
 }
 
 # The same for specialists (ADR-042): a role in the example naming one that
@@ -287,7 +288,7 @@ validate_example() {
 	defined="$(nix eval --impure --raw --expr '
 		let flake = builtins.getFlake (toString '"$FABRIEK_ROOT"');
 		    pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
-		    example = builtins.fromJSON (builtins.toJSON (import '"$FABRIEK_ROOT"'/examples/factory-project/fabriek.nix));
+		    example = builtins.fromTOML (builtins.readFile '"$FABRIEK_ROOT"'/examples/factory-project/fabriek.toml);
 		in builtins.concatStringsSep "\n" (builtins.attrNames (flake.lib.catalogue {
 		  inherit pkgs;
 		  extra = [ ('"$FABRIEK_ROOT"'/examples/factory-project + "/${example.catalogue}") ];
@@ -298,8 +299,7 @@ validate_example() {
 		[ -n "$name" ] || continue
 		run printf '%s\n' "$defined"
 		assert_line "$name"
-	done < <(nix eval --json --file "$FABRIEK_ROOT/examples/factory-project/fabriek.nix" |
-		jq -r '[.roles[].specialists // [] | .[]] | .[]')
+	done < <(example_json | jq -r '[.roles[].specialists // [] | .[]] | .[]')
 }
 
 # An endpoint reaches a firewall rule and a proxy's allowlist (ADR-025), so it

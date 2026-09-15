@@ -24,5 +24,5 @@ Do not look for it under `/nix/store`, and do not write a
 
 ## What not to touch
 
-`fabriek.nix`, `flake.nix` and this file belong to the manager; a
+`fabriek.toml`, `flake.nix` and this file belong to the manager; a
 builder that needs them changed says so in its outcome.

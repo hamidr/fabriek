@@ -3,7 +3,7 @@
 What a role can be, one directory per entry. A specialist is who a role is:
 a prompt, the tools it brings, and the skills it knows. A skill is one
 written procedure in the Agent Skills format, with the tools that procedure
-needs beside it. A role in a repository's `fabriek.nix` names specialists;
+needs beside it. A role in a repository's `fabriek.toml` names specialists;
 fabriek composes them at build and pi reads the result in the cage.
 
 ```

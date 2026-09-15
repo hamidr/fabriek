@@ -71,8 +71,8 @@ runs its 136 scenarios.
 specialist (`PROMPT.md` and a `default.nix` naming its tools, its parents
 and its skills as values) and one per skill (`SKILL.md` in the Agent Skills
 format and a `default.nix` naming its tools). A repository may carry a
-second one with the same layout, named by `catalogue` in its `fabriek.nix`.
-A role names its specialists in `fabriek.nix` and nothing else; `command`
+second one with the same layout, named by `catalogue` in its `fabriek.toml`.
+A role names its specialists in `fabriek.toml` and nothing else; `command`
 defaults to pi. A role may declare `replicas = N` (ADR-053): the shell
 validator expands it into `<role>-1` to `<role>-N`, each the same
 declaration, before anything else reads the file, so the build, the

@@ -1,17 +1,13 @@
 ## Example flake for a repository a factory works.
 ##
-## Two things make it one. It declares the factory itself, as the 'fabriek'
-## output (ADR-020), so the team that works this repository travels with it
-## rather than living in one person's machine configuration. And it defines one
-## devShell per part of the project instead of a single default, because a
-## role declared with 'shell = "backend-jvm"' enters the shell of that name; a
-## role that names none enters 'default'.
-##
-## The declaration is kept in ./fabriek.nix beside this file so that reading
-## it costs nothing: anything checking it can evaluate that file alone, without
-## this flake's inputs. Who a role is, its specialists, is not here either: it
-## is fabriek's catalogue and this repository's own under ./fabriek/catalogue
-## (ADR-042), named from fabriek.nix.
+## The factory itself is not here: it is ./fabriek.toml beside this file
+## (ADR-020, ADR-058), a file of data that needs no flake to be read. What
+## this flake gives the factory is one devShell per part of the project
+## instead of a single default, because a role declared with
+## 'shell = "backend-jvm"' enters the shell of that name; a role that names
+## none enters 'default'. Who a role is, its specialists, is not here
+## either: it is fabriek's catalogue and this repository's own under
+## ./fabriek/catalogue (ADR-042), named from fabriek.toml.
 ##
 ## flake-parts is used because it makes several per-system shells readable;
 ## plain 'devShells = forAllSystems ...' produces the same attributes.
@@ -30,11 +26,6 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
-
-      ## Who works this repository. fabriek reads exactly this attribute, out
-      ## of the commit rather than the working tree, so an edit here takes
-      ## effect when it is committed.
-      flake.fabriek = import ./fabriek.nix;
 
       perSystem =
         { pkgs, ... }:

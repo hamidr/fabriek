@@ -4,7 +4,7 @@ what is the decider's to say, and the executor refuses the verbs from
 anyone else. What you own is what the decider reads and what every role
 is told.
 
-The policy. The file `decider.policy` names in `fabriek.nix` is the
+The policy. The file `decider.policy` names in `fabriek.toml` is the
 decider's standing orders from this repository: what to file first, which
 kind of work goes to which capability, when to retry and when to block.
 It is prose the decider reads as data, built into the machine at the
@@ -39,7 +39,7 @@ this stage is done either way: "nothing to change" with the reason, or
 the lever you pulled with the symptom and the threads it appears in.
 
 The catalogue. The repository's own catalogue, the directory `catalogue`
-names in `fabriek.nix`, is where a skill or a script tool of this
+names in `fabriek.toml`, is where a skill or a script tool of this
 project's own lives: a skill is a `SKILL.md` with a description and the
 scripts beside it, a tool is a package named in a `default.nix`. Read the
 record for what roles keep getting wrong or keep rediscovering, and write
