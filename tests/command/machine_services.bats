@@ -288,3 +288,18 @@ machine_text() {
 	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'
 	assert_output --partial pi-coding-agent
 }
+
+# ADR-053: a role with replicas is N roles by the time the machine is
+# composed: N addresses, N profiles, and no cage under the base name.
+@test "a role with replicas gets a cage and a profile per replica, and none under the base name" {
+	sed -i.bak 's/roles.builder = { command = \[ "pi" \]; provides = \[ "build" \]; };/roles.builder = { command = [ "pi" ]; provides = [ "build" ]; replicas = 2; };/' "$REPO/flake.nix"
+	rm "$REPO/flake.nix.bak"
+	git -C "$REPO" -c commit.gpgsign=false commit -qam replicate
+	run machine_text 'c.environment.etc."fabriek/bridge.json".text'
+	assert_success
+	run jq -c '[.cages | keys[]]' <<<"$output"
+	assert_output '["builder-1","builder-2","decider","reviewer"]'
+	run machine_eval 'builtins.filter (n: builtins.match "fabriek/roles/.*/profile" n != null) (builtins.attrNames c.environment.etc)'
+	assert_success
+	assert_output '["fabriek/roles/builder-1/profile","fabriek/roles/builder-2/profile","fabriek/roles/reviewer/profile"]'
+}
