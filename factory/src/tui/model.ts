@@ -70,9 +70,16 @@ function keep<T>(list: T[], item: T, max = KEEP): T[] {
   return out.length > max ? out.slice(out.length - max) : out;
 }
 
+/** One line of a text that may hold several: the first, marked as cut. A
+ *  newline inside a pane's line breaks the pane it is drawn in. */
+function firstLine(text: string): string {
+  const [head, ...rest] = text.split("\n");
+  return rest.some((l) => l.trim().length > 0) ? `${head ?? ""} ~` : (head ?? "");
+}
+
 /** The role's stream with one more line. */
 function said(s: State, role: string, text: string): State {
-  return { ...s, stream: { ...s.stream, [role]: keep(s.stream[role] ?? [], text, STREAM_KEEP) } };
+  return { ...s, stream: { ...s.stream, [role]: keep(s.stream[role] ?? [], firstLine(text), STREAM_KEEP) } };
 }
 
 /** Where a bus id sorts: milliseconds, then the sequence within them. */
@@ -92,7 +99,7 @@ function toolLine(payload: Record<string, unknown>): string {
   const tool = String(payload["toolName"] ?? "tool");
   const input = (payload["input"] ?? {}) as Record<string, unknown>;
   const what = ["command", "path", "pattern", "query", "url"].map((k) => input[k]).find((v) => typeof v === "string") as string | undefined;
-  return what ? `${tool}  ${what.split("\n")[0]}` : tool;
+  return what ? `${tool}  ${firstLine(what)}` : tool;
 }
 
 /** What the assistant said in a turn, its thinking left out. */
@@ -103,7 +110,7 @@ function saidText(payload: Record<string, unknown>): string {
     .filter((c) => c.type === "text" && typeof c.text === "string")
     .map((c) => (c.text as string).trim())
     .filter((t) => t.length > 0)
-    .join(" ");
+    .join("\n");
 }
 
 function tryJson(text: string | undefined): unknown {

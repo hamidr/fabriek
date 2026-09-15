@@ -63,6 +63,14 @@ describe("the TUI's model", () => {
     assert.deepEqual(s.activity.map((a) => `${a.by} ${a.text}`), ["operator steer builder go", "executor did push builder", "decider assign 7 builder"]);
   });
 
+  it("a stream line never carries a newline: what a role said keeps its first line, marked as cut", () => {
+    let s = after([{ stream: "events:builder", id: "1-0", fields: { kind: "event", name: "turn_end", json: '{"message":{"role":"assistant","content":[{"type":"text","text":"Summary:\\n- one\\n- two"}]}}' } }]);
+    s = fold(s, { stream: "findings:builder", id: "2-0", fields: { kind: "finding", text: "first\nsecond" } });
+    s = fold(s, { stream: "mailbox:builder", id: "3-0", fields: { kind: "steer", text: "a\nb" } });
+    assert.deepEqual(s.stream["builder"], ["Summary: ~", "finding: first ~", "operator: a ~"]);
+    for (const line of s.stream["builder"] ?? []) assert.ok(!line.includes("\n"), line);
+  });
+
   it("what the operator said to a role is in that role's stream, so the question reads beside the answer", () => {
     const s = after([{ stream: "mailbox:builder", id: "1-0", fields: { kind: "steer", text: "status?" } }]);
     assert.deepEqual(s.stream["builder"], ["operator: status?"]);
