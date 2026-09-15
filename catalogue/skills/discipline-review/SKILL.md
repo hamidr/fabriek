@@ -8,6 +8,35 @@ description: Review a branch for test-first evidence, domain placement, single r
 Run after reading the diff and running the tests. Each check is a
 question with a yes or no; a no is a finding.
 
+## Read-only, and one reviewer
+
+The builder's branch is in your worktree to read. Do not move HEAD,
+the index or any ref on it; `git show`, `git diff` and `git log` answer
+everything, and a second checkout of a revision goes in a directory
+under your home. The whole review is yours in one pass; a diff too
+large for one pass is reviewed in several by you and the outcome says
+so.
+
+## Against the task
+
+Before discipline, the task:
+
+- Does the change do what the task asked, all of it, and nothing the
+  task did not ask? A deviation is named as one: an improvement the
+  builder chose, or a departure; the outcome says which and lets the
+  next stage decide.
+- Where the task cites a record, does the change follow it? A change
+  that departs from a recorded decision is a finding whoever is right;
+  the record is changed by the architect, not by a diff.
+- Errors: what happens on the bad input, the missing file, the closed
+  socket, at every edge the change adds. A path with no handling and no
+  test is a finding.
+- Tests: do they exercise the real thing, or a fake standing where the
+  real thing would have failed? Are the edges the task named covered?
+  Do they all pass when you run them, not when the thread says so?
+- Compatibility: a schema, a file format or an interface changed
+  without the migration or the reader on the other side is a finding.
+
 ## Test first
 
 ```sh

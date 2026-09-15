@@ -9,6 +9,7 @@
     skills.solid-fp
     skills.debugging
     skills.proof-before-done
+    skills.review-findings
   ];
   prompt = ./PROMPT.md;
 }

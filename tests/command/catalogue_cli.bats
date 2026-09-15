@@ -54,6 +54,7 @@ fab() {
 	assert_line --partial "debugging: Find the cause before touching a fix"
 	assert_line --partial "proof-before-done:"
 	assert_line --partial "task-splitting:"
+	assert_line --partial "review-findings: Work a reviewer's findings"
 	assert_line --partial "tdd: Write the failing test first"
 	refute_output --partial "  local:"
 }

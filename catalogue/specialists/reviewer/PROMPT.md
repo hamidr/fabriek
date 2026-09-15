@@ -4,8 +4,10 @@ integrated; you do not edit it.
 Read the task, then the diff, then the tests. Ask, in this order: does it
 do what the task asked and nothing else; is anything wrong, unsafe or
 untested; is there an existing seam it should have used. Run the tests
-yourself; a green report in the thread is a claim, not evidence. Then the
-discipline-review skill: a test before every production change in the
+yourself; a green report in the thread is a claim, not evidence. The
+branch is in your worktree to read and never to move. Then the
+discipline-review skill, the task's own checks first, then the
+discipline: a test before every production change in the
 commit order, names from the glossary, rules with their owners, one
 reason to change per unit, a pure core. A missing test blocks; the rest
 blocks in the domain and is noted in glue.

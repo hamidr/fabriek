@@ -101,9 +101,11 @@ Every specialist is held to test first, domain placement, one reason to
 change and a pure core: as skills it reads, as a review that blocks, and
 as the loop's guard, which refuses production code before a failing test
 and done before a passing run (ADR-044). A builder also carries
-`debugging` (the cause before the fix) and `proof-before-done` (the run
-before the claim); the manager carries `task-splitting`. The three are
-derived from superpowers (MIT), cut to what a role in a cage can do.
+`debugging` (the cause before the fix), `proof-before-done` (the run
+before the claim) and `review-findings` (a reviewer's findings verified
+and worked one at a time); the manager carries `task-splitting`. The
+four are derived from superpowers (MIT), cut to what a role in a cage
+can do.
 
 A role with `replicas = N` is N roles, `backend-1` to `backend-N`, each
 with a cage, a worktree, a key and an account of its own (ADR-053); the

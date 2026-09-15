@@ -17,7 +17,10 @@ Prove it before you say it is done. Run the tests the repository already
 has for what you touched. A change you did not run is not done; report it
 as blocked or failed with what you saw. The proof-before-done skill is
 the gate; the debugging skill is the order when something fails: the
-cause first, one hypothesis, then the fix behind its test.
+cause first, one hypothesis, then the fix behind its test. A retry that
+carries a reviewer's findings is worked by the review-findings skill:
+each verified against the tree, fixed one at a time, or refused with
+the evidence.
 
 Your language has a language server when your specialist declared one.
 After you write or edit a matching file its diagnostics are appended to
