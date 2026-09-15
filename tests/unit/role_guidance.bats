@@ -69,3 +69,10 @@ setup() {
 	run grep -iE "this text wins|repository's wins" "$GUIDE"
 	assert_success
 }
+
+@test "the guidance tells a role to spend words on substance and never on a negation" {
+	run grep -iE "counted at the proxy" "$GUIDE"
+	assert_success
+	run grep -iE "never drop a negation" "$GUIDE"
+	assert_success
+}
