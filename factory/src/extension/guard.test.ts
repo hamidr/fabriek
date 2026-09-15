@@ -29,6 +29,16 @@ describe("classifying what the agent touches", () => {
     assert.ok(!g.isTestRun("cat tests/test_invoice.py"));
   });
 
+  // On a machine a builder ran "PYTHONPATH=/workspace pytest -q" twice and
+  // was refused done twice: the assignment in front is the shell's, not
+  // the command's, and a run it hides is a run.
+  it("recognises a test run behind the environment assignments a shell allows in front of a command", () => {
+    const g = new Guard(python, cwd);
+    assert.ok(g.isTestRun("PYTHONPATH=/workspace pytest -q 2>&1 | tail -5"));
+    assert.ok(g.isTestRun("cd /workspace && CI=1 PYTHONPATH=. python -m pytest"));
+    assert.ok(!g.isTestRun("PYTHONPATH=/workspace cat tests/test_invoice.py"));
+  });
+
   it("is inactive when the specialists declared nothing, and then refuses nothing", () => {
     const g = new Guard({ files: [], source: [], command: [] }, cwd);
     assert.equal(g.active, false);

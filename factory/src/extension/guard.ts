@@ -66,11 +66,17 @@ export class Guard {
     return "free";
   }
 
-  /** A run is any command segment whose first words are a declared runner. */
+  /** A run is any command segment whose first words, after the environment
+   *  assignments a shell allows in front of a command, are a declared runner. */
   isTestRun(command: string): boolean {
     return command
       .split(/&&|\|\||;|\||\n/)
       .map((segment) => segment.trim().split(/\s+/).filter(Boolean))
+      .map((words) => {
+        let i = 0;
+        while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i] ?? "")) i++;
+        return words.slice(i);
+      })
       .some((words) => this.commands.some((runner) => runner.every((w, i) => words[i] === w)));
   }
 
