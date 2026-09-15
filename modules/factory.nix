@@ -1,8 +1,8 @@
 ## One factory's machine, from the repository it works and the facts only the
 ## operator's host knows (ADR-040).
 ##
-## The declaration is the repository's own 'fabriek' output, evaluated from
-## the rev the machine flake's lock pins. Validation and the clamp run inside
+## The declaration is the repository's fabriek.toml, read from the rev the
+## machine flake's lock pins (ADR-058). Validation and the clamp run inside
 ## a derivation, by the same shell modules the operator's side used to run at
 ## every command, so a bad declaration fails the build with its own message
 ## and nothing on the machine ever evaluates a declaration again. What comes
@@ -28,9 +28,18 @@ let
   hostPkgs = nixpkgs.legacyPackages.${facts.hostSystem};
   machinePkgs = nixpkgs.legacyPackages.${facts.system};
 
+  ## fabriek.toml at the repository's root, at the rev the machine flake's
+  ## lock pins; the flake's fabriek output is not read, and a repository
+  ## still declaring through it is told so rather than built with no roles.
+  declarationFile = "${project}/fabriek.toml";
   declaration =
-    project.fabriek
-      or (throw "the repository ${facts.factory} works declares no factory: its flake has no 'fabriek' output");
+    if builtins.pathExists declarationFile then
+      builtins.fromTOML (builtins.readFile declarationFile)
+    else
+      throw (
+        "the repository ${facts.factory} works has no fabriek.toml at its root"
+        + (if project ? fabriek then "; the flake output is no longer read" else "")
+      );
 
   ## The spec, composed by modules/machine-spec.sh in a build. Import from
   ## derivation on purpose: the modules are the one description of what a

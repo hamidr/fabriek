@@ -28,23 +28,42 @@ teardown() {
 	teardown_temp_dir
 }
 
-## A repository flake declaring acme, with whatever extra outputs a scenario
-## needs, committed because that is what is read.
+## A repository declaring acme in fabriek.toml (ADR-058), with whatever
+## flake outputs a scenario needs beside it, top-level TOML lines, and
+## lines under the builder's table; committed because that is what is read.
 declare_flake() {
 	cat >"$REPO/flake.nix" <<NIX
 {
   outputs = { self }: {
-    fabriek = {
-      name = "acme";
-      roles.builder = { command = [ "claude" ]; provides = [ "build" ]; shell = "backend"; };
-      roles.reviewer = { command = [ "claude" ]; provides = [ "review" ]; };
-      workflows.ship.stages = [ { needs = "build"; } { needs = "review"; } ];
-      resources = { memory = "4G"; cores = 12; egress = [ "api.anthropic.com" "api.openai.com" ]; };
-    };
     $1
   };
 }
 NIX
+	cat >"$REPO/fabriek.toml" <<TOML
+name = "acme"
+${2:-}
+
+[roles.builder]
+command = ["claude"]
+provides = ["build"]
+shell = "backend"
+${3:-}
+
+[roles.reviewer]
+command = ["claude"]
+provides = ["review"]
+
+[[workflows.ship.stages]]
+needs = "build"
+
+[[workflows.ship.stages]]
+needs = "review"
+
+[resources]
+memory = "4G"
+cores = 12
+egress = ["api.anthropic.com", "api.openai.com"]
+TOML
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
 }
@@ -102,7 +121,7 @@ factory_eval() {
 }
 
 @test "a role naming specialists gets their kit in its profile beside its devShell's tools" {
-	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.specialists = [ \"developer\" ];"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; };" '' 'specialists = ["developer"]'
 	run factory_eval '.specialists.builder.order'
 	assert_success
 	assert_output '["committer","developer"]'
@@ -112,7 +131,7 @@ factory_eval() {
 }
 
 @test "a role naming a specialist no catalogue has fails the build naming the role" {
-	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.specialists = [ \"rust\" ];"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; };" '' 'specialists = ["rust"]'
 	run factory_eval '.specialists.builder.order'
 	assert_failure
 	assert_output --partial "role builder names specialist rust"
@@ -122,7 +141,7 @@ factory_eval() {
 	mkdir -p "$REPO/fabriek/catalogue/specialists/local"
 	printf 'I am local.\n' >"$REPO/fabriek/catalogue/specialists/local/PROMPT.md"
 	printf '{ specialists, ... }: { extends = [ specialists.developer ]; prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/local/default.nix"
-	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.catalogue = \"fabriek/catalogue\"; fabriek.roles.builder.specialists = [ \"local\" ];"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; };" 'catalogue = "fabriek/catalogue"' 'specialists = ["local"]'
 	run factory_eval '.specialists.builder.order'
 	assert_success
 	assert_output '["committer","developer","local"]'
@@ -135,17 +154,31 @@ factory_eval() {
 	assert_output --partial "role builder names devShell backend"
 }
 
-@test "when the repository declares no factory, the build says so" {
+@test "when the repository declares no factory, the build says so, naming the file" {
 	printf '{ outputs = { self }: { }; }\n' >"$REPO/flake.nix"
+	rm "$REPO/fabriek.toml"
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm undeclare
 	run factory_eval '.spec.factory'
 	assert_failure
-	assert_output --partial "declares no factory"
+	assert_output --partial "has no fabriek.toml"
+}
+
+# ADR-058 point 2: the output is never read, and a repository still
+# declaring through it is told, rather than built with no roles.
+@test "when the repository declares only through its flake output, the build says the output is not read" {
+	printf '{ outputs = { self }: { fabriek = { name = "acme"; }; }; }\n' >"$REPO/flake.nix"
+	rm "$REPO/fabriek.toml"
+	git -C "$REPO" add -A
+	git -C "$REPO" -c commit.gpgsign=false commit -qm output-only
+	run factory_eval '.spec.factory'
+	assert_failure
+	assert_output --partial "has no fabriek.toml"
+	assert_output --partial "flake output is no longer read"
 }
 
 @test "when the declaration carries a key fabriek does not know, the build fails by that key's name" {
-	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.colour = \"blue\";"
+	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; };" '' 'colour = "blue"'
 	run factory_eval '.spec.factory'
 	assert_failure
 	assert_output --partial "colour"

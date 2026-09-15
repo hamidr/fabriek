@@ -17,20 +17,31 @@ setup() {
 	git init -q "$REPO"
 	git -C "$REPO" config user.name factory
 	git -C "$REPO" config user.email factory@invalid
-	cat >"$REPO/flake.nix" <<'NIX'
-{
-  outputs = { self }: {
-    fabriek = {
-      name = "acme";
-      roles.builder = { command = [ "pi" ]; provides = [ "build" ]; };
-      roles.reviewer = { command = [ "pi" ]; provides = [ "review" ]; };
-      workflows.ship.stages = [ { needs = "build"; } { needs = "review"; } ];
-      resources = { memory = "4G"; cores = 2; recordQuota = "3G"; tokens = 500000;
-                    egress = [ "api.anthropic.com" ]; };
-    };
-  };
-}
-NIX
+	printf '{ outputs = { self }: { }; }\n' >"$REPO/flake.nix"
+	cat >"$REPO/fabriek.toml" <<'TOML'
+name = "acme"
+
+[roles.builder]
+command = ["pi"]
+provides = ["build"]
+
+[roles.reviewer]
+command = ["pi"]
+provides = ["review"]
+
+[[workflows.ship.stages]]
+needs = "build"
+
+[[workflows.ship.stages]]
+needs = "review"
+
+[resources]
+memory = "4G"
+cores = 2
+recordQuota = "3G"
+tokens = 500000
+egress = ["api.anthropic.com"]
+TOML
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
 	cat >"$TEST_TEMP_DIR/local.json" <<JSON
@@ -282,7 +293,7 @@ machine_text() {
 # carries the header, so pi is pointed at the proxy like the other two.
 @test "a factory allowed api.deepseek.com starts on pi's deepseek provider through the proxy" {
 	sed -i.bak 's/"egress": \["api.anthropic.com"\]/"egress": ["api.deepseek.com"]/' "$TEST_TEMP_DIR/local.json" && rm "$TEST_TEMP_DIR/local.json.bak"
-	sed -i.bak 's/egress = \[ "api.anthropic.com" \]/egress = [ "api.deepseek.com" ]/' "$REPO/flake.nix" && rm "$REPO/flake.nix.bak"
+	sed -i.bak 's/egress = \["api.anthropic.com"\]/egress = ["api.deepseek.com"]/' "$REPO/fabriek.toml" && rm "$REPO/fabriek.toml.bak"
 	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm deepseek
 	run machine_text 'c.environment.etc."fabriek/pi-decider".source.models'
 	assert_output --partial '"deepseek":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.deepseek.com"}'
@@ -304,8 +315,9 @@ machine_text() {
 # ADR-053: a role with replicas is N roles by the time the machine is
 # composed: N addresses, N profiles, and no cage under the base name.
 @test "a role with replicas gets a cage and a profile per replica, and none under the base name" {
-	sed -i.bak 's/roles.builder = { command = \[ "pi" \]; provides = \[ "build" \]; };/roles.builder = { command = [ "pi" ]; provides = [ "build" ]; replicas = 2; };/' "$REPO/flake.nix"
-	rm "$REPO/flake.nix.bak"
+	sed -i.bak 's/^\[roles.builder\]$/[roles.builder]\
+replicas = 2/' "$REPO/fabriek.toml"
+	rm "$REPO/fabriek.toml.bak"
 	git -C "$REPO" -c commit.gpgsign=false commit -qam replicate
 	run machine_text 'c.environment.etc."fabriek/bridge.json".text'
 	assert_success
