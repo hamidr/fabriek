@@ -45,11 +45,22 @@
           ## A devShell here is what a person entering this repository on
           ## their own machine would use, and nothing fabriek-specific.
           devShells = {
-            ## A role that declares no shell lands here.
-            default = pkgs.mkShell { packages = [ ]; };
+            ## A role that declares no shell lands here: the architect, the
+            ## manager and the reviewer, who read and run the suite but build
+            ## nothing. The project is Python, so this is what runs it.
+            default = pkgs.mkShell {
+              packages = with pkgs; [
+                python3
+                python3Packages.pytest
+              ];
+            };
 
+            ## The builder's shell: the suite's runner and the JVM the
+            ## springboot specialist's kit expects a project to carry.
             backend-jvm = pkgs.mkShell {
               packages = with pkgs; [
+                python3
+                python3Packages.pytest
                 jdk21
                 maven
               ];

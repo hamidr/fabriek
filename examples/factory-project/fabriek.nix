@@ -71,11 +71,21 @@
       ];
       shell = "frontend";
     };
+    ## A reviewer with the language's runner and language server at hand
+    ## reads a diff against a suite it can run, not one it takes on faith.
     reviewer = {
       provides = [ "review" ];
-      specialists = [ "reviewer" ];
+      specialists = [
+        "reviewer"
+        "python"
+      ];
     };
   };
+
+  ## What the decider is told beside the machine's rules (ADR-034 point 5):
+  ## a file in this repository, read at the machine build. The manager
+  ## keeps it (ADR-050); docs/factory-guidance.md is its lever for roles.
+  decider.policy = "docs/decider-policy.md";
 
   workflows.ship = {
     ## A stage says what the work needs, what a task must carry before it is

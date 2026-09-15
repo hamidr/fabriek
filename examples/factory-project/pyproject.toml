@@ -1,0 +1,9 @@
+[project]
+name = "importer"
+version = "0.1.0"
+description = "A small CSV importer, here so the factory has code to work"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
