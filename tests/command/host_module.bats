@@ -46,6 +46,8 @@ host_eval() {
 	source "$FABRIEK_ROOT/modules/schema.sh"
 	# shellcheck source=../../modules/resources.sh
 	source "$FABRIEK_ROOT/modules/resources.sh"
+	# shellcheck source=../../modules/repo-declaration.sh
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
 	# shellcheck source=../../modules/operator-config.sh
 	source "$FABRIEK_ROOT/modules/operator-config.sh"
 	printf '%s\n' "$text" >"$TEST_TEMP_DIR/config.toml"

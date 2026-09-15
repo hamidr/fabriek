@@ -18,18 +18,17 @@ setup() {
 	printf '{ specialists, skills, ... }: { extends = [ specialists.python ]; skills = [ skills.release-here ]; prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/local/default.nix"
 	printf -- '---\nname: release-here\ndescription: Cut a release of this repository.\n---\n# Release\n' >"$REPO/fabriek/catalogue/skills/release-here/SKILL.md"
 	printf '{ ... }: { src = ./.; }\n' >"$REPO/fabriek/catalogue/skills/release-here/default.nix"
-	cat >"$REPO/flake.nix" <<'NIX'
-{
-  outputs = { self }: {
-    fabriek = {
-      name = "acme";
-      catalogue = "fabriek/catalogue";
-      roles.backend = { provides = [ "build" ]; specialists = [ "local" ]; };
-      workflows.ship.stages = [ { needs = "build"; } ];
-    };
-  };
-}
-NIX
+	cat >"$REPO/fabriek.toml" <<'TOML'
+name = "acme"
+catalogue = "fabriek/catalogue"
+
+[roles.backend]
+provides = ["build"]
+specialists = ["local"]
+
+[[workflows.ship.stages]]
+needs = "build"
+TOML
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
 	printf '[factories.acme]\npath = "%s"\n' "$REPO" >"$FABRIEK_CONFIG"

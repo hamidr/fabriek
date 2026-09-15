@@ -2,11 +2,14 @@
 ## The catalogue asked on the operator's host: fabriek check, catalogue list
 ## and show, role show. Evaluation only, nothing built (ADR-042).
 ##
-## The declaration is read at the commit, as up reads it (ADR-020), and
-## validated by the same schema; a repository's own catalogue is read at the
-## same commit; every role is composed exactly as the machine build does. A
-## name no catalogue has is one plain line rather than a trace minutes into
-## a build.
+## The declaration is read at the commit, as up reads it (ADR-020, ADR-058),
+## and validated by the same schema; a repository's own catalogue is read at
+## the same commit, from a fetch of that commit and never the working tree;
+## every role is composed exactly as the machine build does; a shell a role
+## names is looked for in the repository's flake at the commit, the one
+## evaluation of the repository's own code check makes, and only when a role
+## names one. A name no catalogue has is one plain line rather than a trace
+## minutes into a build.
 ##
 ## Sourced by store path into fabriek beside repo-declaration.sh, whose
 ## reader and validator this uses. With FABRIEK_JSON set, each verb prints
@@ -21,10 +24,13 @@
 fabriek_catalogue_eval() {
 	local self="$1" system="$2" repo="$3" rev="$4" expr="$5" out err project extra
 	if [ -n "$repo" ]; then
-		project="builtins.getFlake $(fabriek_nix_string "git+file://$repo?rev=$rev")"
-		extra="if project.fabriek ? catalogue then [ \"\${project}/\${project.fabriek.catalogue}\" ] else [ ]"
+		## The commit's tree, not its flake: the declaration was read from
+		## the commit already (FABRIEK_CHECK_DECLARATION), and the catalogue
+		## it names is a directory of that tree.
+		project="builtins.fetchGit { url = $(fabriek_nix_string "file://$repo"); rev = $(fabriek_nix_string "$rev"); }"
+		extra="if decl ? catalogue then [ \"\${project}/\${decl.catalogue}\" ] else [ ]"
 	else
-		project="{ fabriek = { }; }"
+		project="null"
 		extra="[ ]"
 	fi
 	err="$(mktemp)"
@@ -33,8 +39,8 @@ fabriek_catalogue_eval() {
 	      pkgs = flake.inputs.nixpkgs.legacyPackages.$system;
 	      project = $project;
 	      ## The declaration as validated and expanded (ADR-053), when one was
-	      ## read; the flake's own words otherwise.
-	      decl = $(if [ -n "${FABRIEK_CHECK_DECLARATION:-}" ]; then printf 'builtins.fromJSON %s' "$(fabriek_nix_string "$FABRIEK_CHECK_DECLARATION")"; else printf 'project.fabriek'; fi);
+	      ## read; nothing otherwise.
+	      decl = $(if [ -n "${FABRIEK_CHECK_DECLARATION:-}" ]; then printf 'builtins.fromJSON %s' "$(fabriek_nix_string "$FABRIEK_CHECK_DECLARATION")"; else printf '{ }'; fi);
 	      cat = flake.lib.catalogue { inherit pkgs; extra = $extra; };
 	      show = c: {
 	        inherit (c) order servers promptText;
@@ -66,10 +72,35 @@ fabriek_check_read() {
 	FABRIEK_CHECK_DECLARATION="$(fabriek_declaration_read "$absolute")" || return 1
 }
 
+## The shells the roles name, each looked for in the repository's flake at
+## the commit (ADR-016, ADR-058 point 3). Evaluated only when a role names
+## one, so a repository without a flake is checked without one; refused
+## naming the role and the shell, as the build did.
+##
+## fabriek_check_shells <repo> <rev> <system> <declaration>
+fabriek_check_shells() {
+	local repo="$1" rev="$2" system="$3" declaration="$4" wanted have role shell
+	wanted="$(printf '%s' "$declaration" | jq -r '.roles | to_entries[] | select(.value.shell != null) | "\(.key) \(.value.shell)"')"
+	[ -n "$wanted" ] || return 0
+	if ! have="$(nix eval --json --impure --expr "
+	  builtins.attrNames ((builtins.getFlake $(fabriek_nix_string "git+file://$repo?rev=$rev")).devShells.$system or { })
+	" 2>/dev/null)"; then
+		echo "fabriek: $repo has no flake to take a devShell from at $rev, and a role names one" >&2
+		return 1
+	fi
+	while read -r role shell; do
+		if ! printf '%s' "$have" | jq -e --arg s "$shell" 'index($s) != null' >/dev/null; then
+			echo "fabriek: role $role names devShell $shell, which the repository does not define for $system" >&2
+			return 1
+		fi
+	done <<<"$wanted"
+}
+
 ## fabriek_check_repo <self> <repo> <system>
 fabriek_check_repo() {
 	local self="$1" repo="$2" system="$3" composed name
 	fabriek_check_read "$repo" || return 1
+	fabriek_check_shells "$FABRIEK_CHECK_REPO" "$FABRIEK_CHECK_REV" "$system" "$FABRIEK_CHECK_DECLARATION" || return 1
 	name="$(printf '%s' "$FABRIEK_CHECK_DECLARATION" | jq -r .name)"
 	if [ -z "${FABRIEK_JSON:-}" ]; then
 		echo "checked $name at $(git -C "$FABRIEK_CHECK_REPO" rev-parse --short "$FABRIEK_CHECK_REV")"

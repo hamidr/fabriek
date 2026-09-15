@@ -14,6 +14,9 @@ setup() {
 	source "$FABRIEK_ROOT/modules/sizes.sh"
 	# shellcheck source=../../modules/resources.sh
 	source "$FABRIEK_ROOT/modules/resources.sh"
+	# The TOML reader lives beside the declaration's (ADR-058).
+	# shellcheck source=../../modules/repo-declaration.sh
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
 	# shellcheck source=../../modules/operator-config.sh
 	source "$FABRIEK_ROOT/modules/operator-config.sh"
 	CONFIG="$TEST_TEMP_DIR/config.toml"

@@ -89,8 +89,9 @@ fabriek_operator_config() {
 		return 1
 	fi
 
-	if ! json="$(FABRIEK_CONFIG_TOML="$(cat "$file")" nix eval --impure --json \
-		--expr 'builtins.fromTOML (builtins.getEnv "FABRIEK_CONFIG_TOML")' 2>/dev/null)"; then
+	## The one TOML reader (repo-declaration.sh), so this file and a
+	## repository's fabriek.toml are refused the same way.
+	if ! json="$(fabriek_toml_json "$file" 2>/dev/null)"; then
 		echo "fabriek: $file is not TOML" >&2
 		return 1
 	fi

@@ -298,32 +298,51 @@ fabriek_declaration_rev() {
 	}
 }
 
-## The declaration a repository has committed. Read from the commit and never
-## from the working tree (ADR-020 point 3a): the factory working a repository
-## is the one its history declares.
+## A TOML file as JSON, by nix's own reader over the file's bytes: the one
+## parser the operator's config already goes through, so a declaration and
+## a config are refused the same way. --impure is what lets readFile reach a
+## path outside the store; nothing else of the evaluation is impure, and no
+## expression of the file's author runs. nix's own message is kept on
+## stderr, because it carries the line that broke.
 ##
-## The attribute is reached through getFlake rather than through a "#fabriek"
-## fragment, because a fragment resolves packages.<system>.fabriek first and
-## a repository with a package of that name would shadow its own declaration.
+## fabriek_toml_json <file>
+fabriek_toml_json() {
+	local file="$1"
+	nix eval --json --impure --expr \
+		"builtins.fromTOML (builtins.readFile $(fabriek_nix_string "$file"))"
+}
+
+## The declaration a repository has committed: fabriek.toml at its root,
+## read from the commit and never from the working tree (ADR-020 point 3a,
+## ADR-058), so the factory working a repository is the one its history
+## declares. A repository that still declares through its flake's fabriek
+## output is told that the output is not read, because the roles it
+## expects would otherwise be missing with no word why.
 fabriek_declaration_read() {
-	local repo="$1" rev absolute output
+	local repo="$1" rev absolute text
 	if ! absolute="$(cd "$repo" 2>/dev/null && pwd)"; then
 		echo "fabriek: no such repository: $repo" >&2
 		return 1
 	fi
 	rev="$(fabriek_declaration_rev "$absolute")" || return 1
-	## nix's own complaint is kept and shown. Discarding it made every
-	## failure read as "no fabriek output", including the ones that were
-	## nix refusing to run at all, and a message that names the wrong cause
-	## costs more than the noise it saves.
-	local why
-	if ! output="$(nix eval --json --no-allow-import-from-derivation --expr \
-		"(builtins.getFlake $(fabriek_nix_string "git+file://$absolute?rev=$rev")).fabriek" 2>/tmp/fabriek-eval.$$)"; then
-		why="$(tail -3 "/tmp/fabriek-eval.$$" 2>/dev/null)"
-		rm -f "/tmp/fabriek-eval.$$"
-		echo "fabriek: $absolute declares no factory at $rev${why:+: $why}" >&2
+	if ! text="$(git -C "$absolute" show "$rev:fabriek.toml" 2>/dev/null)"; then
+		local hint=""
+		if git -C "$absolute" show "$rev:flake.nix" 2>/dev/null | grep -q 'fabriek *='; then
+			hint="; the flake output is no longer read"
+		fi
+		echo "fabriek: $absolute has no fabriek.toml at $rev$hint" >&2
 		return 1
 	fi
-	rm -f "/tmp/fabriek-eval.$$"
+	local file="/tmp/fabriek-declaration.$$" output why
+	printf '%s\n' "$text" >"$file"
+	if ! output="$(fabriek_toml_json "$file" 2>"$file.err")"; then
+		why="$(grep -v '^warning:' "$file.err" | tail -4)"
+		rm -f "$file" "$file.err"
+		echo "fabriek: $absolute: fabriek.toml at $rev is not TOML${why:+:
+$why}" >&2
+		return 1
+	fi
+	rm -f "$file" "$file.err"
 	printf '%s' "$output" | fabriek_declaration_validate
 }
+

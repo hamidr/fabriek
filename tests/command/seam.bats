@@ -137,28 +137,23 @@ teardown() {
 	teardown_temp_dir
 }
 
-# A repository that declares the factory working it (ADR-020), naming one role
-# with a toolchain and a command of its own -- the case that exercises every
-# flag. The declaration is committed, because that is what is read.
+# A repository that declares the factory working it (ADR-020, ADR-058),
+# naming one role with a toolchain and a command of its own -- the case that
+# exercises every flag. The declaration is committed, because that is what
+# is read.
 declare_factory() {
 	REPO="$TEST_TEMP_DIR/repo"
 	mkdir -p "$REPO"
 	git -C "$REPO" init --quiet -b main
 	git -C "$REPO" config user.email test@example.invalid
 	git -C "$REPO" config user.name test
-	cat >"$REPO/flake.nix" <<'EOF'
-{
-  outputs = { self }: {
-    fabriek = {
-      name = "acme";
-      roles.builder = {
-        command = [ "agent" "--print" ];
-        provides = [ "build" ];
-        shell = "backend";
-      };
-    };
-  };
-}
+	cat >"$REPO/fabriek.toml" <<'EOF'
+name = "acme"
+
+[roles.builder]
+command = ["agent", "--print"]
+provides = ["build"]
+shell = "backend"
 EOF
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit --quiet -m "first"

@@ -100,24 +100,18 @@ declare_repository() {
 	git init -q "$REPO"
 	git -C "$REPO" config user.name factory
 	git -C "$REPO" config user.email factory@invalid
-	cat >"$REPO/flake.nix" <<'EOF'
-{
-  outputs = { self }: {
-    fabriek = {
-      name = "acme";
-      roles.builder = {
-        command = [ "claude" ];
-        provides = [ "build" ];
-      };
-      resources = {
-        memory = "4G";
-        cores = 2;
-        recordQuota = "2G";
-        egress = [ "api.anthropic.com" "api.openai.com" ];
-      };
-    };
-  };
-}
+	cat >"$REPO/fabriek.toml" <<'EOF'
+name = "acme"
+
+[roles.builder]
+command = ["claude"]
+provides = ["build"]
+
+[resources]
+memory = "4G"
+cores = 2
+recordQuota = "2G"
+egress = ["api.anthropic.com", "api.openai.com"]
 EOF
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
