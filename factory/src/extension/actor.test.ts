@@ -211,6 +211,18 @@ describe("an actor", () => {
     assert.deepEqual(f.sent.at(-1), { kind: "event", name: "tool_call", payload: { tool: "bash" } });
   });
 
+  it("an attempt is bracketed on the events stream: task_started when it is taken, task_ended with the status when it is reported", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 2 });
+    assert.deepEqual(f.sent.find((m) => m.kind === "event"), { kind: "event", name: "task_started", payload: { issue: 7, attempt: 2 } });
+    await actor.reportOutcome({ status: "done", summary: "did it" });
+    await actor.settled();
+    assert.deepEqual(f.sent.at(-1), { kind: "event", name: "task_ended", payload: { issue: 7, attempt: 2, status: "done" } });
+    assert.equal(f.comments.at(-1)?.body.split("\n")[0], "outcome: done");
+  });
+
   it("a finding goes to the role's own findings stream", async () => {
     const f = fakes();
     const actor = new Actor({ role: "builder", capabilities, ...f });

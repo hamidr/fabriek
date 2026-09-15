@@ -72,10 +72,12 @@ describe("binding an actor", () => {
     await bound.start();
     try {
       await tick();
-      assert.deepEqual(bus.written[1], { stream: "control:builder", fields: { kind: "ack", issue: "7" } });
+      assert.deepEqual(bus.written[1], { stream: "events:builder", fields: { kind: "event", name: "task_started", json: '{"issue":7,"attempt":1}' } });
+      assert.deepEqual(bus.written[2], { stream: "control:builder", fields: { kind: "ack", issue: "7" } });
       assert.match(prompts[0] ?? "", /Task #7, attempt 1: Add importer/);
       await bound.actor.reportOutcome({ status: "done", summary: "imported" });
       await bound.actor.settled();
+      assert.deepEqual(bus.written.at(-1), { stream: "events:builder", fields: { kind: "event", name: "task_ended", json: '{"issue":7,"attempt":1,"status":"done"}' } });
       assert.deepEqual(forge.comments, [{ n: 7, body: "outcome: done\n\nimported" }]);
       assert.equal(finished, 1);
     } finally {

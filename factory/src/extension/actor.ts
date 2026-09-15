@@ -123,6 +123,10 @@ export class Actor {
     if (this.state.kind !== "idle") return;
     this.state = { kind: "working", issue, attempt };
     this.outcome = null;
+    // The attempt's opening bracket on the events stream: what the executor
+    // cuts a trace between, so what a task used is read off the stream
+    // without a clock anyone has to share.
+    await this.o.bus.event("task_started", { issue, attempt });
     await this.o.bus.ack(issue);
     const task = await this.o.board.issue(issue);
     const thread = await this.o.board.thread(issue);
@@ -186,6 +190,7 @@ export class Actor {
     if (outcome.status === "done" && !(await this.o.checks.hasCommit())) {
       body += "\n\nnote: no commit was found on this role's branch for this task";
     }
+    await this.o.bus.event("task_ended", { issue, attempt, status: outcome.status });
     await this.o.board.comment(issue, body);
     if (outcome.status === "blocked") {
       this.state = { kind: "blocked", issue, attempt };
