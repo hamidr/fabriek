@@ -13,6 +13,9 @@ setup() {
 	setup_temp_dir
 	# shellcheck source=../../modules/names.sh
 	source "$FABRIEK_ROOT/modules/names.sh"
+	# Where the machines live depends on which config was read (ADR-048).
+	# shellcheck source=../../modules/operator-config.sh
+	source "$FABRIEK_ROOT/modules/operator-config.sh"
 	# shellcheck source=../../modules/machine.sh
 	source "$FABRIEK_ROOT/modules/machine.sh"
 	MACHINES="$TEST_TEMP_DIR/machines"
@@ -162,4 +165,27 @@ teardown() {
 	kill "$pid" 2>/dev/null || true
 	run cat "$TEST_TEMP_DIR/log"
 	assert_output "booted"
+}
+
+# ADR-048 point 3: the unit and a hand are the same program on the same
+# state. The unit runs under /var/lib/fabriek; a hand on that host, reading
+# the file the module rendered, has to look there too, or ps shows nothing
+# the unit started.
+@test "a hand reading the host's config finds its machines under the host's state, not under a home" {
+	local host="$TEST_TEMP_DIR/etc-config.toml" host_machines="$TEST_TEMP_DIR/var-machines"
+	unset FABRIEK_MACHINES FABRIEK_CONFIG
+	export XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" XDG_STATE_HOME="$TEST_TEMP_DIR/state" \
+		FABRIEK_HOST_CONFIG="$host" FABRIEK_HOST_MACHINES="$host_machines"
+	run fabriek_machine_root
+	assert_output "$TEST_TEMP_DIR/state/fabriek/machines"
+	: >"$host"
+	run fabriek_machine_root
+	assert_output "$host_machines"
+	# A person's own config on that host is a person's own state.
+	mkdir -p "$TEST_TEMP_DIR/xdg/fabriek" && : >"$TEST_TEMP_DIR/xdg/fabriek/config.toml"
+	run fabriek_machine_root
+	assert_output "$TEST_TEMP_DIR/state/fabriek/machines"
+	# And FABRIEK_MACHINES still wins over everything.
+	FABRIEK_MACHINES="$MACHINES" run fabriek_machine_root
+	assert_output "$MACHINES"
 }

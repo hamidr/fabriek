@@ -13,10 +13,20 @@
 
 ## Where every machine on this host lives. FABRIEK_MACHINES overrides it,
 ## which is what the suite uses and what an operator running two sets of them
-## needs.
+## needs. A hand reading the file a NixOS host rendered is on the host's
+## state, where the host's units keep their machines (ADR-048 point 3):
+## the unit and the hand are one program on one state, or ps shows nothing
+## the unit started. A person's own config is a person's own state. The
+## host's path is a variable for the same reason FABRIEK_HOST_CONFIG is.
+## Sourced after operator-config.sh, which says which file was read.
+FABRIEK_HOST_MACHINES="${FABRIEK_HOST_MACHINES:-/var/lib/fabriek/machines}"
 fabriek_machine_root() {
 	if [ -n "${FABRIEK_MACHINES:-}" ]; then
 		printf '%s\n' "$FABRIEK_MACHINES"
+		return 0
+	fi
+	if [ "$(fabriek_operator_config_path)" = "$FABRIEK_HOST_CONFIG" ]; then
+		printf '%s\n' "$FABRIEK_HOST_MACHINES"
 		return 0
 	fi
 	printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/fabriek/machines"
