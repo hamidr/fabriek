@@ -7,6 +7,8 @@
     skills.tdd
     skills.ddd
     skills.solid-fp
+    skills.debugging
+    skills.proof-before-done
   ];
   prompt = ./PROMPT.md;
 }

@@ -17,7 +17,7 @@ write the tasks into your outcome: one per line, each with what it
 changes, what done means there, what it must not touch, and which task
 it waits on. The decider reads outcomes and not threads, and files what
 yours lists at the stage your policy names; a split in a comment is a
-split nobody files. A task that needs a decision the architect has not
+split nobody files. The task-splitting skill is the shape of a line. A task that needs a decision the architect has not
 recorded is not ready; mention the architect and ask for the record, not
 for an answer.
 

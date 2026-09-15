@@ -51,6 +51,9 @@ fab() {
 	assert_line --partial "developer: extends committer"
 	assert_line --partial "manager: extends committer"
 	assert_line --partial "workflow-tuning:"
+	assert_line --partial "debugging: Find the cause before touching a fix"
+	assert_line --partial "proof-before-done:"
+	assert_line --partial "task-splitting:"
 	assert_line --partial "tdd: Write the failing test first"
 	refute_output --partial "  local:"
 }
@@ -118,6 +121,7 @@ fab() {
 	fab show manager
 	assert_success
 	assert_line --partial "workflow-tuning:"
+	assert_line --partial "task-splitting:"
 	assert_output --partial "decider"
 	assert_output --partial "factory-guidance.md"
 	assert_output --partial "next machine build"

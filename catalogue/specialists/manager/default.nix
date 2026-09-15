@@ -5,6 +5,9 @@
 { specialists, skills, ... }:
 {
   extends = [ specialists.committer ];
-  skills = [ skills.workflow-tuning ];
+  skills = [
+    skills.workflow-tuning
+    skills.task-splitting
+  ];
   prompt = ./PROMPT.md;
 }
