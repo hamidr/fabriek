@@ -286,6 +286,11 @@ One package, built through the flake, tests in its own runner.
   `fabriek_factory_guidance` reads `docs/factory-guidance.md` from the
   clone, and nothing composes it into the executor's brief yet. The
   manager's guidance lever is described and unwired as of 2026-09-15.
+- 6.7 `resources.concurrency` absent means 1 in `machine-plan.sh`, so
+  every cage gets the machine's whole allowance and N cages oversubscribe
+  it. Whether absent should mean the role count is a sizing correction
+  for every declaration; ADR-053 point 5 leaves it here. Open as of
+  2026-09-15.
 
 ## Where the log's open items landed (its section 6)
 
