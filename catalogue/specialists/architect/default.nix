@@ -3,7 +3,7 @@
 ## checkers and the prover come with their skills.
 { specialists, skills, ... }:
 {
-  extends = [ specialists.developer ];
+  extends = [ specialists.committer ];
   skills = [
     skills.decision-record
     skills.domain-overview

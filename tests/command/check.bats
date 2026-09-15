@@ -48,7 +48,7 @@ check() {
 	check
 	assert_success
 	assert_line --index 0 --partial "acme at $(git -C "$REPO" rev-parse --short HEAD)"
-	assert_line --partial "backend: developer, java, springboot, python"
+	assert_line --partial "backend: committer, developer, java, springboot, python"
 	assert_line --partial "reviewer: (no specialists)"
 }
 
@@ -57,7 +57,7 @@ check() {
 	check
 	assert_failure
 	assert_output --partial "role backend names specialist rust"
-	assert_output --partial "offers: architect, developer"
+	assert_output --partial "offers: architect, committer, developer"
 	refute_output --partial "while evaluating"
 }
 
@@ -75,13 +75,13 @@ check() {
 	declare_roles 'backend = { provides = [ "build" ]; specialists = [ "local" ]; };' 'catalogue = "fabriek/catalogue";'
 	check
 	assert_success
-	assert_line --partial "backend: developer, local"
+	assert_line --partial "backend: committer, developer, local"
 	mkdir -p "$REPO/fabriek/catalogue/specialists/later"
 	printf 'Later.\n' >"$REPO/fabriek/catalogue/specialists/later/PROMPT.md"
 	printf '{ ... }: { prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/later/default.nix"
 	sed -i.bak 's/"local"/"later"/' "$REPO/flake.nix" && rm "$REPO/flake.nix.bak"
 	check
 	assert_success
-	assert_line --partial "backend: developer, local"
+	assert_line --partial "backend: committer, developer, local"
 	assert_output --partial "working tree differs"
 }

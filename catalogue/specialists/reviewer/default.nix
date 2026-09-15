@@ -1,6 +1,6 @@
 { specialists, skills, ... }:
 {
-  extends = [ specialists.developer ];
+  extends = [ specialists.committer ];
   skills = [ skills.discipline-review ];
   prompt = ./PROMPT.md;
 }

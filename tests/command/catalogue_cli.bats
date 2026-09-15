@@ -47,7 +47,8 @@ fab() {
 	fab ls
 	assert_success
 	assert_line --partial "django: extends python"
-	assert_line --partial "developer:"
+	assert_line --partial "committer:"
+	assert_line --partial "developer: extends committer"
 	assert_line --partial "tdd: Write the failing test first"
 	refute_output --partial "  local:"
 }
@@ -62,7 +63,7 @@ fab() {
 @test "show says what a specialist brings: order, tools, skills, servers, tests, and the prompt" {
 	fab show springboot
 	assert_success
-	assert_line --partial "order: developer, java, springboot"
+	assert_line --partial "order: committer, developer, java, springboot"
 	assert_line --partial "tools:"
 	assert_output --partial "maven"
 	## ADR-049: every specialist builds on developer, and developer carries
@@ -71,6 +72,7 @@ fab() {
 	assert_line --partial "jvm-profile: Profile a running JVM"
 	assert_line --partial "servers: jdtls"
 	assert_line --partial "tests: **/src/test/**"
+	assert_output --partial "## committer"
 	assert_output --partial "## developer"
 	assert_output --partial "You develop Spring Boot applications."
 }
@@ -78,13 +80,13 @@ fab() {
 @test "show of a name no catalogue has is refused naming what is offered" {
 	fab show rust
 	assert_failure
-	assert_output --partial "offers: architect, developer"
+	assert_output --partial "offers: architect, committer, developer"
 }
 
 @test "show -f composes a registered factory's role at its commit, its own catalogue included" {
 	fab -f acme show backend
 	assert_success
-	assert_line --partial "order: developer, python, local"
+	assert_line --partial "order: committer, developer, python, local"
 	assert_line --partial "release-here: Cut a release"
 	assert_line --partial "servers: basedpyright"
 	assert_output --partial "I release here."
@@ -96,3 +98,4 @@ fab() {
 	run jq -r '.specialists.django | join(",")' <<<"$output"
 	assert_output "python"
 }
+

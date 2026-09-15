@@ -105,7 +105,7 @@ factory_eval() {
 	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.roles.builder.specialists = [ \"developer\" ];"
 	run factory_eval '.specialists.builder.order'
 	assert_success
-	assert_output '["developer"]'
+	assert_output '["committer","developer"]'
 	run factory_eval '.profiles.builder.paths'
 	assert_success
 	assert_output --partial 'fabriek-specialist-builder'
@@ -125,7 +125,7 @@ factory_eval() {
 	declare_flake "devShells.$MACHINE.backend = { buildInputs = [ ]; }; fabriek.catalogue = \"fabriek/catalogue\"; fabriek.roles.builder.specialists = [ \"local\" ];"
 	run factory_eval '.specialists.builder.order'
 	assert_success
-	assert_output '["developer","local"]'
+	assert_output '["committer","developer","local"]'
 }
 
 @test "when a role names a devShell the repository does not define, the build fails naming the role" {

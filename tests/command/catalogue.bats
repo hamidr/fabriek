@@ -56,7 +56,7 @@ catalogue_build() {
 @test "the shipped catalogue offers its specialists by directory name" {
 	run catalogue_eval 'builtins.attrNames cat.specialists'
 	assert_success
-	assert_output '["architect","developer","django","flask","frontend","java","python","react","reviewer","scala","springboot"]'
+	assert_output '["architect","committer","developer","django","flask","frontend","java","python","react","reviewer","scala","springboot"]'
 }
 
 @test "the shipped java and python specialists declare their language servers, composed into one lsp.json" {
@@ -65,10 +65,10 @@ catalogue_build() {
 	assert_output '["jdtls","basedpyright"]'
 }
 
-@test "a role naming java and python is composed with developer once, parents first" {
+@test "a role naming java and python is composed with committer and developer once, parents first" {
 	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "java" "python" ]; }).order'
 	assert_success
-	assert_output '["developer","java","python"]'
+	assert_output '["committer","developer","java","python"]'
 }
 
 @test "a composed role carries every tool of every specialist it flattens" {
@@ -86,14 +86,14 @@ catalogue_build() {
 	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "rust" ]; }).name'
 	assert_failure
 	assert_output --partial "role backend names specialist rust"
-	assert_output --partial "offers: architect, developer"
+	assert_output --partial "offers: architect, committer, developer"
 }
 
 @test "a repository's own catalogue adds a specialist beside the shipped ones" {
 	specialist local 'extends = [ specialists.developer ];'
 	run catalogue_eval '(cat.compose { role = "backend"; specialists = [ "local" ]; }).order'
 	assert_success
-	assert_output '["developer","local"]'
+	assert_output '["committer","developer","local"]'
 }
 
 @test "a specialist declared in two catalogues is refused, never shadowed" {
@@ -213,7 +213,7 @@ description: the first' ''
 	    servers = c.servers; hasPrompt = builtins.stringLength c.promptText > 100; }'
 	assert_success
 	run jq -c '[.order, (.tools | index("maven") != null), (.skills | map(.name)), (.skills | all(.hasDescription)), .servers, .hasPrompt]' <<<"$output"
-	assert_output '[["developer","java","springboot","python","django"],true,["tool-missing","tdd","ddd","solid-fp","jvm-profile","spring-boot-run","django-migrate"],true,["jdtls","basedpyright"],true]'
+	assert_output '[["committer","developer","java","springboot","python","django"],true,["tool-missing","tdd","ddd","solid-fp","jvm-profile","spring-boot-run","django-migrate"],true,["jdtls","basedpyright"],true]'
 }
 
 @test "the catalogue lists every skill with the description pi shows for it" {
