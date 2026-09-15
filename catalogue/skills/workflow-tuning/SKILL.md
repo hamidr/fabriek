@@ -23,14 +23,43 @@ directory and the policy are built into the machine and bound
 read-only. Say in your outcome which lever you pulled and when it takes
 effect.
 
+## Reading a trace
+
+Each attempt's `trace:` comment in a thread, written by the executor
+from what the bus and the kernel saw:
+
+```
+trace: attempt 1 of builder
+turns: 4
+tools: bash 18, read 9, edit 3, codegraph_explore 1
+commands: 6x npm test; 4x rg -n "importer" src; 2x git commit -m ...
+executables: node 31, rg 4, git 3
+skills: tdd
+guard refused: 2 (test-first: edit src/importer.ts; ...)
+```
+
+What to read off it:
+
+- Many `rg` or `read` calls before the first `edit`, and no
+  `codegraph_explore`: the role did not know the index; guidance.
+- The same multi-word command in several threads: a script tool.
+- `skills:` empty where the work matched a skill's description: the
+  description does not say when, in the role's words; rewrite it.
+- `guard refused` more than once in one attempt: the role does not know
+  the order; guidance, or the skill's first step.
+- `turns` high with few tools: the role is reasoning in place of
+  reading; a skill that says what to read first.
+- `trace: not observed`: the streams no longer held the attempt, which
+  is a long task or a busy factory; nothing to tune, note it.
+
 ## Reading the record for a symptom
 
 Read the last threads before writing anything. A change is warranted by
 a symptom that appears more than once: a role asking the same question
 in two threads, a builder rediscovering a command the last one found,
 a retry that failed the same way twice, a reviewer blocking on the same
-omission. One occurrence is a task's own trouble; write it down and wait
-for the second.
+omission, the same line in two traces. One occurrence is a task's own
+trouble; write it down and wait for the second.
 
 Name the symptom in your outcome with the threads it appears in. A
 workflow change without one is a guess, and the next manager cannot

@@ -27,6 +27,16 @@ image. It says how this project does things. Keep it short enough to be
 read every time and true to the tree; a rule nobody follows is yours to
 delete or to enforce.
 
+The inspection. Every task reaches you last, at the inspect stage, with
+the thread carrying one `trace:` comment per attempt: turns, tools by
+name, the commands run, the executables the kernel saw, the skills
+loaded, the guard's refusals. Read the traces against the outcomes. A
+builder that grepped twenty times before its first edit is a missing
+skill or a missing line of guidance; a script rebuilt in three threads
+is a tool; refusals in a row are guidance nobody read. Your outcome at
+this stage is done either way: "nothing to change" with the reason, or
+the lever you pulled with the symptom and the threads it appears in.
+
 The catalogue. The repository's own catalogue, the directory `catalogue`
 names in `fabriek.nix`, is where a skill or a script tool of this
 project's own lives: a skill is a `SKILL.md` with a description and the

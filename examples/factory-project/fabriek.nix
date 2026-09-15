@@ -44,7 +44,10 @@
     ## guidance and this repository's own catalogue; assigns nothing, the
     ## decider does (ADR-050).
     manager = {
-      provides = [ "plan" ];
+      provides = [
+        "plan"
+        "inspect"
+      ];
       specialists = [ "manager" ];
     };
     backend = {
@@ -87,9 +90,20 @@
         ready = [ "acceptance" ];
         done = "tests pass and the change is reviewable";
       }
+      ## A verdict stage: done is the role's judgement, not a change, so
+      ## the executor asks no commit of it (ADR-051).
       {
         needs = "review";
         gate = "before-integration";
+        verdict = true;
+      }
+      ## Every task ends under the manager's eye: the thread carries the
+      ## trace of each attempt, and the manager's outcome names the lever it
+      ## pulled or says nothing needed changing.
+      {
+        needs = "inspect";
+        done = "the traces are read, and any lever pulled is named with its symptom";
+        verdict = true;
       }
     ];
 
