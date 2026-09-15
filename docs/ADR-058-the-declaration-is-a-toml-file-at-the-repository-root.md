@@ -74,33 +74,51 @@ policy = "docs/decider-policy.md"
 
 **2. It is read from the commit with `git show <rev>:fabriek.toml`**, which
 keeps ADR-020 point 3a (never the working tree) without fetching a flake,
-and parsed with the reader `operator-config.sh` already has: `nix eval
---expr 'builtins.fromTOML ...'` over the text. No expression of the
-repository's runs; the evaluation is fabriek's fixed one over a string.
-A repository with no `fabriek.toml` at the rev is refused naming the file
-and the rev; one with a `fabriek` flake output and no file is refused the
-same way, with a sentence saying the output is no longer read.
+and parsed with the reader `operator-config.sh` already has, `nix eval
+--expr 'builtins.fromTOML ...'`, over the text written to a file and read
+with `builtins.readFile` rather than through the environment, so the size
+is the file's and a parse error keeps nix's line number. No expression of
+the repository's runs; the evaluation is fabriek's fixed one over a
+string. A repository with no `fabriek.toml` at the rev is refused naming
+the file and the rev; one with a `fabriek` flake output and no file is
+refused the same way, with a sentence saying the output is no longer
+read. The output is never read: with both present the file is the
+declaration and `check` says once that the output is ignored.
 
-**3. What stays Nix stays where it is.** `shell` names a devShell of the
-repository's `flake.nix` (ADR-016), realised by the machine's daemon under
-ADR-057 point 5; a repository whose roles name no `shell` needs no flake
-at all. A catalogue specialist's `default.nix` names its tools as `pkgs`
-values (ADR-042) and is evaluated where the catalogue is composed. The
-declaration itself names both by string.
+**3. What stays Nix stays where it is, and is read at the same rev.**
+`shell` names a devShell of the repository's `flake.nix` (ADR-016),
+realised by the machine's daemon under ADR-057 point 5; a repository
+whose roles name no `shell` needs no flake at all. A catalogue specialist's
+`default.nix` names its tools as `pkgs` values (ADR-042) and is evaluated
+where the catalogue is composed, from the repository at the rev and never
+its working tree: `builtins.fetchGit { url; rev; }` on the operator's
+host, the clone on the machine. The declaration itself names both by
+string. `check` keeps the refusal the build gave: a role naming a `shell`
+has `devShells.<system>.<shell>` evaluated at the rev and is refused when
+the flake lacks it (ADR-057 point 9 allows `check` that evaluation); a
+declaration naming no `shell` has nothing evaluated.
 
 **4. `fabriek.nix`, the `fabriek` flake output and their readers go.**
 `fabriek_declaration_read` reads the file; `check.sh` and ADR-057's
 `factory-prepare` call it; `examples/factory-project/flake.nix` stops
-importing a declaration and keeps its devShells. ADR-020 points 2 and 3a
-are amended to say the file and the read; the rest of ADR-020 stands.
+importing a declaration and keeps its devShells. ADR-020's point 1 (the
+mechanism, not the placement), 2 and 3a are amended to say the file and
+the read; the rest of ADR-020 stands.
+
+**5. This lands before ADR-057, not after it.** `depends_on` names 057
+because the appliance's prepare reads the file too; the change itself is
+`modules/factory.nix` reading `builtins.fromTOML (builtins.readFile
+"${project}/fabriek.toml")` where it read `project.fabriek`, and
+`repo-declaration.sh` swapping one `nix eval` of the flake for `git show`
+and `fromTOML`. Both fit the machine as built.
 
 ## Consequences
 
 A factory can be declared in a repository that has no Nix in it, which
 ADR-020 point 1 wanted ("a description of how a repository is worked")
 and its mechanism denied. `fabriek check` on the operator's host reads a
-file and evaluates nothing of the repository's; what it still evaluates is
-the catalogue, for the specialists each role names.
+file; what it still evaluates is the catalogue, for the specialists each
+role names, and the repository's flake only when a role names a `shell`.
 
 ADR-057 point 6's restriction on evaluation stays for the devShell and the
 repository's own catalogue, which are Nix by nature; the declaration is no
