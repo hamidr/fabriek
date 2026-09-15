@@ -1,12 +1,13 @@
 # To do
 
-- Prove on a machine what landed without one: the guidance at the front of
-  a role's prompt (ADR-054), a replicated role's cages (ADR-053), the
-  concurrency refusal on a live board (ADR-055).
-- Add those three scenarios to `tests/manual/specialist.sh` before the
-  next machine run.
+- The clone never fetches main after the first up: a role's branch is cut
+  from the main the machine first cloned, so docs/factory-guidance.md
+  committed later never reaches a brief (found by tests/manual/specialist.sh,
+  ADR-054). Which main a role starts from, and when it moves, wants a record
+  of its own (ADR-032 is where the clone was decided).
 - ADR-052 step 1, the read-only workspace of submodules, after its two
   machine measurements (safe.directory fetch as root, --reference across
   datasets).
 - Compose one specialist profile per replicated base and link the rest,
   instead of N identical builds (ADR-053 consequence).
+- Push: main is 26 commits ahead of origin/main.
