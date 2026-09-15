@@ -1,9 +1,9 @@
 ---
 id: ADR-047
 title: The launcher has one verb level, a factory option, and the conventions of a Unix tool
-status: proposed
+status: implemented
 date: 2026-09-14
-status_date: 2026-09-14
+status_date: 2026-09-15
 summary: fabriek [-f FACTORY] VERB; flags anywhere, -h per verb, stderr and exit 2 for usage, colour only on a tty, --json, stdin
 depends_on: [ADR-019, ADR-039, ADR-042]
 supersedes: []
@@ -97,3 +97,10 @@ nix develop --command bats --recursive tests/
 the help to it; `role.bats` asserts `-f` before and after the verb, the
 one-factory default, the refusal with two, and each flag in either
 position on the wire; `vm.bats` asserts `ps` and its `--json`.
+
+Implemented 2026-09-15 (commits 430db49 through 620e8d9): the verbs, the
+factory option, the conventions and the removed spellings are what
+`fabriek` does, held by `cli_dispatch.bats`, `role.bats`, `vm.bats`,
+`vm_up.bats`, `factory_board.bats`, `check.bats` and `catalogue_cli.bats`,
+66 scenarios green on this date. The record's status lagged the code by
+a day.

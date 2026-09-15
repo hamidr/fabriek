@@ -1,9 +1,9 @@
 ---
 id: ADR-045
 title: nixcage answers for a running cage, bounds it, names its veth, and puts a hand inside it
-status: proposed
+status: implemented
 date: 2026-09-14
-status_date: 2026-09-14
+status_date: 2026-09-15
 summary: four primitives move upstream: leader and stop from the scope, memory and cpu bounds, the veth's name, exec into a cage
 depends_on: [ADR-018, ADR-037, ADR-038, ADR-043]
 supersedes: []
@@ -131,3 +131,10 @@ scope); `nixcage-container enter --print-argv` for a role matches what
 `seam.bats` asserts word for word; a role's `--memory` is visible as
 `MemoryMax` on `machine-<role>.scope`; the probes stream's entries name
 the role from the cgroup. Not run as of this document's date.
+
+Implemented 2026-09-15 (commits 1428908 through 0b9c725): every point
+is in the code and held by the suites above, 112 scenarios green on this
+date, and `nix build .#factory` passes. The machine scenario is in
+`tests/manual/specialist.sh` ("nixcage answers for the running cage"),
+with `enter --print-argv` against `seam.bats` gated on the role's paths;
+not run, roadmap 6.4. The record's status lagged the code by a day.
