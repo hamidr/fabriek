@@ -67,8 +67,10 @@ sees the closure of its named roots and nothing else of the store.
 
 ## Decision
 
-**1. One image per fabriek and system, built once, with no factory in
-it.** `nix build .#machine` produces the appliance: the services (ADR-036,
+**1. One image per fabriek, guest system and host system, built once,
+with no factory in it.** `nix build .#machine` produces the appliance
+(the guest closure is one; the runner is built from the host's packages,
+`vm.nix`, so a macOS host and a Linux host each get their own): the services (ADR-036,
 ADR-037, ADR-038), nixcage, pi and the loops, the machine program, the
 shipped catalogue's specialists already realised, and the daemon. Nothing
 of a factory, an operator or a host is evaluated into it. The pool is
@@ -86,17 +88,28 @@ is copied into a disk, and a path the host holds is never fetched by the
 machine. The guest's nix must know the host's paths as valid, not only
 present, or it substitutes them again: the guest daemon runs
 `local-overlay-store` with the share as its lower store and the host's
-`/nix/var/nix/db` shared read-only beside it. That feature is
-experimental in the pinned nix (2.34.8) and the sqlite read over 9p is
-unproven; the measurement plan checks both, and if either fails on a host
-the fallback for that host is the host serving its store as a substituter
-over the user-mode NIC, which reuses the same paths at a copy's cost.
+`/nix/var/nix/db` shared read-only beside it, and that overlay is the
+machine's default store (`nix.settings.store`), so the daemon, `nix
+build` at prepare and nixcage's closure query for every session (nixcage
+ADR-014, `nix-store --query --requisites`) all answer for a host path as
+valid; with the default left at `local`, the query says "not valid" and
+every role is refused at its own root. That feature is experimental in
+the pinned nix (2.34.8) and the sqlite read over 9p is unproven; the
+measurement plan checks both, and if either fails on a host the fallback
+for that host is the host serving its store as a substituter over the
+user-mode NIC, which reuses the same paths at a copy's cost. A virtiofs
+share needs virtiofsd on the host: on a Linux host `up` starts the
+appliance's `microvm-virtiofsd` for the share before the runner and
+`down` stops it after, as nixcage's own CLI does for its VM; 9p is
+qemu's own and starts nothing.
 
 **2. The runner is the image's, and `up` computes the per-factory line.**
 `fabriek up` runs the appliance's `microvm-run` in the factory's machine
-directory with `extraArgsScript` pointing at a script of fabriek's that
-prints, from the operator's config and the factory's directory: `-m` and
-`-smp` from the clamped resources, a user-mode netdev with the ssh port
+directory. `extraArgsScript` is a store path baked into the runner, so it
+is one script of fabriek's in the appliance, reading `runtime.json` from
+the directory it is run in, which `up` writes from the operator's config
+and the factory's directory; the script prints `-m` and `-smp` from the
+clamped resources, a user-mode netdev with the ssh port
 forwarded and its virtio-net device, and one `-fw_cfg` credential per file
 the machine needs at boot. Before the first start `up` creates `store.img`
 and `pool.img` at the sizes the caps allow. qemu takes the last `-m` and
@@ -105,8 +118,10 @@ boot rather than assumes.
 
 **3. A factory arrives as credentials at boot.** Two: `factory.json`, with
 the factory's name, the operator's caps, which header carries which
-endpoint's credential, the models, the repository's remote and the rev to
-work (resolved from `HEAD` as ADR-020 point 3a did, and moved only by
+endpoint's credential, the models, the embedder's URL when the host runs
+one (ADR-056 point 3; the proxy's vhost for it is rendered at prepare
+like the endpoints'), the repository's remote and the rev to work
+(resolved from `HEAD` as ADR-020 point 3a did, and moved only by
 `--update`); and `authorized_keys`, the operator's key. sshd reads the
 second from `/run/credentials/@system/authorized_keys`, so the machine is
 reachable before anything else runs. Neither is a secret and neither is
@@ -158,7 +173,13 @@ realises; one that needs a derivation to fetch at build time fails at
 prepare with nix's own message, and the role is refused with its name. A
 flake input the repository names is fetched by the evaluator and is
 allowed. Every evaluation on the machine runs with
-`--no-allow-import-from-derivation`.
+`--no-allow-import-from-derivation` and `--restrict-eval`, with
+`allowed-uris` naming the clone and the flake's locked inputs: with the
+host's store as the lower layer, an unrestricted evaluation could read
+every path of it (pure evaluation permits store paths) and carry what it
+read out in a URL, which is every repository the operator ever
+evaluated, authored by the roles after `--update`. The restriction is
+what keeps point 1a from widening point 6.
 
 The qualifier ADR-025 did not need: the evaluator now evaluates the
 worked repository's flake as root on the machine, where before it did so
@@ -234,6 +255,8 @@ machine whose `factory.json` is older than the file on the host.
 key's name and by a role naming a devShell the flake lacks, becomes a test
 of `factory-prepare` refusing the same two declarations with the same two
 messages, with `nix` stubbed on `PATH` as the CLI tests already stub it.
+`machine_services.bats` asserts the appliance's `nix.settings.store` is
+the overlay and that no `environment.etc` entry carries a factory.
 `tests/manual/isolation.sh` gains two probes: a fixed-output derivation
 built in the machine fails, and a substitution succeeds, since point 6
 leans on both.
@@ -258,8 +281,9 @@ ssh -p "$(cat ~/.local/share/fabriek/example/port)" root@localhost \
 fabriek rm example; fabriek up example 2>&1 | grep -c "copying path"
                                               # expected: 0 on Linux; on macOS, the paths the host lacks
 ssh -p "$(cat ~/.local/share/fabriek/example/port)" root@localhost \
-  'nix path-info --store local-overlay:// /run/current-system'
-                                              # the lower store answers for a host path
+  'nix-store --query --requisites /run/current-system | head -1'
+                                              # the default store answers for a host path,
+                                              # which is what nixcage's closure query asks
 ```
 
 The first `up`'s wall time and the machine's peak memory during prepare,
