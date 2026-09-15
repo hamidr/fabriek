@@ -48,6 +48,10 @@ let
               ## cannot have (ADR-010).
               git
               acl
+              ## A role's worktree is indexed here before it is handed over
+              ## (ADR-049), so the role's first session finds the graph
+              ## built.
+              (import ./codegraph { inherit pkgs; })
               ## Reading the declaration out of a factory's clone, and shaping
               ## the JSON it comes back as (ADR-020).
               nix

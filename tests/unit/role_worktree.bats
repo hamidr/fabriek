@@ -185,3 +185,56 @@ make_repo() {
 	assert_success
 	[ -e "$STATE/worktrees/acme/builder/.git" ]
 }
+
+# ADR-049: a role queries the repository through codegraph, and the index is
+# built here, before the tree is handed over, so no role's first session
+# pays for it. Building it again on every entry would be a full index each
+# time; the daemon is codegraph's way of watching a tree, and the machine
+# program is nobody's watcher.
+stub_codegraph() {
+	cat >"$STUB_DIR/codegraph" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$* daemon=\${CODEGRAPH_NO_DAEMON:-unset}" >>"$TEST_TEMP_DIR/codegraph-calls"
+mkdir -p "\$3/.codegraph"
+exit ${1:-0}
+EOF
+	chmod +x "$STUB_DIR/codegraph"
+}
+
+codegraph_calls() {
+	cat "$TEST_TEMP_DIR/codegraph-calls" 2>/dev/null
+}
+
+@test "a new worktree is indexed for codegraph, non-interactively and with no daemon left behind" {
+	stub_privileged_tools
+	stub_codegraph
+	repo="$(make_repo)"
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 700000
+	assert_success
+	run codegraph_calls
+	assert_output "init -y $STATE/worktrees/acme/builder daemon=1"
+}
+
+@test "a worktree already indexed is not indexed again on the next entry" {
+	stub_privileged_tools
+	stub_codegraph
+	repo="$(make_repo)"
+	fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	run codegraph_calls
+	[ "${#lines[@]}" -eq 1 ]
+}
+
+@test "an index codegraph could not build is reported and does not stop the role" {
+	# A role without an index still has its tree and its tools; the
+	# extension's own status tool says the index is missing. What must not
+	# happen is the role losing its session over a parser's failure.
+	stub_privileged_tools
+	stub_codegraph 1
+	repo="$(make_repo)"
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	assert_line --index 0 --partial "codegraph could not index"
+	assert_line --index 1 "$STATE/worktrees/acme/builder"
+}

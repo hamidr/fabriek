@@ -48,6 +48,18 @@ check "the extension is beside the loop" "yes" \
 	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/pi-lsp/index.ts" && echo yes')"
 gated "diagnostics appended after a write" "needs a model: write a Java file with an unused import through pi and read the diagnostics in the session transcript"
 
+scenario "The worktree is indexed and the codegraph tools are in pi (ADR-049)"
+when "the session asks codegraph about the tree it was handed"
+check "the index was built before the role got the tree" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test -f .codegraph/codegraph.db && echo yes')"
+check "the index is the role's own" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test -O .codegraph/codegraph.db && echo yes')"
+check "codegraph is on the role's PATH and answers" "1.6.0" \
+	"$(in_cage "$ROLE" sh -c 'codegraph --version')"
+check "the extension is beside the loop" "yes" \
+	"$(in_cage "$ROLE" sh -c 'test -f "$PI_CODING_AGENT_DIR/extensions/pi-codegraph/index.ts" && echo yes')"
+gated "codegraph_explore answers from the index" "needs a model: ask the role where a symbol is called from; the transcript shows codegraph_explore with call paths and no grep"
+
 scenario "The test-first guard reads what the specialists declared (ADR-044)"
 when "the session reads tests.json beside the loop"
 check "java sources are watched" "yes" \

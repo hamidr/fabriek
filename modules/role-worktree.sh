@@ -73,6 +73,18 @@ fabriek_role_worktree_ensure() {
 		fi
 	fi
 
+	## The index the role's codegraph tools read (ADR-049), built once here
+	## while the tree is still the machine's, so the role's first session
+	## finds it and no session pays for it again. Watching the tree for
+	## changes is the daemon's job inside the cage; the machine program
+	## starts none. An index that could not be built is said and not
+	## fatal: the role still has its tree, and its status tool says the
+	## graph is missing.
+	if [ ! -d "$path/.codegraph" ]; then
+		CODEGRAPH_NO_DAEMON=1 codegraph init -y "$path" >/dev/null 2>&1 ||
+			echo "fabriek: codegraph could not index $path; the role works without the graph" >&2
+	fi
+
 	## The worktree and the administrative directory git keeps for it are the
 	## two paths git and libgit2 check ownership of.
 	chown -R "$uid:$uid" "$path" || return 1
