@@ -236,10 +236,17 @@ check "the branch builder/work carries the builder's commit" 1 "$(git -C "$CLONE
 ## The forge shows the executor's comments as the operator's, whose token
 ## it writes with; the attempt line names where the branch stood.
 thread_of() { api GET "$repo/issues/$1/comments" | jq -r '.[] | "\(.user.login): \(.body | split("\n")[0] | sub(" \\(branch at [0-9a-f]+\\)$"; "") | sub(" \\(branch at none\\)$"; ""))"'; }
-check "the thread reads: attempt at build, outcome, attempt 1 at review, outcome" "operator: attempt 1 started for builder at build
+## Each outcome is followed by the executor's trace of the attempt, cut
+## from the role's events and the probes (ADR-051); the probes do not run
+## here, so the trace names the scripted actor's tool call and no executable.
+check "the thread reads: attempt at build, outcome, its trace, attempt 1 at review, outcome, its trace" "operator: attempt 1 started for builder at build
 builder: outcome: done
+operator: trace: attempt 1 of builder
 operator: attempt 1 started for reviewer at review
-reviewer: outcome: done" "$(thread_of "$number")"
+reviewer: outcome: done
+operator: trace: attempt 1 of reviewer" "$(thread_of "$number")"
+trace_of() { api GET "$repo/issues/$1/comments" | jq -r '[.[] | select(.body | startswith("trace: attempt 1 of builder"))][0].body'; }
+check "the builder's trace counts the tool it called" "tools: git 1" "$(trace_of "$number" | grep '^tools:')"
 check "the builder's memory was rewritten by the script" "last task: #$number (done)" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r '.[] | select(.user.login == "builder") | .body')"
 check "the builder's finding reached its stream" yes "$(grep -q '"stream":"findings:builder"' "$LOG/relay" && echo yes || echo no)"
 

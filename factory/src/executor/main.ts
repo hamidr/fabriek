@@ -14,7 +14,7 @@ import { ForgeClient } from "../forge/client.js";
 import { readDeclaration } from "../declaration.js";
 import { parseMessage, toFields, type Message } from "../messages.js";
 import { parseCommand } from "../vocabulary.js";
-import { Executor, type Bus, type Spend } from "./core.js";
+import { Executor, type Bus, type Spend, type Streams } from "./core.js";
 import { ForgeBoard } from "./forge.js";
 import { RoleSessions, sessionCommand } from "./sessions.js";
 import { CloneGit } from "./git.js";
@@ -65,6 +65,13 @@ async function main(): Promise<void> {
       return (await this.counts())["total"] ?? 0;
     },
   };
+  // The trace of an attempt is cut from the streams as they stand (ADR-051);
+  // the executor's user may read every stream and this reads two.
+  const observed: Streams = {
+    async range(stream, from, to) {
+      return client.xrange(stream, from, to);
+    },
+  };
   const sessions = new RoleSessions({ factory, log, command: sessionCommand(process.env) });
   const git = new CloneGit({
     clone: `${STATE}/factories/${factory}`,
@@ -73,7 +80,7 @@ async function main(): Promise<void> {
     record: async () => JSON.stringify(await forge.call("GET", `/repos/${repository}/issues?state=all&type=issues&limit=1000`), null, 2),
   });
 
-  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend });
+  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed });
   const roles = Object.keys(declaration.roles);
   const streams: Record<string, string> = { commands: "$", operator: "$" };
   for (const r of roles) streams[`control:${r}`] = "$";

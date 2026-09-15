@@ -9,6 +9,7 @@ import type { Message } from "../messages.js";
 import { capableRoles, stageOf, type Declaration } from "../declaration.js";
 import { isRoleName } from "../names.js";
 import { attemptLine, attemptsAt, isAttemptLine, tipOf } from "../thread.js";
+import { traceOf, type Entry } from "./trace.js";
 
 export interface BoardIssue {
   number: number;
@@ -55,6 +56,11 @@ export interface Spend {
   total(): Promise<number>;
 }
 
+/** The streams the trace of an attempt is cut from (ADR-051): read, never written. */
+export interface Streams {
+  range(stream: string, from: string, to: string): Promise<Entry[]>;
+}
+
 export interface Files {
   readFile(path: string): Promise<string>;
 }
@@ -67,6 +73,7 @@ export interface ExecutorOptions {
   sessions: Sessions;
   git: Git;
   spend: Spend;
+  streams: Streams;
   reconcileTimeoutMs?: number;
   /** Fraction of the ceiling at which routing stops (ADR-037 point 4). */
   softFraction?: number;
@@ -284,6 +291,10 @@ export class Executor {
       const stage = this.stageLabel(i);
       const bare = i.labels.filter((l) => !STATE_LABELS.has(l));
       const at = stage ? stageOf(this.o.declaration, this.o.workflow, stage) : null;
+      // What the attempt used, into the thread before the stage moves, while
+      // the streams still hold it (ADR-051). The attempt is the count of
+      // attempt lines at this stage, which is what the actor was sent.
+      await this.o.board.comment(i.number, await this.trace(i.assignee, i.number, stage ? attemptsAt(i.thread, stage) : 1));
       switch (status) {
         case "done": {
           if (!at?.verdict && (await this.o.git.commitsSince(workBranch(i.assignee), tipOf(started?.c.body ?? ""))) === 0) {
@@ -309,6 +320,11 @@ export class Executor {
           break;
       }
     }
+  }
+
+  private async trace(role: string, issue: number, attempt: number): Promise<string> {
+    const [events, probes] = await Promise.all([this.o.streams.range(`events:${role}`, "-", "+"), this.o.streams.range("probes", "-", "+")]);
+    return traceOf({ role, issue, attempt, events, probes });
   }
 
   async mirror(): Promise<void> {

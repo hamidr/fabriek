@@ -8,7 +8,8 @@
 // reconciliation.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Executor, type Board, type BoardIssue, type Bus, type Git, type Sessions, type Spend } from "./core.js";
+import { Executor, type Board, type BoardIssue, type Bus, type Git, type Sessions, type Spend, type Streams } from "./core.js";
+import type { Entry } from "./trace.js";
 import { readDeclaration } from "../declaration.js";
 import type { Message } from "../messages.js";
 
@@ -66,8 +67,10 @@ function fakes() {
   };
   let total = 0;
   const spend: Spend = { async total() { return total; } };
+  const held: Record<string, Entry[]> = {};
+  const streams: Streams = { async range(stream: string) { return held[stream] ?? []; } };
   const roleComment = (n: number, by: string, body: string) => issues.get(n)!.thread.push({ by, body });
-  return { board, bus, sessions, git, spend, issues, log, sent, started, stopped, roleComment, setCommits: (v: number) => (commits = v), setTotal: (v: number) => (total = v) };
+  return { board, bus, sessions, git, spend, streams, held, issues, log, sent, started, stopped, roleComment, setCommits: (v: number) => (commits = v), setTotal: (v: number) => (total = v) };
 }
 
 async function executor(f = fakes()) {
@@ -284,6 +287,31 @@ describe("the executor", () => {
     f.roleComment(1, "manager", "outcome: done\n\nnothing to change");
     await x.checkOutcomes();
     assert.equal(f.issues.get(1)?.state, "closed");
+  });
+
+  // ADR-051: what an attempt used is written into its thread before the
+  // stage moves, cut from the streams that still hold it.
+  it("an outcome is preceded in the thread by a trace of the attempt, cut from the role's events and the probes", async () => {
+    const { x, f } = await executor();
+    await f.board.create("t", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    x.heard("builder", { kind: "ack", issue: 1 });
+    await x.settle();
+    const ev = (id: string, name: string, payload: unknown): Entry => ({ id, fields: { kind: "event", name, json: JSON.stringify(payload) } });
+    f.held["events:builder"] = [
+      ev("1-0", "task_started", { issue: 1, attempt: 1 }),
+      ev("2-0", "tool_call", { toolName: "bash", input: { command: "npm test" } }),
+      ev("3-0", "task_ended", { issue: 1, attempt: 1, status: "done" }),
+    ];
+    f.held["probes"] = [{ id: "2-1", fields: { cgroup: "1", role: "builder", event: "exec cgroup=1 uid=1 pid=1 comm=node" } }];
+    f.roleComment(1, "builder", "outcome: done\n\nshipped");
+    await x.checkOutcomes();
+    const thread = f.issues.get(1)!.thread.map((c) => c.body);
+    const trace = thread.find((b) => b.startsWith("trace:"));
+    assert.equal(trace, "trace: attempt 1 of builder\nturns: 0\ntools: bash 1\ncommands: 1x npm test\nexecutables: node 1");
+    assert.ok(thread.indexOf(trace!) > thread.findIndex((b) => b.startsWith("outcome:")));
+    assert.deepEqual(f.issues.get(1)?.labels, ["test"]);
   });
 
   it("a stage declared verdict takes done with no commit, and one not declared still does not", async () => {
