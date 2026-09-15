@@ -13,7 +13,7 @@ tomorrow, a tool costs a machine build and is right for a year.
 
 | Lever | Where | Reaches a role |
 | --- | --- | --- |
-| Guidance | `docs/factory-guidance.md` | the `this factory:` section of every brief composed from a clone that has it; no build |
+| Guidance | `docs/factory-guidance.md` | the `this factory:` section of a role's brief, read from its own worktree; live once its branch has it, no build |
 | Policy | the file `decider.policy` names in `fabriek.nix` | the decider, at the next machine build, from the commit the operator pins |
 | Skill or tool | `<catalogue>/skills/<name>/`, `<catalogue>/specialists/<name>/` | every role's pi, at the next machine build, from the same commit |
 

@@ -127,7 +127,7 @@ A change to what a role session is shows up there as a diff.
   loops), `executor.nix`. `machine/spend.js` is the proxy's njs token
   counter, driven by `spend.test.mjs` through `tests/unit/proxy_spend.bats`.
 - `modules/role-guidance.md`: what every role is told about working in a
-  cage, bound read-only into a role session.
+  cage, the front of every role's system prompt (`floor.nix`, ADR-054).
 - `modules/package.nix`: the two programs, wrapped with the module directory
   they source and the tools they run.
 - `tests/system/journey.sh`: the whole factory on this host with no cage

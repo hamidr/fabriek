@@ -22,10 +22,11 @@ recorded is not ready; mention the architect and ask for the record, not
 for an answer.
 
 The guidance. `docs/factory-guidance.md` is the `this factory:` section
-of every role's brief, read from the factory's clone and not from any
-image. It says how this project does things. Keep it short enough to be
-read every time and true to the tree; a rule nobody follows is yours to
-delete or to enforce.
+of every role's brief, read from the role's own worktree, so it is live
+for a role as soon as its branch carries it and needs no build. It says
+how this project does things. Keep it short enough to be read every
+time and true to the tree; a rule nobody follows is yours to delete or
+to enforce.
 
 The inspection. Every task reaches you last, at the inspect stage, with
 the thread carrying one `trace:` comment per attempt: turns, tools by

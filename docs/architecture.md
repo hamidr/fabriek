@@ -178,8 +178,7 @@ running actor's namespace when there is one, found through the nspawn
 that holds it, so a hand beside an actor takes no second veth),
 `--no-nix-daemon`, the profile on
 `NIXCAGE_PATH_PREFIX` when the build realised one, then `--auth-sock` (by
-hand) or `--no-agent` (supervised), the guidance bind, the task bind if
-given, the signing binds, and for a supervised run the actor's part: the
+hand) or `--no-agent` (supervised), the task bind if given, the signing binds, and for a supervised run the actor's part: the
 role's own pi directory bound at `PI_CODING_AGENT_DIR` and `PI_AGENT_DIR`, the bus password
 and forge token bound read-only, and the `FABRIEK_*` environment naming the
 role, its capabilities, its specialists, the bus, the forge, the repository
