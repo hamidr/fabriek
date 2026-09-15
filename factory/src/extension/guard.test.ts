@@ -79,8 +79,20 @@ describe("the four rules", () => {
     assert.equal(g.edit("src/tax.py"), null);
   });
 
+  // A reviewer or an inspector edits nothing and reports a verdict
+  // (ADR-051); on a machine one was refused done three times for want of
+  // a run that could have proven nothing. Modelled in models/tdd-guard.qnt
+  // as everEdited.
+  it("allows done from a session that edited nothing, since there is nothing a run would prove", () => {
+    const g = new Guard(python, cwd);
+    assert.equal(g.outcome("done"), null);
+    g.ran(false);
+    assert.equal(g.outcome("done"), null);
+  });
+
   it("refuses done until the last run after the last edit passed; blocked and failed are never refused", () => {
     const g = new Guard(python, cwd);
+    g.edit("tests/test_invoice.py");
     assert.equal(g.outcome("done")?.rule, "done-is-green");
     assert.equal(g.outcome("blocked"), null);
     assert.equal(g.outcome("failed"), null);

@@ -14,6 +14,9 @@ module tddGuard {
   // History: a source edit that followed a test edit with no run between.
   // Never set when the rules hold; set as soon as one is dropped.
   var codeBeforeRedSeen: bool
+  // History: any edit at all this session. A session that edited nothing
+  // has nothing a run could prove green: a verdict (ADR-051).
+  var everEdited: bool
 
   action init = all {
     lastRun' = "none",
@@ -21,6 +24,7 @@ module tddGuard {
     testEditedSinceRun' = false,
     done' = false,
     codeBeforeRedSeen' = false,
+    everEdited' = false,
   }
 
   // A test file changes: always allowed, remembered until the next run.
@@ -31,6 +35,7 @@ module tddGuard {
     testEditedSinceRun' = true,
     done' = done,
     codeBeforeRedSeen' = codeBeforeRedSeen,
+    everEdited' = true,
   }
 
   // The three rules on a source edit.
@@ -44,6 +49,7 @@ module tddGuard {
     testEditedSinceRun' = testEditedSinceRun,
     done' = done,
     codeBeforeRedSeen' = (codeBeforeRedSeen or testEditedSinceRun),
+    everEdited' = true,
   }
 
   // A test run the loop saw, with either verdict.
@@ -54,19 +60,20 @@ module tddGuard {
     testEditedSinceRun' = false,
     done' = done,
     codeBeforeRedSeen' = codeBeforeRedSeen,
+    everEdited' = everEdited,
   }
 
-  // The fourth rule: done only on a passing run after the last edit.
+  // The fourth rule: done only on a passing run after the last edit, or
+  // with no edit at all this session, which is a verdict and not a change.
   action reportDone = all {
     not(done),
-    lastRun == "passed",
-    srcEditsSinceRun == 0,
-    not(testEditedSinceRun),
+    (lastRun == "passed" and srcEditsSinceRun == 0 and not(testEditedSinceRun)) or not(everEdited),
     lastRun' = lastRun,
     srcEditsSinceRun' = srcEditsSinceRun,
     testEditedSinceRun' = testEditedSinceRun,
     done' = true,
     codeBeforeRedSeen' = codeBeforeRedSeen,
+    everEdited' = everEdited,
   }
 
   action step = any {
@@ -83,8 +90,11 @@ module tddGuard {
   val testSeenFailingFirst = not(codeBeforeRedSeen)
   // No source edit before any run.
   val runBeforeCode = srcEditsSinceRun > 0 implies lastRun != "none"
-  // Done only when the last run passed and nothing changed after it.
-  val doneIsGreen = done implies (lastRun == "passed" and srcEditsSinceRun == 0 and not(testEditedSinceRun))
+  // Done only when the last run passed and nothing changed after it, or
+  // when nothing was ever changed.
+  val doneIsGreen = done implies ((lastRun == "passed" and srcEditsSinceRun == 0 and not(testEditedSinceRun)) or not(everEdited))
+  // A session that edited and reported done had a passing run after it.
+  val editedDoneIsRun = (done and everEdited) implies lastRun == "passed"
 
-  val allInvariants = runBetweenSteps and testSeenFailingFirst and runBeforeCode and doneIsGreen
+  val allInvariants = runBetweenSteps and testSeenFailingFirst and runBeforeCode and doneIsGreen and editedDoneIsRun
 }

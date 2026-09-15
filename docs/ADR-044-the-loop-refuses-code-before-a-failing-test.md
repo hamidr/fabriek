@@ -65,8 +65,9 @@ since that run. Four rules:
 - A source edit is refused when no run has happened at all in the
   session.
 - `report_outcome` with `done` is refused when the last run did not pass
-  or a source edit happened since it. `blocked` and `failed` are never
-  refused.
+  or a source edit happened since it. A session that edited nothing at
+  all may report `done`: it is a verdict (ADR-051), and a run would prove
+  nothing about it. `blocked` and `failed` are never refused.
 
 Every refusal names the rule and the next step in one sentence, as the
 tool's result, so the agent reads what to do rather than guessing. The
@@ -88,7 +89,8 @@ session says how often.
 holds the guard's variables, the agent's moves and the four rules;
 `quint run` over its invariants (no two source edits without a run
 between, no source edit after a test edit without a run, no done without
-a passing run since the last edit) is part of the verification below.
+a passing run since the last edit unless nothing was edited) is part of
+the verification below.
 
 **6. There is one escape and it is visible.** A repository's own
 specialist (ADR-042 point 3) that declares no `tests` has no guard on the

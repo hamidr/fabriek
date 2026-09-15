@@ -41,6 +41,8 @@ export class Guard {
   private lastRun: Verdict = "none";
   private sourceEditsSinceRun = 0;
   private testEditedSinceRun = false;
+  /** Any edit this session, test or source; a refused edit counts as none. */
+  private everEdited = false;
   private readonly tests: RegExp[];
   private readonly source: RegExp[];
   private readonly commands: string[][];
@@ -87,6 +89,7 @@ export class Guard {
     if (kind === "free") return null;
     if (kind === "test") {
       this.testEditedSinceRun = true;
+      this.everEdited = true;
       return null;
     }
     if (this.lastRun === "none") {
@@ -99,6 +102,7 @@ export class Guard {
       return refuse("run-between-steps", `the tests passed and ${this.sourceEditsSinceRun} production edit already followed; run the tests before the next edit, so every step is checked.`);
     }
     this.sourceEditsSinceRun += 1;
+    this.everEdited = true;
     return null;
   }
 
@@ -109,9 +113,12 @@ export class Guard {
     this.testEditedSinceRun = false;
   }
 
-  /** Before an outcome is recorded: done needs green after the last edit. */
+  /** Before an outcome is recorded: done needs green after the last edit.
+   *  A session that edited nothing is a verdict (ADR-051), and a run would
+   *  prove nothing about it. */
   outcome(status: "done" | "blocked" | "failed"): Refusal | null {
     if (!this.active || status !== "done") return null;
+    if (!this.everEdited) return null;
     if (this.lastRun !== "passed") {
       return refuse("done-is-green", `done needs a passing test run; the last run ${this.lastRun === "none" ? "has not happened" : "failed"}. Run the tests, or report blocked or failed with what you saw.`);
     }
