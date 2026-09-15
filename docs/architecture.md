@@ -147,8 +147,10 @@ The machine (`modules/machine/default.nix` and `modules/machine/`):
   `pi-lsp` and `pi-codegraph` extensions, a `models.json` pointing pi at
   the proxy, and from the role's profile the `APPEND_SYSTEM.md`, `skills/`
   and `lsp.json` of its specialists; the decider's loop under
-  `/etc/fabriek/pi-decider` as real files (ADR-030, ADR-035, ADR-042,
-  ADR-043, ADR-049).
+  `/etc/fabriek/pi-decider`, one store path the same way (ADR-030,
+  ADR-035, ADR-042, ADR-043, ADR-049). A session names its profile and
+  its pi directory as store roots, so the cage sees their closure and
+  nothing else of the store (nixcage ADR-014).
 - `executor.nix`: the `fabriek-executor` unit, as root, restarted always.
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):

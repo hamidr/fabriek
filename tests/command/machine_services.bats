@@ -193,15 +193,17 @@ machine_text() {
 	assert_output --partial 'printf("connect cgroup=%d uid=%d'
 }
 
-# A cage binds the directory and has no /etc/static of its own, so a symlink
-# there is a file the cage cannot open: the decider's pi directory is real
-# files, and a role's is one store path the machine program resolves.
-@test "the decider's loop and models.json reach its cage as files, not as symlinks into an /etc it does not have" {
-	local f
-	for f in pi-decider/extensions/fabriek/index.ts pi-decider/models.json; do
-		run machine_eval "c.environment.etc.\"fabriek/$f\".mode"
-		assert_output '"0444"'
-	done
+# A cage sees the closure of the roots its session names and nothing else
+# of the store (nixcage ADR-014), so the decider's pi directory is one store
+# path like a role's: the machine program resolves it and names it a root,
+# and the loop its index imports is in that closure.
+@test "the decider's pi directory is one store path carrying its loop and models.json" {
+	run machine_eval 'c.environment.etc."fabriek/pi-decider".source'
+	assert_success
+	assert_output --partial "fabriek-pi-decider"
+	run machine_text 'c.environment.etc."fabriek/pi-decider".source.buildCommand'
+	assert_output --partial 'extensions/fabriek/index.ts'
+	assert_output --partial 'models.json'
 }
 
 # Who a role is rides in the directory pi already reads (ADR-042 point 5):
@@ -282,17 +284,17 @@ machine_text() {
 	sed -i.bak 's/"egress": \["api.anthropic.com"\]/"egress": ["api.deepseek.com"]/' "$TEST_TEMP_DIR/local.json" && rm "$TEST_TEMP_DIR/local.json.bak"
 	sed -i.bak 's/egress = \[ "api.anthropic.com" \]/egress = [ "api.deepseek.com" ]/' "$REPO/flake.nix" && rm "$REPO/flake.nix.bak"
 	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm deepseek
-	run machine_text 'c.environment.etc."fabriek/pi-decider/models.json".text'
+	run machine_text 'c.environment.etc."fabriek/pi-decider".source.models'
 	assert_output --partial '"deepseek":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.deepseek.com"}'
 	run machine_text 'c.environment.etc."fabriek/model.json".text'
 	assert_output '{"model":"deepseek-v4-flash","provider":"deepseek"}'
 }
 
 @test "every supervised session is handed the loop and a models.json that points pi at the proxy" {
-	run machine_text 'c.environment.etc."fabriek/pi-decider/extensions/fabriek/index.ts".text'
+	run machine_text 'c.environment.etc."fabriek/pi-decider".source.buildCommand'
 	assert_output --partial 'fabriek-factory'
 	assert_output --partial 'dist/decider/index.js'
-	run machine_text 'c.environment.etc."fabriek/pi-decider/models.json".text'
+	run machine_text 'c.environment.etc."fabriek/pi-decider".source.models'
 	assert_output --partial '"anthropic":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.anthropic.com"}'
 	refute_output --partial openai
 	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'

@@ -88,11 +88,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789482105,
-        "narHash": "sha256-q/gOHJEySoKf4SCYrO68zLYBdawzeQ5MzeeH/H8ghPs=",
+        "lastModified": 1789498682,
+        "narHash": "sha256-1kQcGNPmS2KPJT6+NLlj3Lp50D+hSCFX3fIehMiBguU=",
         "owner": "hamidr",
         "repo": "nixcage",
-        "rev": "a25c79819cbb808659a5d1a77292fe39746c5155",
+        "rev": "828634f6dc30e6a5da9f9b543f13a76574604c17",
         "type": "github"
       },
       "original": {

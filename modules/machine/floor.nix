@@ -108,6 +108,17 @@ let
       ln -s ${profile}/share/fabriek/specialist/skills $out/skills
       cat ${guidance} ${profile}/share/fabriek/specialist/APPEND_SYSTEM.md >$out/APPEND_SYSTEM.md
     '';
+  ## The decider's own directory (ADR-034 point 1): its loop and the same
+  ## models.json, one store path like a role's so the session can name it
+  ## a root. The models ride on passthru for the suite, which evaluates and
+  ## does not build.
+  deciderDir = pkgs.runCommand "fabriek-pi-decider" { passthru.models = modelsText; } ''
+    mkdir -p $out/extensions/fabriek
+    cat >$out/extensions/fabriek/index.ts <<'TS'
+    export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
+    TS
+    cp ${pkgs.writeText "models.json" modelsText} $out/models.json
+  '';
 in
 {
   config = {
@@ -119,24 +130,15 @@ in
       )
       // {
         ## The decider's loop (ADR-034 point 1), in a directory of its own
-        ## so a role's session never loads it. Real files, not /etc's usual
-        ## symlinks: a session binds the directory and a cage has no
-        ## /etc/static for a symlink to land in. Same models.json as a
-        ## role's: the decider reaches the model through the same proxy and
-        ## is counted on its own address.
-        "fabriek/pi-decider/extensions/fabriek/index.ts" = {
-          mode = "0444";
-          text = ''
-            export { default } from "${pkgs.fabriek-factory}/lib/fabriek-factory/dist/decider/index.js";
-          '';
-        };
+        ## so a role's session never loads it: one store path like a role's,
+        ## resolved by the machine program and handed to the session as a
+        ## root, so the cage sees the loop the index imports (nixcage
+        ## ADR-014). Same models.json as a role's: the decider reaches the
+        ## model through the same proxy and is counted on its own address.
+        "fabriek/pi-decider".source = deciderDir;
         "fabriek/model.json" = {
           mode = "0444";
           text = modelText;
-        };
-        "fabriek/pi-decider/models.json" = {
-          mode = "0444";
-          text = modelsText;
         };
       };
   };

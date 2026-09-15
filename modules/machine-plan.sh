@@ -167,7 +167,9 @@ fabriek_actor_args() {
 	## session without it would be an agent with no loop, so it is refused.
 	local pidir capabilities="" specialists=""
 	if [ "$role" = "$FABRIEK_DECIDER" ]; then
-		pidir="$etc/pi-decider"
+		## Resolved like a role's: one store path the build made, handed to
+		## the session as a root the same way (nixcage ADR-014).
+		pidir="$(readlink -f "$etc/pi-decider")"
 	else
 		if ! pidir="$(fabriek_role_pi_dir "$etc" "$role")"; then
 			echo "fabriek: role $role has no pi directory at $etc/roles/$role/pi; the machine's build makes one per role" >&2
@@ -191,6 +193,11 @@ fabriek_actor_args() {
 		[ -e "$entry" ] || continue
 		printf '%s\n' "--bind-ro" "$entry:/run/fabriek/pi/${entry##*/}"
 	done
+	## The directory's files import the loop and the extensions by store
+	## path, so the cage has to see their closure: the directory is a root
+	## (nixcage ADR-014), and a bind alone would show files that import
+	## nothing the cage can find.
+	printf '%s\n' "--store-root" "$pidir"
 	printf '%s\n' \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_AGENT_DIR=/run/fabriek/pi" \

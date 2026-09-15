@@ -261,11 +261,12 @@ cmd_role_enter() {
 
 	## A role's toolchain is the profile the build realised from its devShell
 	## (ADR-040), handed in on the front of PATH because a cage has no daemon
-	## to enter a devShell with. A role whose build realised none enters with
-	## the floor alone (ADR-030).
+	## to enter a devShell with, and named as a store root so the cage sees
+	## its closure and nothing else of the store (nixcage ADR-014). A role
+	## whose build realised none enters with the floor alone (ADR-030).
 	local profile
 	if profile="$(fabriek_role_profile "$FABRIEK_ETC" "$role")"; then
-		opts+=(--setenv "NIXCAGE_PATH_PREFIX=$profile/bin")
+		opts+=(--setenv "NIXCAGE_PATH_PREFIX=$profile/bin" --store-root "$profile")
 	fi
 
 	if [ -n "$auth_sock" ]; then

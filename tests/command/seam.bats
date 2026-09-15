@@ -108,6 +108,11 @@ declare_machine() {
 	# symlinks /tmp is not the path the link was written with.
 	PROFILE="$(readlink -f "$TEST_TEMP_DIR/store/role-builder")"
 	PIDIR="$(readlink -f "$TEST_TEMP_DIR/store/pi-builder")"
+	# The decider's directory is a store path too, resolved the same way,
+	# so its session can be handed it as a root (nixcage ADR-014).
+	mkdir -p "$TEST_TEMP_DIR/store/pi-decider/extensions"
+	ln -s "$TEST_TEMP_DIR/store/pi-decider" "$FABRIEK_ETC/pi-decider"
+	DECIDER_DIR="$(readlink -f "$TEST_TEMP_DIR/store/pi-decider")"
 	cat >"$FABRIEK_ETC/bridge.json" <<'JSON'
 { "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "decider": "10.77.0.2" },
@@ -118,7 +123,7 @@ JSON
   "resources": { "memory": "8G", "cores": 4, "concurrency": 2 } }
 JSON
 	# What prepare made for the role: its bus password and its forge token.
-	mkdir -p "$STATE/bus" "$STATE/forge" "$FABRIEK_ETC/pi-decider/extensions"
+	mkdir -p "$STATE/bus" "$STATE/forge"
 	# Where a session starts (ADR-029 point 6): the build's answer, read
 	# onto pi's argv because pi cannot read a settings file it cannot lock.
 	echo '{ "provider": "anthropic", "model": "claude-opus-5" }' >"$FABRIEK_ETC/model.json"
@@ -171,7 +176,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --store-root $PIDIR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -179,7 +184,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock builder $STATE/worktrees/acme/builder"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --auth-sock /tmp/agent.sock builder $STATE/worktrees/acme/builder"
 }
 
 @test "the uid comes from nixcage rather than from a store fabriek keeps" {
@@ -320,7 +325,7 @@ running_cage() {
 	assert_success
 	run recorded
 	assert_output --partial "--network fabriek-acme:10.77.0.2/24 --no-nix-daemon"
-	assert_output --partial "--bind $RUN/pi-decider:/run/fabriek/pi --bind-ro $FABRIEK_ETC/pi-decider/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1"
+	assert_output --partial "--bind $RUN/pi-decider:/run/fabriek/pi --bind-ro $DECIDER_DIR/extensions:/run/fabriek/pi/extensions --store-root $DECIDER_DIR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1"
 	assert_output --partial "--bind-ro $STATE/forge/decider-token:/run/fabriek/forge-token"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/declaration.json:/run/fabriek/declaration.json --setenv FABRIEK_DECLARATION=/run/fabriek/declaration.json"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/decider-policy.md:/run/fabriek/policy.md --setenv FABRIEK_POLICY=/run/fabriek/policy.md"
@@ -358,7 +363,7 @@ JSON
 	run_fabriek_container role-enter --repository "$REPO" --signing-key builder acme builder
 	assert_success
 	run recorded
-	assert_output --partial "--bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --bind-ro $PIDIR/models.json:/run/fabriek/pi/models.json --bind-ro $PIDIR/skills:/run/fabriek/pi/skills --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi"
+	assert_output --partial "--bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --bind-ro $PIDIR/models.json:/run/fabriek/pi/models.json --bind-ro $PIDIR/skills:/run/fabriek/pi/skills --store-root $PIDIR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi"
 	[ -d "$RUN/pi-builder" ]
 	[ ! -e "$RUN/pi-builder/auth.json" ]
 }
@@ -413,6 +418,7 @@ JSON
 	assert_success
 	run recorded
 	refute_output --partial "NIXCAGE_PATH_PREFIX"
+	refute_output --partial "--store-root"
 	assert_output --partial "--no-nix-daemon --auth-sock"
 }
 
