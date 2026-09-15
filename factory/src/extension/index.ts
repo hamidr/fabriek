@@ -8,7 +8,8 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { bindActor, fromEnvironment, type Bound } from "./bind.js";
-import type { Agent, Checks } from "./actor.js";
+import { readFile } from "node:fs/promises";
+import type { Agent, Checks, Tree } from "./actor.js";
 import { Guard, type TestsDeclaration } from "./guard.js";
 
 /** What the role's specialists declared a test to be (ADR-044), beside
@@ -51,7 +52,14 @@ export default function fabriek(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     context = ctx;
     guard = new Guard(testsDeclaration(), ctx.cwd);
-    bound = bindActor({ ...world, agent, checks });
+    // The repository's own guidance, from the worktree the role was handed
+    // (ADR-054): live once the role's branch carries it, no build needed.
+    const tree: Tree = {
+      async guidance() {
+        return readFile(`${ctx.cwd}/docs/factory-guidance.md`, "utf8").catch(() => null);
+      },
+    };
+    bound = bindActor({ ...world, agent, checks, tree });
     await bound.start();
   });
 

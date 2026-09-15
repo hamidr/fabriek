@@ -92,29 +92,6 @@ teardown() {
 	[ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$(fabriek_factory_shared_branch)" ]
 }
 
-@test "a repository may carry its own guidance for the roles working it" {
-	repo="$TEST_TEMP_DIR/guided"
-	mkdir -p "$repo/docs"
-	printf 'in this factory, ADRs are immutable.\n' >"$repo/docs/factory-guidance.md"
-	run fabriek_factory_guidance "$repo"
-	assert_success
-	assert_output --partial "ADRs are immutable"
-}
-
-@test "a repository that carries none is not an error" {
-	repo="$TEST_TEMP_DIR/unguided"
-	mkdir -p "$repo"
-	run fabriek_factory_guidance "$repo"
-	assert_success
-	assert_output ""
-}
-
-@test "guidance is read from the factory's own clone, not from anywhere else" {
-	run fabriek_factory_guidance_path "$STATE/factories/acme"
-	assert_success
-	assert_output "$STATE/factories/acme/docs/factory-guidance.md"
-}
-
 # A clone whose HEAD came back unborn -- an origin whose HEAD names a branch it
 # does not have, an interrupted fetch -- used to leave a directory behind. The
 # ensure skips a path that exists, so every later run reused it and failed with

@@ -41,6 +41,12 @@ export interface Checks {
   hasCommit(): Promise<boolean>;
 }
 
+/** What the worktree the role was handed says for itself. */
+export interface Tree {
+  /** The repository's guidance for roles, docs/factory-guidance.md, or null when it has none. */
+  guidance(): Promise<string | null>;
+}
+
 export type Status = "done" | "blocked" | "failed";
 
 export interface Outcome {
@@ -62,6 +68,7 @@ export interface ActorOptions {
   board: Board;
   agent: Agent;
   checks: Checks;
+  tree: Tree;
 }
 
 export class Actor {
@@ -130,11 +137,13 @@ export class Actor {
     await this.o.bus.ack(issue);
     const task = await this.o.board.issue(issue);
     const thread = await this.o.board.thread(issue);
-    this.o.agent.prompt(this.brief(task, thread, attempt));
+    const guidance = await this.o.tree.guidance();
+    this.o.agent.prompt(this.brief(task, thread, attempt, guidance));
   }
 
-  /** The prompt a task starts with: the issue, its thread, and what this role remembers. */
-  private brief(task: Issue, thread: Comment[], attempt: number): string {
+  /** The prompt a task starts with: the issue, its thread, the repository's
+   *  own guidance when the worktree carries it, and what this role remembers. */
+  private brief(task: Issue, thread: Comment[], attempt: number, guidance: string | null): string {
     const specialists = this.o.specialists ?? [];
     const lines = [
       `You are the role ${this.o.role}.`,
@@ -146,6 +155,7 @@ export class Actor {
       "Thread so far:",
       ...thread.map((c) => `- ${c.by}: ${c.body}`),
       "",
+      ...(guidance?.trim() ? ["this factory:", guidance.trim(), ""] : []),
       "Your memory from earlier tasks:",
       this.memoryBody || "(nothing yet)",
       "",

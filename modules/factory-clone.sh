@@ -98,18 +98,3 @@ fabriek_factory_clone_ensure() {
 
 	echo "$path"
 }
-
-## Where a repository keeps the guidance for roles working it. The baseline
-## fabriek ships states properties of the cage; this states the conventions of
-## this factory, which are the manager's to maintain and the operator's to
-## accept, like any other document in that repository.
-fabriek_factory_guidance_path() {
-	echo "$1/docs/factory-guidance.md"
-}
-
-fabriek_factory_guidance() {
-	local repo="$1" file
-	file="$(fabriek_factory_guidance_path "$repo")"
-	[ -f "$file" ] || return 0
-	cat "$file"
-}

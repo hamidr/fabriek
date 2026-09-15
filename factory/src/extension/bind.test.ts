@@ -57,7 +57,7 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
 describe("binding an actor", () => {
   it("given a start, then ready is announced on the role's control stream with its capabilities", async () => {
     const bus = scriptedBus([]);
-    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge: scriptedForge({ number: 7, title: "t", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, retryMs: 1 });
+    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge: scriptedForge({ number: 7, title: "t", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, tree: { guidance: async () => null }, retryMs: 1 });
     await bound.start();
     bound.stop();
     assert.deepEqual(bus.written[0], { stream: "control:builder", fields: { kind: "ready", capabilities: "build" } });
@@ -68,7 +68,7 @@ describe("binding an actor", () => {
     const forge = scriptedForge({ number: 7, title: "Add importer", body: "how", labels: ["build"], assignee: "builder" });
     const prompts: string[] = [];
     let finished = 0;
-    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge, agent: { prompt: (t) => prompts.push(t), steer() {}, abort() {}, finish: () => finished++ }, checks: { hasCommit: async () => true }, retryMs: 1 });
+    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge, agent: { prompt: (t) => prompts.push(t), steer() {}, abort() {}, finish: () => finished++ }, checks: { hasCommit: async () => true }, tree: { guidance: async () => null }, retryMs: 1 });
     await bound.start();
     try {
       await tick();
@@ -89,7 +89,7 @@ describe("binding an actor", () => {
     const first = scriptedBus([new Error("bus closed")]);
     const second = scriptedBus([]);
     const buses = [first, second];
-    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => buses.shift() ?? second, forge: scriptedForge({ number: 1, title: "", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, retryMs: 1 });
+    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => buses.shift() ?? second, forge: scriptedForge({ number: 1, title: "", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, tree: { guidance: async () => null }, retryMs: 1 });
     await bound.start();
     await tick();
     bound.stop();
@@ -99,7 +99,7 @@ describe("binding an actor", () => {
 
   it("given a mailbox entry that is not a message, then it is refused on the role's events and the loop goes on", async () => {
     const bus = scriptedBus([[{ id: "3-0", fields: { kind: "nonsense" } }]]);
-    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge: scriptedForge({ number: 1, title: "", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, retryMs: 1 });
+    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge: scriptedForge({ number: 1, title: "", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, tree: { guidance: async () => null }, retryMs: 1 });
     await bound.start();
     await tick();
     bound.stop();

@@ -106,6 +106,9 @@ bound = bindActor({
       }
     },
   },
+  // The scripted actor works no tree of its own, so the repository has no
+  // word for it.
+  tree: { async guidance() { return null; } },
 });
 
 bound.start().catch((e) => {

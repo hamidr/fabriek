@@ -38,7 +38,9 @@ function fakes() {
   };
   let commit = true;
   const checks = { async hasCommit() { return commit; } };
-  return { bus, board, agent, sent, comments, calls, checks, setCommit: (v: boolean) => (commit = v), setBlocked: (v: number | null) => (blocked = v), memory: () => memoryBody };
+  let guidance: string | null = null;
+  const tree = { async guidance() { return guidance; } };
+  return { bus, board, agent, sent, comments, calls, checks, tree, setCommit: (v: boolean) => (commit = v), setBlocked: (v: number | null) => (blocked = v), setGuidance: (v: string | null) => (guidance = v), memory: () => memoryBody };
 }
 
 const capabilities = ["build", "test"];
@@ -201,6 +203,25 @@ describe("an actor", () => {
     await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
     await actor.handle({ kind: "reconcile" });
     assert.deepEqual(f.sent.at(-1), { kind: "held", issues: [7] });
+  });
+
+  // ADR-054: the repository's own guidance reaches a role in its brief,
+  // read from the worktree it was handed, so what the manager writes is
+  // what the next task reads.
+  it("the brief carries the repository's guidance under 'this factory:' when the worktree has it, and no such section when it does not", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    f.setGuidance("Run make check before done.\nCommits in the imperative.");
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    const prompt = (f.agent as { lastPrompt?: string }).lastPrompt ?? "";
+    assert.match(prompt, /^this factory:\nRun make check before done\.\nCommits in the imperative\.$/m);
+    assert.ok(prompt.indexOf("this factory:") < prompt.indexOf("Your memory"));
+    await actor.reportOutcome({ status: "done", summary: "x" });
+    await actor.settled();
+    f.setGuidance(null);
+    await actor.handle({ kind: "assignment", issue: 8, attempt: 1 });
+    assert.doesNotMatch((f.agent as { lastPrompt?: string }).lastPrompt ?? "", /this factory:/);
   });
 
   it("turn and tool events are published to the bus, as events and never as files", async () => {

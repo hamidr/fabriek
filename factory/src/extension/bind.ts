@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { BusClient, type Entry } from "../bus/client.js";
 import { ForgeClient } from "../forge/client.js";
 import { parseMessage, toFields, type Message } from "../messages.js";
-import { Actor, type Agent, type Board, type Bus, type Checks } from "./actor.js";
+import { Actor, type Agent, type Board, type Bus, type Checks, type Tree } from "./actor.js";
 
 const STREAM_CAP = 10000;
 
@@ -42,6 +42,7 @@ export interface BindOptions {
   forge: ActorForge;
   agent: Agent;
   checks: Checks;
+  tree: Tree;
   /** The pause before connecting again. */
   retryMs?: number;
 }
@@ -90,7 +91,7 @@ export function bindActor(o: BindOptions): Bound {
     rewriteMemory: (n, body) => o.forge.rewriteMemory(n, body),
     blockedOn: () => o.forge.blockedOn(o.role),
   };
-  const actor = new Actor({ role: o.role, capabilities: o.capabilities, specialists: o.specialists ?? [], bus: new RoleBus(() => client, o.role), board, agent: o.agent, checks: o.checks });
+  const actor = new Actor({ role: o.role, capabilities: o.capabilities, specialists: o.specialists ?? [], bus: new RoleBus(() => client, o.role), board, agent: o.agent, checks: o.checks, tree: o.tree });
 
   /** Read the mailbox until stopped, reconnecting when the bus goes away. */
   async function listen(): Promise<void> {
