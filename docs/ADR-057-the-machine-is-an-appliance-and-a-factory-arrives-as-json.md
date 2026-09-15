@@ -53,6 +53,18 @@ it chose; and `-fw_cfg name=opt/io.systemd.credentials/<name>,file=<path>`
 is how `credentialFiles` hands systemd a credential the guest reads at
 `/run/credentials/@system/<name>`, which the same runtime line can carry.
 
+The machine today owns its store: the closure ships as a read-only disk
+and builds land on `store.img` (`storeOnDisk`, `writableStoreOverlay`).
+The host's store is invisible, so a toolchain the operator's host already
+holds is fetched again per factory. microvm.nix's other mode shares the
+host's `/nix/store` read-only into the guest under the same overlay
+(`mounts.nix`), which is what a shared store costs nothing to reuse. What
+made that mode wrong until now was the cage: nixcage binds the whole
+store into every session, so a shared host store would put every
+`*-source` of every repository the operator ever evaluated inside each
+role's cage. nixcage ADR-014 closes that: a session without the daemon
+sees the closure of its named roots and nothing else of the store.
+
 ## Decision
 
 **1. One image per fabriek and system, built once, with no factory in
@@ -65,6 +77,20 @@ of a factory, an operator or a host is evaluated into it. The pool is
 name. The image declares no network interface and no forwarded port, and
 its two volumes are `autoCreate = false`. `lib.factory` and the generated
 per-factory flake go.
+
+**1a. The host's store is the machine's lower store.** `storeOnDisk =
+false`; the host's `/nix/store` is a read-only share at `/nix/.ro-store`
+(virtiofs on a Linux host, 9p on macOS) under the writable overlay on
+`store.img`, which stays per factory. Nothing of the appliance's closure
+is copied into a disk, and a path the host holds is never fetched by the
+machine. The guest's nix must know the host's paths as valid, not only
+present, or it substitutes them again: the guest daemon runs
+`local-overlay-store` with the share as its lower store and the host's
+`/nix/var/nix/db` shared read-only beside it. That feature is
+experimental in the pinned nix (2.34.8) and the sqlite read over 9p is
+unproven; the measurement plan checks both, and if either fails on a host
+the fallback for that host is the host serving its store as a substituter
+over the user-mode NIC, which reuses the same paths at a copy's cost.
 
 **2. The runner is the image's, and `up` computes the per-factory line.**
 `fabriek up` runs the appliance's `microvm-run` in the factory's machine
@@ -109,12 +135,21 @@ an expression of fabriek's evaluated against
 inputs the way `profileOf` does today, unions them with the role's
 specialists from the catalogues, and `nix build`s the result into the
 store overlay, linked at `/var/lib/fabriek/factory/roles/<role>/profile`.
-The cage is unchanged: `--no-nix-daemon`, the profile on
-`NIXCAGE_PATH_PREFIX`, and `seam.bats` asserts the same line. A
-repository's own catalogue (ADR-042 point 3) is evaluated by the same
-daemon from the same clone. Prepare realises every role or reports the
-first that fails and starts no session; the executor starts a role's
-session only when its profile link exists.
+The cage's line gains `--store-root` for the profile and for the role's
+pi directory (nixcage ADR-014), so the session sees those two closures
+and nothing else of a store that now holds the operator's whole history;
+`seam.bats` asserts the line with them. A repository's own catalogue
+(ADR-042 point 3) is evaluated by the same daemon from the same clone.
+Prepare realises every role or reports the first that fails and starts
+no session; the executor starts a role's session only when its profile
+link exists.
+
+**5a. `up` roots on the host what the machine uses of the host.** After
+prepare, `up` reads `profiles.json` over ssh and registers a gc root under
+the factory's machine directory for each path the host's store holds,
+and one for the appliance itself. A host garbage collection while a
+factory runs then removes nothing under a running cage; `down` leaves
+the roots, `rm` of the factory removes them.
 
 **6. What the daemon may fetch is what it could fetch before.** ADR-025
 point 5 stands: the evaluator and the substituter run as root and leave; a
@@ -164,11 +199,19 @@ the runner with the file.
 The first `up` of a factory is slower than a boot: the toolchain is
 substituted on the machine over the user-mode NIC rather than on the
 operator's host, and the repository's flake is evaluated in the machine's
-memory, which is sized for the cages. It is substituted once: the store
-overlay is `store.img`, a volume beside the pool and not on it, kept
-across restarts and bounded by the size `up` gave it. A toolchain whose
-closure does not fit is a role that does not start; the cap that bounds
-the volume is the operator's to raise. A devShell that builds from source
+memory, which is sized for the cages. What the host holds is not
+substituted at all; what it does not is substituted once into
+`store.img`, the overlay's upper layer, a volume beside the pool and not
+on it, kept across restarts and bounded by the size `up` gave it. A
+toolchain whose closure does not fit is a role that does not start; the
+cap that bounds the volume is the operator's to raise. On a macOS host
+the lower store holds Linux paths only where a Linux builder put them, so
+the reuse there is the appliance and little else, and 9p is slower than
+virtiofs on a store's many small files; the measurement plan records the
+cost. The machine's root now reads the operator's whole store, which is
+the operator's own history on the operator's own machine and not a
+widening; the cages do not, by ADR-014, and that is the line this design
+keeps. A devShell that builds from source
 on the operator's host and does not substitute is a role that does not
 start, where it was a slow build before. That is a narrower toolchain than
 ADR-040 offered, and it is the toolchain ADR-025 already allowed the
@@ -197,8 +240,10 @@ leans on both.
 
 ## Measurement plan
 
-Two claims. The runtime line takes effect, and a second `up` realises
-nothing. On a machine with a factory whose roles name a devShell:
+Three claims. The runtime line takes effect; a second `up` realises
+nothing; a first `up` fetches nothing the host holds. On a Linux host and
+on macOS, with a factory whose roles name a devShell the host has already
+realised:
 
 ```bash
 fabriek up example
@@ -210,8 +255,15 @@ fabriek up example 2>&1 | tee /tmp/second-up.log
 grep -c "copying path" /tmp/second-up.log     # expected: 0
 ssh -p "$(cat ~/.local/share/fabriek/example/port)" root@localhost \
   'cat /var/lib/fabriek/factory/profiles.json' # same paths as the first up
+fabriek rm example; fabriek up example 2>&1 | grep -c "copying path"
+                                              # expected: 0 on Linux; on macOS, the paths the host lacks
+ssh -p "$(cat ~/.local/share/fabriek/example/port)" root@localhost \
+  'nix path-info --store local-overlay:// /run/current-system'
+                                              # the lower store answers for a host path
 ```
 
 The first `up`'s wall time and the machine's peak memory during prepare,
-against the last ADR-040 build's, are recorded beside the result in
-`docs/roadmap.md`; the claim is only that it is once.
+against the last ADR-040 build's, and the time of `ls -R` over a
+thousand-path closure on `/nix/.ro-store` per share protocol, are
+recorded beside the result in `docs/roadmap.md`; the claim is only that
+it is once, and that 9p is bearable where virtiofs is absent.
