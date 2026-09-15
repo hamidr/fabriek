@@ -59,7 +59,9 @@ EOF
 printf '%s\n' "\$*" >>"$SSH_CALLS"
 # What arrives on stdin is the interesting half of giving a machine a
 # credential, and it is not in the arguments by design.
-if printf '%s' "\$*" | grep -q 'fabriek-egress-credential'; then
+# The verb and then a host; not the unit of a similar name, whose restart
+# carries no stdin and would hang a cat on it.
+if printf '%s' "\$*" | grep -qE ' fabriek-egress-credential [a-z0-9.-]+\$'; then
 	cat >>"$TEST_TEMP_DIR/ssh-stdin"
 fi
 # A machine verb arrives NUL-separated on stdin for xargs; kept as words.

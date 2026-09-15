@@ -427,8 +427,9 @@ give_credentials() {
   done <<<"$hosts"
 
   ## The proxy read its headers when it started, which was before any of this.
+  ## Nothing goes over stdin here, so nothing of the caller's is offered.
   if ! ssh "${ssh_args[@]}" root@localhost \
-    "systemctl restart fabriek-egress-credentials nginx" >/dev/null 2>&1; then
+    "systemctl restart fabriek-egress-credentials nginx" </dev/null >/dev/null 2>&1; then
     log_err "$factory has its credentials but its proxy would not pick them up"
     return 1
   fi
