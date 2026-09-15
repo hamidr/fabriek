@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 055
+**Next ADR number:** 056
 
 ## PRDs
 
@@ -79,3 +79,4 @@ document, then regenerate.
 | [ADR-052](ADR-052-a-workspace-of-submodules-and-a-pull-request-per-repository.md) | A factory works a workspace of submodules, and its output is a pull request per repository | proposed | -- | ADR-010, ADR-011, ADR-020, ADR-034, ADR-036, ADR-040 | the declaring repository pins the others as submodules; one board and record, push and mirror fan out per repository |  |
 | [ADR-053](ADR-053-a-role-declares-replicas-and-each-is-a-role.md) | A role declares replicas, and each replica is a role in everything but its declaration | implemented | -- | ADR-010, ADR-020, ADR-033, ADR-034, ADR-036, ADR-037 | replicas = N expands one declared role into N named roles before anything reads the declaration; nothing else changes |  |
 | [ADR-054](ADR-054-a-role-is-told-about-the-cage-in-its-system-prompt.md) | A role is told about the cage in its system prompt, and reads the repository's guidance from its worktree | implemented | -- | ADR-030, ADR-035, ADR-042, ADR-050 | role-guidance.md is the front of every role's APPEND_SYSTEM.md; the actor reads docs/factory-guidance.md into the brief |  |
+| [ADR-055](ADR-055-concurrency-is-the-ceiling-on-tasks-in-flight.md) | concurrency is the ceiling on tasks in flight, held by the executor and used to size every cage | implemented | -- | ADR-019, ADR-020, ADR-034, ADR-053 | assign is refused past resources.concurrency; a cage is sized by it; absent, it is the role count |  |

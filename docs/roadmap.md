@@ -286,11 +286,9 @@ One package, built through the flake, tests in its own runner.
   actor reads `docs/factory-guidance.md` from its worktree into the brief,
   and the role guidance itself moved from a file nothing read into the
   front of every role's system prompt.
-- 6.7 `resources.concurrency` absent means 1 in `machine-plan.sh`, so
-  every cage gets the machine's whole allowance and N cages oversubscribe
-  it. Whether absent should mean the role count is a sizing correction
-  for every declaration; ADR-053 point 5 leaves it here. Open as of
-  2026-09-15.
+- 6.7 `resources.concurrency`. Done 2026-09-15 (ADR-055): the ceiling on
+  tasks in flight, held by the executor, told to the decider, and the
+  divisor for every cage; absent means the role count.
 
 ## Where the log's open items landed (its section 6)
 

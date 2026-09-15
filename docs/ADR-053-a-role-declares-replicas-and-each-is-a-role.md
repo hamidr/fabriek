@@ -79,6 +79,9 @@ each replica provides what the base did. A stage's `ready`, `done` and
 `gate` name no role.
 
 **5. A declared `concurrency` is checked against the expanded roles.**
+ADR-055 withdraws this point: `concurrency` is the ceiling on tasks in
+flight, so fewer than the roles is the ordinary case. The text stands as
+written for the record.
 `resources.concurrency` is what `machine-plan.sh` divides memory and
 cores by, with a default of 1 when absent, which today gives every cage
 the whole allowance. When the key is declared and smaller than the

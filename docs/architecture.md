@@ -76,9 +76,8 @@ A role names its specialists in `fabriek.nix` and nothing else; `command`
 defaults to pi. A role may declare `replicas = N` (ADR-053): the shell
 validator expands it into `<role>-1` to `<role>-N`, each the same
 declaration, before anything else reads the file, so the build, the
-machine and the executor see N roles and no `replicas`; a declared
-`concurrency` below the expanded count is refused, as is a hand-declared
-role under a replica's name. `modules/catalogue.nix` reads both, flattens what a role
+machine and the executor see N roles and no `replicas`; a hand-declared
+role under a replica's name is refused. `modules/catalogue.nix` reads both, flattens what a role
 names once per name, parents first, and builds one derivation per role. A
 specialist may declare language servers (`lsp`), unioned by id into the
 role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043),
@@ -231,7 +230,9 @@ commands, executables, skills and refusals cut from `events:<role>` and
 then moves the stage label only when the role's branch has a commit
 since the attempt began, unless the stage is declared `verdict`, closes
 at the last stage, labels `blocked`, frees the role on failed; counts
-attempts per stage; stops routing at ninety percent of the ceiling. It reads the control streams from where they are before it
+attempts per stage; refuses an assignment when as many roles hold work
+as `resources.concurrency` allows (ADR-055); stops routing at ninety
+percent of the ceiling. It reads the control streams from where they are before it
 starts the sessions, so no ready is missed. `main.ts` connects as the executor's bus
 user, starts every role's session and the decider's through the machine
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
