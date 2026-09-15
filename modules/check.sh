@@ -32,7 +32,9 @@ fabriek_catalogue_eval() {
 	  let flake = builtins.getFlake $(fabriek_nix_string "path:$self");
 	      pkgs = flake.inputs.nixpkgs.legacyPackages.$system;
 	      project = $project;
-	      decl = project.fabriek;
+	      ## The declaration as validated and expanded (ADR-053), when one was
+	      ## read; the flake's own words otherwise.
+	      decl = $(if [ -n "${FABRIEK_CHECK_DECLARATION:-}" ]; then printf 'builtins.fromJSON %s' "$(fabriek_nix_string "$FABRIEK_CHECK_DECLARATION")"; else printf 'project.fabriek'; fi);
 	      cat = flake.lib.catalogue { inherit pkgs; extra = $extra; };
 	      show = c: {
 	        inherit (c) order servers promptText;

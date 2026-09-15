@@ -52,6 +52,17 @@ check() {
 	assert_line --partial "reviewer: (no specialists)"
 }
 
+# ADR-053: replicas are expanded before anything reads the declaration, so
+# check composes and names each replica, not the base.
+@test "a role with replicas is checked as each replica, composed alike, and the base name is not a role" {
+	declare_roles 'backend = { provides = [ "build" ]; specialists = [ "python" ]; replicas = 2; };' 'resources.concurrency = 2;'
+	check
+	assert_success
+	assert_line --partial "backend-1: committer, developer, python"
+	assert_line --partial "backend-2: committer, developer, python"
+	refute_line --partial "  backend:"
+}
+
 @test "a specialist no catalogue has is refused in one plain line, naming the role and what is offered" {
 	declare_roles 'backend = { provides = [ "build" ]; specialists = [ "rust" ]; };' ''
 	check
