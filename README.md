@@ -82,6 +82,8 @@ under `catalogue/`, and the repository's under the directory its
 tools it brings, the skills it knows (Agent Skills format, the same
 `SKILL.md` pi, Claude Code and Codex read), the language servers it runs
 (ADR-043, through `pi-lsp`), and what a test is in its language (ADR-044).
+Every role queries its worktree as a graph, symbols and calls and blast
+radius, through `codegraph` (ADR-049, through `pi-codegraph`).
 Specialists compose: `[ "springboot" "python" ]` is one role with both
 kits, each prompt once, in that order. Adding a specialist is adding a
 directory; nothing else lists them.

@@ -87,6 +87,11 @@ A change to what a role session is shows up there as a diff.
   catalogue of its own with the same layout. Adding a specialist is adding
   a directory. A specialist's `lsp` servers reach the `pi-lsp` extension
   (`modules/pi-lsp/`, built from npm with a lockfile of ours, ADR-043).
+  `developer` carries `codegraph` (`modules/codegraph/`, the release
+  tarball wrapped to reach nothing off the machine); the `pi-codegraph`
+  extension (`modules/pi-codegraph/`, the npm tarball, no dependencies)
+  gives every role's pi the `codegraph_*` tools over the index the machine
+  program builds at the worktree (ADR-049).
 - `modules/names.sh`: the names fabriek accepts, checked where they are
   declared. A role name is also its cage's, a machine name to nspawn, so it
   is at most sixty-four characters; `decider` is reserved.

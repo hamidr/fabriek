@@ -78,7 +78,12 @@ names once per name, parents first, and builds one derivation per role. A
 specialist may declare language servers (`lsp`), unioned by id into the
 role's `lsp.json` for the `pi-lsp` extension (`modules/pi-lsp/`, ADR-043),
 and what a test is (`tests`: test files, source files, runner commands),
-unioned into `tests.json` for the loop's test-first guard (ADR-044).
+unioned into `tests.json` for the loop's test-first guard (ADR-044). The
+`developer` specialist carries `codegraph` (`modules/codegraph/`,
+ADR-049): the worktree is indexed by the machine program before it is
+handed to the role, and the `pi-codegraph` extension
+(`modules/pi-codegraph/`) in every role's pi spawns the binary from `PATH`
+to answer `codegraph_explore` and its siblings.
 
 ## The host
 
@@ -128,10 +133,11 @@ The machine (`modules/machine/default.nix` and `modules/machine/`):
   stream, written as a user that can write nothing else (ADR-038).
 - `floor.nix`: pi on every cage; one pi directory per role under
   `/etc/fabriek/roles/<role>/pi`, a store path carrying the loop, the
-  `pi-lsp` extension, a `models.json` pointing pi at the proxy, and from
-  the role's profile the `APPEND_SYSTEM.md`, `skills/` and `lsp.json` of
-  its specialists; the decider's loop under `/etc/fabriek/pi-decider` as
-  real files (ADR-030, ADR-035, ADR-042, ADR-043).
+  `pi-lsp` and `pi-codegraph` extensions, a `models.json` pointing pi at
+  the proxy, and from the role's profile the `APPEND_SYSTEM.md`, `skills/`
+  and `lsp.json` of its specialists; the decider's loop under
+  `/etc/fabriek/pi-decider` as real files (ADR-030, ADR-035, ADR-042,
+  ADR-043, ADR-049).
 - `executor.nix`: the `fabriek-executor` unit, as root, restarted always.
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
