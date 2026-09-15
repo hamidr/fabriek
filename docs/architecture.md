@@ -83,7 +83,14 @@ unioned into `tests.json` for the loop's test-first guard (ADR-044). The
 ADR-049): the worktree is indexed by the machine program before it is
 handed to the role, and the `pi-codegraph` extension
 (`modules/pi-codegraph/`) in every role's pi spawns the binary from `PATH`
-to answer `codegraph_explore` and its siblings.
+to answer `codegraph_explore` and its siblings. The tree is rooted in
+`committer` (whoever works in a worktree: the reading kit and the commit
+discipline, ADR-050); `developer` is the builder every language
+specialist extends, and `architect`, `reviewer` and `manager` extend
+`committer` directly. `manager` tunes the workflow through the decider's
+policy, `docs/factory-guidance.md` and the repository's own catalogue,
+and assigns nothing; at an `inspect` verdict stage after review it reads
+each attempt's trace (ADR-051).
 
 ## The host
 
@@ -213,11 +220,14 @@ actor with an `assigning` row what it holds and resolving those rows from
 the answers, never creating one; applies the six verbs after validating each
 against the declaration and the board; writes `assigning` and the attempt
 line (`thread.ts`: the stage and where the role's branch stood) before
-sending, `assigned` on the ack; reads outcomes off the board and moves the
-stage label only when the role's branch has a commit since the attempt
-began, closes at the last stage, labels `blocked`, frees the role on
-failed; counts attempts per stage; stops routing at ninety percent of the
-ceiling. It reads the control streams from where they are before it
+sending, `assigned` on the ack; reads outcomes off the board, comments a
+`trace:` of the attempt first (`trace.ts`, ADR-051: turns, tools,
+commands, executables, skills and refusals cut from `events:<role>` and
+`probes` between the actor's `task_started` and `task_ended` brackets),
+then moves the stage label only when the role's branch has a commit
+since the attempt began, unless the stage is declared `verdict`, closes
+at the last stage, labels `blocked`, frees the role on failed; counts
+attempts per stage; stops routing at ninety percent of the ceiling. It reads the control streams from where they are before it
 starts the sessions, so no ready is missed. `main.ts` connects as the executor's bus
 user, starts every role's session and the decider's through the machine
 program, reads `control:*`, `commands` and `operator`, checks outcomes every

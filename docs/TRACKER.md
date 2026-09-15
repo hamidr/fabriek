@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 051
+**Next ADR number:** 053
 
 ## PRDs
 
@@ -75,3 +75,5 @@ document, then regenerate.
 | [ADR-048](ADR-048-a-nixos-host-declares-its-factories.md) | A NixOS host declares its factories, and the same file serves every other host | proposed | -- | ADR-019, ADR-020, ADR-025, ADR-047 | services.fabriek renders the operator's config.toml and a unit per auto-started factory; the CLI reads /etc too |  |
 | [ADR-049](ADR-049-a-role-queries-its-worktree-through-codegraph.md) | A role queries its worktree as a graph through codegraph, indexed before hand-over | implemented | -- | ADR-030, ADR-031, ADR-037, ADR-042, ADR-043 | codegraph in the developer kit, pi-codegraph in every role pi, the worktree indexed before the role gets it |  |
 | [ADR-050](ADR-050-a-committer-at-the-root-and-a-manager-who-assigns-nothing.md) | The specialist tree is rooted in a committer, and a manager tunes the workflow without assigning | implemented | -- | ADR-031, ADR-034, ADR-040, ADR-042, ADR-049 | committer is the root every specialist extends, developer the builder, manager owns policy, guidance, catalogue |  |
+| [ADR-051](ADR-051-every-attempt-leaves-a-trace-and-the-manager-inspects-it.md) | Every attempt leaves a trace in its thread, and a verdict stage hands it to the manager | implemented | -- | ADR-033, ADR-034, ADR-038, ADR-050 | the executor comments a trace per attempt cut from the events and probes streams; a stage may be a verdict |  |
+| [ADR-052](ADR-052-a-workspace-of-submodules-and-a-pull-request-per-repository.md) | A factory works a workspace of submodules, and its output is a pull request per repository | proposed | -- | ADR-010, ADR-011, ADR-020, ADR-034, ADR-036, ADR-040 | the declaring repository pins the others as submodules; one board and record, push and mirror fan out per repository |  |
