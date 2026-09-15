@@ -16,8 +16,9 @@
 #                                                   --bind-ro
 #   --task-dir       bound the run directory and named it in the environment
 #                                                -> --bind and --setenv
-#   the role guidance was bound read-only and named in the environment
-#                                                -> --bind-ro and --setenv
+#   the role guidance   was bound read-only and named in the environment
+#                                                -> nothing: it is in the role's
+#                                                   system prompt (ADR-054)
 #
 # Three things changed with ADR-037 and ADR-040, and each is a flag here. A
 # cage is on the factory's bridge at the address the machine's plan gives its
@@ -170,7 +171,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -178,7 +179,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock --bind-ro $FABRIEK_LIB/role-guidance.md:/etc/fabriek/role-guidance.md --setenv FABRIEK_ROLE_GUIDANCE=/etc/fabriek/role-guidance.md builder $STATE/worktrees/acme/builder"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --auth-sock /tmp/agent.sock builder $STATE/worktrees/acme/builder"
 }
 
 @test "the uid comes from nixcage rather than from a store fabriek keeps" {
@@ -424,4 +425,14 @@ JSON
 	assert_success
 	run cat "$STORAGE_CALLS"
 	assert_output --partial "ensure $STATE/worktrees/acme/builder 60000"
+}
+
+# ADR-054: the guidance is in the role's system prompt, built into its pi
+# directory; the session binds nothing for it and names nothing.
+@test "a role session binds no guidance file and sets no variable for it" {
+	run_fabriek_container role-enter --repository "$REPO" --signing-key builder acme builder
+	assert_success
+	run recorded
+	refute_output --partial "role-guidance"
+	refute_output --partial "FABRIEK_ROLE_GUIDANCE"
 }

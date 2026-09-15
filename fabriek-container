@@ -12,8 +12,8 @@
 
 set -euo pipefail
 
-# Where the shell modules and the role guidance live. Set by the Nix wrapper to
-# a store path; the suite points it at the working tree.
+# Where the shell modules live. Set by the Nix wrapper to a store path; the
+# suite points it at the working tree.
 FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 
 # shellcheck source=modules/names.sh
@@ -34,8 +34,6 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/resources.sh"
 # shellcheck source=modules/repo-declaration.sh
 . "$FABRIEK_LIB/repo-declaration.sh"
-# shellcheck source=modules/role-guidance.sh
-. "$FABRIEK_LIB/role-guidance.sh"
 # shellcheck source=modules/machine-plan.sh
 . "$FABRIEK_LIB/machine-plan.sh"
 # shellcheck source=modules/transcript.sh
@@ -131,8 +129,10 @@ USAGE
 ## nixcage's own entry point. Each was a special case inside the cage before
 ## the split; naming them is what let the cage stop knowing what a role is.
 ##
-## The guidance and the task arrive read-only and by bind, and the outcome
-## leaves the same way: nothing a role writes ever reaches a command line.
+## The task arrives read-only and by bind, and the outcome leaves the same
+## way: nothing a role writes ever reaches a command line. What a role is
+## told about the cage is in its system prompt, built into its pi directory
+## (ADR-054).
 cmd_role_enter() {
 	local auth_sock="" task_dir="" signing_role="" from_env="" repository=""
 	while [ $# -gt 0 ]; do
@@ -277,15 +277,6 @@ cmd_role_enter() {
 		## a socket, because an absence is not a decision.
 		opts+=(--no-agent)
 	fi
-
-	## A role is told the rules it cannot infer from error messages: what it
-	## may write, and that the packed-refs permission error on every ref
-	## update is expected rather than a failed commit (ADR-010).
-	local guidance_line
-	while IFS= read -r guidance_line; do
-		[ -n "$guidance_line" ] || continue
-		opts+=("$guidance_line")
-	done < <(fabriek_role_guidance_args "$FABRIEK_LIB/role-guidance.md" "$role")
 
 	## A task reaches the session as files rather than as arguments: the brief
 	## is read, the outcome is written, and neither ever passes through a

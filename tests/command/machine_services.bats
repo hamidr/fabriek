@@ -229,6 +229,16 @@ machine_text() {
 	assert_output --partial 'share/fabriek/specialist/tests.json $out/tests.json'
 }
 
+# ADR-054: what every role is told about the cage is the front of its
+# system prompt, built into its pi directory, not a file bound into the
+# cage that nothing read.
+@test "a role's APPEND_SYSTEM.md opens with the role guidance and carries the specialists' prompt after it" {
+	run machine_text 'c.environment.etc."fabriek/roles/builder/pi".source.buildCommand'
+	assert_success
+	assert_output --regexp 'cat /nix/store/[a-z0-9]+-role-guidance\.md /nix/store/[^ ]+/share/fabriek/specialist/APPEND_SYSTEM\.md >\$out/APPEND_SYSTEM\.md'
+	refute_output --regexp 'ln -s [^ ]+/APPEND_SYSTEM\.md'
+}
+
 # ADR-049: the codegraph tools ride beside pi-lsp, from the community
 # extension pinned like it, so every role's pi can ask the index its
 # worktree carries.

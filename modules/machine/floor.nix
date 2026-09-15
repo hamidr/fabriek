@@ -77,6 +77,12 @@ let
     export { default } from "${pkgs.pi-codegraph}/${pkgs.pi-codegraph.extension}";
   '';
 
+  ## What every role is told about working in a cage (ADR-054): the front
+  ## of its system prompt, before the specialists' prompts. Here rather
+  ## than bound into the cage as a file, because nothing in a cage read the
+  ## file; a system prompt is read.
+  guidance = ../role-guidance.md;
+
   ## A role's own pi directory (ADR-042 point 5): the loop and the models
   ## every role gets, and from its profile the prompt, the
   ## skills and the language servers of who it is. One store path per
@@ -100,7 +106,7 @@ let
       ln -s ${profile}/share/fabriek/specialist/tests.json $out/tests.json
       cp ${pkgs.writeText "models.json" modelsText} $out/models.json
       ln -s ${profile}/share/fabriek/specialist/skills $out/skills
-      ln -s ${profile}/share/fabriek/specialist/APPEND_SYSTEM.md $out/APPEND_SYSTEM.md
+      cat ${guidance} ${profile}/share/fabriek/specialist/APPEND_SYSTEM.md >$out/APPEND_SYSTEM.md
     '';
 in
 {

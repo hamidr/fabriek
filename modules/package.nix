@@ -7,9 +7,8 @@
 ## stubs nixcage-container on PATH and records the argv it was given.
 { pkgs, self }:
 let
-  ## Everything the machine program sources, plus the guidance it binds into a
-  ## role's session. One directory so the program needs a single path rather
-  ## than one per file.
+  ## Everything the machine program sources. One directory so the program
+  ## needs a single path rather than one per file.
   ## Every module rather than a list of them: the list drifted twice (check.sh,
   ## transcript.sh) and the installed CLI was what found out.
   lib' = pkgs.runCommand "fabriek-lib" { } ''
@@ -17,7 +16,7 @@ let
     cp ${
       pkgs.lib.fileset.toSource {
         root = ../modules;
-        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "sh" || f.name == "role-guidance.md") ../modules;
+        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "sh") ../modules;
       }
     }/* $out/
   '';
