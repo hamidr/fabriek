@@ -65,6 +65,9 @@ fab() {
 	assert_line --partial "order: developer, java, springboot"
 	assert_line --partial "tools:"
 	assert_output --partial "maven"
+	## ADR-049: every specialist builds on developer, and developer carries
+	## the binary the codegraph tools spawn.
+	assert_output --partial "codegraph"
 	assert_line --partial "jvm-profile: Profile a running JVM"
 	assert_line --partial "servers: jdtls"
 	assert_line --partial "tests: **/src/test/**"

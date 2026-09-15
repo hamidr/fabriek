@@ -229,6 +229,16 @@ machine_text() {
 	assert_output --partial 'share/fabriek/specialist/tests.json $out/tests.json'
 }
 
+# ADR-049: the codegraph tools ride beside pi-lsp, from the community
+# extension pinned like it, so every role's pi can ask the index its
+# worktree carries.
+@test "a role's pi directory carries pi-codegraph beside pi-lsp" {
+	run machine_text 'c.environment.etc."fabriek/roles/builder/pi".source.buildCommand'
+	assert_success
+	assert_output --partial 'extensions/pi-codegraph/index.ts'
+	assert_output --partial 'pi-codegraph-0.1.10/extensions/codegraph.ts'
+}
+
 # pi starts on no model unless told one; a session with nobody at the
 # keyboard needs it answered. Found on a machine whose decider said "No API
 # key found for the selected model" every thirty seconds, first because no

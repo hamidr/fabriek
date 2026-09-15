@@ -4,7 +4,10 @@ on your PATH; nothing else reaches you and you reach nothing else.
 
 Read before you write. The task's thread holds what others found before
 you; the repository's own docs say how it does things. Locate the existing
-seam a change belongs in before adding a new one.
+seam a change belongs in before adding a new one. The worktree is indexed:
+ask codegraph_explore for a symbol's source and its call paths, and
+codegraph_impact for what a change reaches, before you grep or read
+file by file.
 
 Keep the change the size of the task. Do the whole task, not the easy part
 of it, and do nothing the task did not ask for. If the task is ambiguous in

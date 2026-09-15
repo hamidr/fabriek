@@ -70,6 +70,13 @@ let
     export { default } from "${pkgs.pi-lsp}/${pkgs.pi-lsp.extension}/index.ts";
   '';
 
+  ## The codegraph tools (ADR-049), the same way. The binary they spawn is
+  ## the developer specialist's, on the role's PATH; a role without it is
+  ## told so by the tools themselves.
+  codegraphText = ''
+    export { default } from "${pkgs.pi-codegraph}/${pkgs.pi-codegraph.extension}";
+  '';
+
   ## A role's own pi directory (ADR-042 point 5): the loop and the models
   ## every role gets, and from its profile the prompt, the
   ## skills and the language servers of who it is. One store path per
@@ -82,11 +89,13 @@ let
       profile = config.environment.etc."fabriek/roles/${role}/profile".source;
     in
     pkgs.runCommand "fabriek-pi-${role}" { } ''
-      mkdir -p $out/extensions/fabriek $out/extensions/pi-lsp
+      mkdir -p $out/extensions/fabriek $out/extensions/pi-lsp $out/extensions/pi-codegraph
       cat >$out/extensions/fabriek/index.ts <<'TS'
       ${loopText}TS
       cat >$out/extensions/pi-lsp/index.ts <<'TS'
       ${lspText}TS
+      cat >$out/extensions/pi-codegraph/index.ts <<'TS'
+      ${codegraphText}TS
       ln -s ${profile}/share/fabriek/specialist/lsp.json $out/lsp.json
       ln -s ${profile}/share/fabriek/specialist/tests.json $out/tests.json
       cp ${pkgs.writeText "models.json" modelsText} $out/models.json

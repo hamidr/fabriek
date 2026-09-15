@@ -47,6 +47,8 @@ nixpkgs.lib.nixosSystem {
           ## The language-server extension every role's pi directory
           ## loads (ADR-043).
           pi-lsp = import ./pi-lsp { pkgs = final; };
+          ## The codegraph tools beside it (ADR-049).
+          pi-codegraph = import ./pi-codegraph { pkgs = final; };
         })
       ];
     }

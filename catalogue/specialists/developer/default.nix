@@ -8,6 +8,12 @@
     fd
     jq
     python3
+    ## The index of the worktree, which the codegraph tools in every
+    ## role's pi spawn from PATH (ADR-049). fabriek's own package rather
+    ## than one of pkgs, because the catalogue is evaluated on the
+    ## operator's host from plain nixpkgs (check.sh) as well as inside
+    ## the machine.
+    (import ../../../modules/codegraph { inherit pkgs; })
   ];
   skills = [
     skills.tool-missing
