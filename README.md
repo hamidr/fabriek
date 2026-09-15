@@ -183,7 +183,7 @@ takes `-h`; a usage error is one line on stderr and exit 2; `ls`, `ps`,
 | `fabriek file [-m BODY] WORKFLOW TITLE` | File a goal, the body from -m or stdin; the decider assigns it and nothing is typed after |
 | `fabriek console` | The one face: roles with one selected, board, activity, that role's stream, keys |
 | `fabriek board` | Forgejo's UI on a local port, for merging; prints the URL and the login |
-| `fabriek watch [--from ID]` | The factory's bus as JSON lines, for any client |
+| `fabriek watch [--from ID] [--stream NAME]...` | The factory's bus as JSON lines, for any client; some streams or all |
 | `fabriek send [JSON]` | A command in the decider's vocabulary, from you or stdin |
 | `fabriek mirror` | Push merged main and the record to the repository's origin |
 

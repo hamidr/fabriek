@@ -76,7 +76,7 @@ usage_of() {
   file)    echo "usage: fabriek [-f FACTORY] file [-m BODY] WORKFLOW TITLE" ;;
   console) echo "usage: fabriek [-f FACTORY] console" ;;
   board)   echo "usage: fabriek [-f FACTORY] board" ;;
-  watch)   echo "usage: fabriek [-f FACTORY] watch [--from ID]" ;;
+  watch)   echo "usage: fabriek [-f FACTORY] watch [--from ID] [--stream NAME]..." ;;
   send)    echo "usage: fabriek [-f FACTORY] send [JSON|-]" ;;
   mirror)  echo "usage: fabriek [-f FACTORY] mirror" ;;
   *)       echo "usage: fabriek [-f FACTORY] VERB [ARGS]" ;;

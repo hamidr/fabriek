@@ -2,10 +2,12 @@
 // entry, for as long as the caller keeps the connection. Runs on the machine
 // as the executor's bus user; the CLI's factory watch carries it over ssh.
 // From the end by default, so a watcher sees what happens next; --from 0-0
-// replays what the streams still hold.
+// replays what the streams still hold; --stream narrows to the streams
+// named.
 import { readFileSync } from "node:fs";
 import { BusClient } from "../bus/client.js";
 import { readDeclaration } from "../declaration.js";
+import { relayArgs } from "./args.js";
 import { streamsFor } from "./format.js";
 import { tail } from "./tail.js";
 
@@ -13,12 +15,12 @@ const ETC = process.env["FABRIEK_ETC"] ?? "/etc/fabriek";
 const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
 
 async function main(): Promise<void> {
-  const from = process.argv.includes("--from") ? (process.argv[process.argv.indexOf("--from") + 1] ?? "$") : "$";
   const declaration = readDeclaration(readFileSync(`${ETC}/declaration.json`, "utf8"));
+  const { from, streams } = relayArgs(process.argv.slice(2), streamsFor(Object.keys(declaration.roles)));
   const plan = JSON.parse(readFileSync(`${ETC}/bridge.json`, "utf8")) as { valkey: string };
   const [host, port] = plan.valkey.split(":");
   await tail({
-    streams: streamsFor(Object.keys(declaration.roles)),
+    streams,
     from,
     connect: () =>
       BusClient.connect({

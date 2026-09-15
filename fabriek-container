@@ -114,7 +114,7 @@ usage: fabriek-container
   role-stop <factory> <role> [--now]
   role-transcript <factory> <role> [<session>] [--text]
   factory-mirror <factory>
-  factory-watch <factory> [--from <id>]
+  factory-watch <factory> [--from <id>] [--stream <name>]...
   role-steer <factory> <role> <text>
   factory-send <factory> <json>
   factory-roles <factory>
@@ -566,7 +566,7 @@ cmd_role_transcript() {
 ## point 2). The relay is the factory package's; this only names it.
 cmd_factory_watch() {
 	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: fabriek-container factory-watch <factory> [--from <id>]"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-watch <factory> [--from <id>] [--stream <name>]..."
 	shift
 	exec fabriek-relay "$@"
 }

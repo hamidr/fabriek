@@ -72,11 +72,11 @@ if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ]; then
 	bash fabriek -f "$F" steer "$ROLE" "Where is $symbol called from, and what would a change to its return type reach? Use the codegraph tools, not grep." 2>/dev/null
 	# shellcheck disable=SC2329  # invoked through eventually
 	answered() {
-		timeout 15 bash fabriek -f "$F" watch --from "$since" 2>/dev/null |
+		timeout 20 bash fabriek -f "$F" watch --from "$since" --stream "events:$ROLE" 2>/dev/null |
 			jq -r 'select(.stream == "events:'"$ROLE"'" and .fields.name == "agent_end") | "ended"' | head -1
 	}
 	check "the role answers in a turn of its own" "ended" "$(eventually 180 ended answered)"
-	tools="$(timeout 15 bash fabriek -f "$F" watch --from "$since" 2>/dev/null |
+	tools="$(timeout 20 bash fabriek -f "$F" watch --from "$since" --stream "events:$ROLE" 2>/dev/null |
 		jq -r 'select(.stream == "events:'"$ROLE"'" and .fields.name == "tool_call") | .fields.json | fromjson | .toolName' | sort -u | paste -sd,)"
 	check "it reached for the graph" "yes" "$(printf '%s' "$tools" | grep -q 'codegraph_' && echo yes)"
 	check "and not for grep" "yes" "$(printf '%s' "$tools" | grep -qv '^bash$' && echo yes)"
@@ -102,6 +102,98 @@ check "the scope carries the memory bound" "yes" \
 check "a hand lands inside the actor's cage" "yes" \
 	"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
 gated "enter --print-argv matches seam.bats" "compare nixcage-container enter --print-argv for the role against the line seam.bats asserts; needs the role's uid and paths from the machine"
+
+scenario "The guidance is the front of the prompt, and the repository's is in the brief (ADR-054)"
+when "the session reads the front of APPEND_SYSTEM.md and the tree it was handed"
+check "the machine's guidance opens the system prompt" "# Working as a factory role" \
+	"$(in_cage "$ROLE" sh -c 'head -1 "$PI_CODING_AGENT_DIR/APPEND_SYSTEM.md"')"
+## A role's branch is cut from main once and kept; the guidance reaches a
+## role when its branch has it, so what is asked is the clone's main.
+check "the repository's guidance is on main in the role's clone, for a brief to read" "yes" \
+	"$(in_cage "$ROLE" sh -c 'git cat-file -e main:docs/factory-guidance.md 2>/dev/null && echo yes')"
+if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ]; then
+	## The brief is what the loop prompts a role with; a role asked what
+	## its brief said of this factory answers from it.
+	since="$(date +%s)000-0"
+	when "the operator asks the idle role what its brief said under 'this factory:'"
+	bash fabriek -f "$F" steer "$ROLE" "Quote the first line under the heading 'this factory:' in your last task brief, or say 'no brief' if you have had none this session." 2>/dev/null
+	# shellcheck disable=SC2329  # invoked through eventually
+	answered_guidance() {
+		timeout 20 bash fabriek -f "$F" watch --from "$since" --stream "events:$ROLE" 2>/dev/null |
+			jq -r 'select(.stream == "events:'"$ROLE"'" and .fields.name == "agent_end") | "ended"' | head -1
+	}
+	check "the role answers" "ended" "$(eventually 180 ended answered_guidance)"
+	gated "the brief carries the repository's guidance" "read the role's answer in the console or its transcript; a role with no task this session has had no brief"
+else
+	gated "the brief carries 'this factory:'" "set FABRIEK_PROOF_MODEL=1 and file a task; the role's transcript shows the brief with the repository's guidance under 'this factory:'"
+fi
+
+scenario "A replicated role is N roles, each with a cage of its own (ADR-053)"
+mapfile -t replicas < <(jq -r '.declaration.roles | keys[] | select(test("^[a-z]+-[0-9]+$"))' "$D/spec.json" 2>/dev/null)
+if [ "${#replicas[@]}" -ge 2 ]; then
+	when "the machine is asked about each replica"
+	for r in "${replicas[@]}"; do
+		check "$r has a cage of its own" "yes" \
+			"$(sshm "nixcage-container status $r" 2>/dev/null | grep -q '^running ' && echo yes)"
+		check "$r has a worktree of its own" "yes" \
+			"$(in_cage "$r" sh -c 'test -d .git -o -f .git && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo yes')"
+	done
+	## Asked of the machine: inside a cage every role is root, mapped onto
+	## its own host uid, and it is the host uid that tells them apart.
+	check "the replicas' uids differ" "yes" \
+		"$([ "$(sshm "nixcage-container uid ${replicas[0]}" 2>/dev/null)" != "$(sshm "nixcage-container uid ${replicas[1]}" 2>/dev/null)" ] && echo yes)"
+	check "no role carries the base name" "absent" \
+		"$(jq -r --arg b "${replicas[0]%-*}" '.declaration.roles | has($b) | if . then "present" else "absent" end' "$D/spec.json")"
+else
+	gated "a replicated role's cages" "declare replicas = 2 on a role of $F and run up -u; the proof then asks each replica's cage"
+fi
+
+scenario "An assignment past the declared concurrency is refused (ADR-055)"
+## The operator's own assign goes through the executor's gate as the
+## decider's would (ADR-039), so the refusal is asked for directly rather
+## than waited for: a decider that is told the ceiling never asks past it.
+## Filed at a stage that more roles than the ceiling provide, so the
+## refusal is the ceiling's and not "holds work already"; the launcher
+## files at the first stage only, so the verb goes through send with the
+## files put on the machine by hand. Each is a real small task, since a
+## role handed a tautology reports blocked and asks, at some cost.
+concurrency="$(jq -r '.declaration.resources.concurrency // 0' "$D/spec.json")"
+busy_stage="$(jq -r --argjson n "$concurrency" '
+	.declaration as $d | $d.workflows.ship.stages[].needs as $s
+	| select(([$d.roles[] | select(.provides | index($s))] | length) > $n) | $s' "$D/spec.json" | head -1)"
+if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ] && [ "$concurrency" -ge 1 ] 2>/dev/null && [ -n "$busy_stage" ]; then
+	given "the factory allows $concurrency tasks in flight and more roles than that provide $busy_stage"
+	when "the operator files one more goal than that at $busy_stage and assigns each to a free role"
+	since="$(date +%s)000-0"
+	mapfile -t providers < <(jq -r --arg s "$busy_stage" '.declaration.roles | to_entries[] | select(.value.provides | index($s)) | .key' "$D/spec.json")
+	for i in $(seq 1 $((concurrency + 1))); do
+		dir="/var/lib/nixcage/filed/proof-$(date +%s)-$i"
+		sshm "mkdir -p $dir && printf '%s\n' 'Add a docstring to parse_line ($i)' >$dir/title && printf '%s\n' 'acceptance: parse_line has a one-line docstring saying what it splits on; nothing else changes' >$dir/body" >/dev/null 2>&1
+		bash fabriek -f "$F" send "{\"verb\":\"file\",\"titleFile\":\"$dir/title\",\"bodyFile\":\"$dir/body\",\"stage\":\"$busy_stage\"}" >/dev/null 2>&1
+	done
+	## The issues the executor opened for them, newest first off the board.
+	sleep 15
+	forge="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null | tr -d '\r' | sed -n 's/.*"forgejo":"\([^"]*\)".*/\1/p')"
+	mapfile -t issues < <(sshm "curl -s -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" 'http://$forge/api/v1/repos/operator/$F/issues?state=open&limit=50'" 2>/dev/null | tr -d '\r' |
+		jq -r --arg t "Add a docstring to parse_line" '.[] | select(.title | startswith($t)) | .number' | head -n $((concurrency + 1)))
+	check "the executor opened one issue per goal" "$((concurrency + 1))" "${#issues[@]}"
+	k=0
+	for n in "${issues[@]}"; do
+		bash fabriek -f "$F" send "{\"verb\":\"assign\",\"issue\":$n,\"role\":\"${providers[$k]}\"}" >/dev/null 2>&1
+		k=$((k + 1))
+		sleep 3
+	done
+	# shellcheck disable=SC2329  # invoked through eventually
+	refused() {
+		timeout 20 bash fabriek -f "$F" watch --from "$since" --stream events:executor 2>/dev/null |
+			jq -r 'select(.stream == "events:executor" and .fields.name == "command") | .fields.json | fromjson | select(.command.verb == "assign" and .result.ok == false) | .result.reason' |
+			grep -m1 "concurrency is $concurrency and $concurrency roles hold work" >/dev/null && echo refused
+	}
+	check "the executor refuses the assign past the ceiling, naming both numbers" "refused" "$(eventually 20 refused refused)"
+	echo "  note: $((concurrency + 1)) tasks were filed at $busy_stage and are left on the board"
+else
+	gated "the concurrency refusal on a live board" "set FABRIEK_PROOF_MODEL=1 with concurrency declared below the roles providing some stage; the proof files one goal more than the ceiling there, assigns each, and reads the refusal off the bus"
+fi
 
 scenario "pi itself lists the skill in its system prompt"
 gated "jvm-profile in the system prompt" "pi 0.84.4 has no flag that prints its skills; read the session's first system message in the role's ~/.pi/sessions"
