@@ -1,7 +1,5 @@
 # To do
 
-- Push: main is 33 commits ahead of origin/main.
-- Test codegraph on a real project (ADR-049, `tests/manual/specialist.sh`).
 - Test the manager's inspection of a task on a real factory (ADR-051).
 - Prove on a machine what landed without one: the guidance at the front of
   a role's prompt (ADR-054), a replicated role's cages (ADR-053), the
