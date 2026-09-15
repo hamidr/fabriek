@@ -282,6 +282,10 @@ One package, built through the flake, tests in its own runner.
   read-only into every session with the tools told to work offline; the
   npm shape first, the JVM shapes behind a lockfile convention. Proposed,
   not started, as of 2026-09-14.
+- 6.6 The brief's `this factory:` section (`role-guidance.md`, ADR-050):
+  `fabriek_factory_guidance` reads `docs/factory-guidance.md` from the
+  clone, and nothing composes it into the executor's brief yet. The
+  manager's guidance lever is described and unwired as of 2026-09-15.
 
 ## Where the log's open items landed (its section 6)
 

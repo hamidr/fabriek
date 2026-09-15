@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 007
 
-**Next ADR number:** 050
+**Next ADR number:** 051
 
 ## PRDs
 
@@ -74,3 +74,4 @@ document, then regenerate.
 | [ADR-047](ADR-047-the-launchers-grammar.md) | The launcher has one verb level, a factory option, and the conventions of a Unix tool | proposed | -- | ADR-019, ADR-039, ADR-042 | fabriek [-f FACTORY] VERB; flags anywhere, -h per verb, stderr and exit 2 for usage, colour only on a tty, --json, stdin |  |
 | [ADR-048](ADR-048-a-nixos-host-declares-its-factories.md) | A NixOS host declares its factories, and the same file serves every other host | proposed | -- | ADR-019, ADR-020, ADR-025, ADR-047 | services.fabriek renders the operator's config.toml and a unit per auto-started factory; the CLI reads /etc too |  |
 | [ADR-049](ADR-049-a-role-queries-its-worktree-through-codegraph.md) | A role queries its worktree as a graph through codegraph, indexed before hand-over | implemented | -- | ADR-030, ADR-031, ADR-037, ADR-042, ADR-043 | codegraph in the developer kit, pi-codegraph in every role pi, the worktree indexed before the role gets it |  |
+| [ADR-050](ADR-050-a-committer-at-the-root-and-a-manager-who-assigns-nothing.md) | The specialist tree is rooted in a committer, and a manager tunes the workflow without assigning | implemented | -- | ADR-031, ADR-034, ADR-040, ADR-042, ADR-049 | committer is the root every specialist extends, developer the builder, manager owns policy, guidance, catalogue |  |

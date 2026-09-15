@@ -88,10 +88,14 @@ Specialists compose: `[ "springboot" "python" ]` is one role with both
 kits, each prompt once, in that order. Adding a specialist is adding a
 directory; nothing else lists them.
 
-Shipped: `developer` (the base every other one extends), `python`,
-`flask`, `django`, `java`, `springboot`, `scala`, `frontend`, `react`,
-`architect` (the glossary, the decision records and the overview of the
-product, with Quint, Alloy 6 and Lean 4 to check a design), `reviewer`.
+Shipped: `committer` (the root: whoever works in a worktree, with the
+tools to read it), `developer` (a builder, held to test first; every
+language specialist extends it), `python`, `flask`, `django`, `java`,
+`springboot`, `scala`, `frontend`, `react`, `architect` (the glossary, the
+decision records and the overview of the product, with Quint, Alloy 6 and
+Lean 4 to check a design), `manager` (the decider's policy, the factory's
+guidance and the repository's own skills and script tools; splits a goal
+into tasks the decider files), `reviewer`.
 
 Every specialist is held to test first, domain placement, one reason to
 change and a pure core: as skills it reads, as a review that blocks, and
