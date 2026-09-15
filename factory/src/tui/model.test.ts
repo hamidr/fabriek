@@ -36,7 +36,7 @@ describe("the TUI's model", () => {
     assert.equal(s.roles["builder"]?.last, "tool_call bash");
   });
 
-  it("a role's stream keeps what it did in the operator's words: a turn, each tool with its command or path, what it said, and a refusal", () => {
+  it("a role's stream keeps what it did in the operator's words: each tool with its command or path, what it said, and a refusal; a turn's start says nothing", () => {
     let s = after([{ stream: "events:builder", id: "1-0", fields: { kind: "event", name: "turn_start", json: '{"turnIndex":0}' } }]);
     s = fold(s, { stream: "events:builder", id: "2-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"bash","input":{"command":"pwd && ls"}}' } });
     s = fold(s, { stream: "events:builder", id: "3-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"edit","input":{"path":"src/a.py"}}' } });
@@ -45,7 +45,6 @@ describe("the TUI's model", () => {
     s = fold(s, { stream: "events:builder", id: "6-0", fields: { kind: "event", name: "guard_refused", json: '{"rule":"run-before-code","tool":"edit","path":"src/a.py"}' } });
     s = fold(s, { stream: "findings:builder", id: "7-0", fields: { kind: "finding", text: "done on builder/work" } });
     assert.deepEqual(s.stream["builder"], [
-      "turn 1",
       "bash  pwd && ls",
       "edit  src/a.py",
       "Reading the tree first.",
@@ -63,6 +62,13 @@ describe("the TUI's model", () => {
     assert.deepEqual(s.activity.map((a) => `${a.by} ${a.text}`), ["operator steer builder go", "executor did push builder", "decider assign 7 builder"]);
   });
 
+  it("a bash line drops the cd into the workspace every role starts with, since that is where it already is", () => {
+    let s = after([{ stream: "events:builder", id: "1-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"bash","input":{"command":"cd /workspace && pytest -q"}}' } }]);
+    s = fold(s, { stream: "events:builder", id: "2-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"bash","input":{"command":"cd /workspace; git status"}}' } });
+    s = fold(s, { stream: "events:builder", id: "3-0", fields: { kind: "event", name: "tool_call", json: '{"toolName":"bash","input":{"command":"cd /workspace/tests && ls"}}' } });
+    assert.deepEqual(s.stream["builder"], ["bash  pytest -q", "bash  git status", "bash  cd /workspace/tests && ls"]);
+  });
+
   it("a stream line never carries a newline: what a role said keeps its first line, marked as cut", () => {
     let s = after([{ stream: "events:builder", id: "1-0", fields: { kind: "event", name: "turn_end", json: '{"message":{"role":"assistant","content":[{"type":"text","text":"Summary:\\n- one\\n- two"}]}}' } }]);
     s = fold(s, { stream: "findings:builder", id: "2-0", fields: { kind: "finding", text: "first\nsecond" } });
@@ -78,9 +84,9 @@ describe("the TUI's model", () => {
 
   it("a role's stream is bounded, newest last", () => {
     let s = initial(["builder"]);
-    for (let i = 0; i < 300; i++) s = fold(s, { stream: "events:builder", id: `${i}-0`, fields: { kind: "event", name: "turn_start", json: `{"turnIndex":${i}}` } });
+    for (let i = 0; i < 300; i++) s = fold(s, { stream: "events:builder", id: `${i}-0`, fields: { kind: "event", name: "tool_call", json: `{"toolName":"read","input":{"path":"f${i}"}}` } });
     assert.equal(s.stream["builder"]?.length, 200);
-    assert.equal(s.stream["builder"]?.at(-1), "turn 300");
+    assert.equal(s.stream["builder"]?.at(-1), "read  f299");
   });
 
   it("a guard refusal is the role's last line and is counted for the task; the same rule on the same path three times is a repeat", () => {

@@ -41,7 +41,8 @@ export interface State {
   commands: { by: "decider" | "executor" | "operator"; text: string }[];
   /** Commands and findings as they came, one list, newest last. */
   activity: Activity[];
-  /** What each role did, in the operator's words, newest last. */
+  /** What each role did, in the operator's words, newest last: its tools,
+   *  its words, its refusals; a turn's start says nothing and takes no line. */
   stream: Record<string, string[]>;
   spend: Record<string, number>;
   probes: string[];
@@ -99,7 +100,9 @@ function toolLine(payload: Record<string, unknown>): string {
   const tool = String(payload["toolName"] ?? "tool");
   const input = (payload["input"] ?? {}) as Record<string, unknown>;
   const what = ["command", "path", "pattern", "query", "url"].map((k) => input[k]).find((v) => typeof v === "string") as string | undefined;
-  return what ? `${tool}  ${firstLine(what)}` : tool;
+  // Every role's cwd is the workspace; a command that says so first says nothing.
+  const said = what?.replace(/^\s*cd \/workspace\s*(&&|;)\s*/, "");
+  return said ? `${tool}  ${firstLine(said)}` : tool;
 }
 
 /** What the assistant said in a turn, its thinking left out. */
@@ -165,7 +168,6 @@ export function fold(s: State, line: Line): State {
       }
       const tool = payload && typeof payload["toolName"] === "string" ? ` ${payload["toolName"]}` : "";
       const next = withRole(role, { ...view(role), last: `${eventName}${tool}` });
-      if (eventName === "turn_start" && payload) return said(next, role, `turn ${Number(payload["turnIndex"] ?? 0) + 1}`);
       if (eventName === "tool_call" && payload) return said(next, role, toolLine(payload));
       if (eventName === "turn_end" && payload) {
         const text = saidText(payload);

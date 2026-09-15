@@ -44,10 +44,10 @@ describe("the TUI's view", () => {
 
   it("the stream shows its newest lines when there are more than fit", () => {
     let s = initial(["builder"]);
-    for (let i = 0; i < 100; i++) s = fold(s, { stream: "events:builder", id: `${i}-0`, fields: { kind: "event", name: "turn_start", json: `{"turnIndex":${i}}` } });
+    for (let i = 0; i < 100; i++) s = fold(s, { stream: "events:builder", id: `${i}-0`, fields: { kind: "event", name: "tool_call", json: `{"toolName":"read","input":{"path":"f${i}"}}` } });
     const out = render(s, { ...wide, rows: 20 });
-    assert.match(out, /turn 100/);
-    assert.doesNotMatch(out, /turn 1\D/);
+    assert.match(out, /read {2}f99/);
+    assert.doesNotMatch(out, /read {2}f1\b/);
   });
 
   it("shows a role's guard refusals for the task beside it, and flags a repeat", () => {
