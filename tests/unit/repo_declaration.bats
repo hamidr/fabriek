@@ -59,7 +59,7 @@ JSON
 
 ## Validate the complete declaration with one jq edit applied to it.
 validate_with() {
-	complete_declaration | jq "$1" | fabriek_declaration_validate
+	complete_declaration | jq "$@" | fabriek_declaration_validate
 }
 
 @test "a complete declaration is accepted and comes back as itself" {
@@ -357,4 +357,98 @@ validate_example() {
 @test "a factory reaching several endpoints declares them all" {
 	run validate_with '.resources.egress = ["api.anthropic.com", "generativelanguage.googleapis.com"]'
 	assert_success
+}
+
+# ADR-053: replicas = N is expansion into N named roles, once, here, before
+# anything else reads the declaration. What comes out carries the expanded
+# roles and no replicas key.
+@test "a role with replicas comes out as N named roles carrying its declaration, and the base name is gone" {
+	run validate_with '.roles.backend.replicas = 3 | .resources.concurrency = 4'
+	assert_success
+	run jq -c '[.roles | keys[]]' <<<"$output"
+	assert_output '["architect","backend-1","backend-2","backend-3"]'
+	run validate_with '.roles.backend.replicas = 3 | .resources.concurrency = 4'
+	run jq -c '[.roles["backend-2"] | .provides, .shell, .command, (.replicas // "gone")]' <<<"$output"
+	assert_output '[["build"],"backend-jvm",["claude"],"gone"]'
+}
+
+@test "consults naming a replicated role expands on both sides, so the key stays well-formed" {
+	run validate_with '.roles.backend.replicas = 2 | .roles.architect.replicas = 2 | .resources.concurrency = 4 | .workflows.ship.consults = { backend: ["architect"] }'
+	assert_success
+	run jq -c '.workflows.ship.consults' <<<"$output"
+	assert_output '{"backend-1":["architect-1","architect-2"],"backend-2":["architect-1","architect-2"]}'
+}
+
+@test "replicas of one, or anything but a whole number, is refused naming the role" {
+	run validate_with '.roles.backend.replicas = 1'
+	assert_failure
+	assert_output --partial "backend"
+	assert_output --partial "replicas"
+	run validate_with '.roles.backend.replicas = "many"'
+	assert_failure
+	assert_output --partial "replicas"
+	run validate_with '.roles.backend.replicas = 2.5'
+	assert_failure
+	assert_output --partial "replicas"
+}
+
+@test "a replica name that would not fit a role name is refused" {
+	local long
+	long="$(printf 'b%.0s' $(seq 1 63))"
+	run validate_with --arg n "$long" '.roles[$n] = (.roles.backend | .replicas = 2) | .resources.concurrency = 4'
+	assert_failure
+	assert_output --partial "$long-1"
+}
+
+@test "a role declared by hand under a replica's name is refused naming both" {
+	run validate_with '.roles.backend.replicas = 2 | .roles["backend-2"] = { command: ["claude"], provides: ["build"] } | .resources.concurrency = 4'
+	assert_failure
+	assert_output --partial "backend-2"
+	assert_output --partial "backend"
+}
+
+@test "more roles than the bridge has addresses for is refused naming the ceiling" {
+	run validate_with '.roles.backend.replicas = 244'
+	assert_failure
+	assert_output --partial "244"
+}
+
+@test "a declared concurrency below the expanded role count is refused naming both numbers, and an absent one is left alone" {
+	run validate_with '.roles.backend.replicas = 3 | .resources.concurrency = 3'
+	assert_failure
+	assert_output --partial "4"
+	assert_output --partial "3"
+	run validate_with '.roles.backend.replicas = 3 | del(.resources.concurrency)'
+	assert_success
+	run jq -c '.resources.concurrency' <<<"$output"
+	assert_output 'null'
+}
+
+@test "fanout is no longer a stage's to declare" {
+	run validate_with '.workflows.ship.stages[0].fanout = true'
+	assert_failure
+	assert_output --partial "fanout"
+}
+
+# The expansion's one property, over generated declarations: an expanded
+# name equals no declared name and no other expanded name.
+@test "over generated declarations, expanded names collide with nothing" {
+	local i n decl names
+	for i in $(seq 1 20); do
+		n=$((RANDOM % 4 + 2))
+		## Every other role gets a name that is a replica's shape or not,
+		## at random; a collision must be refused, never absorbed.
+		decl="$(complete_declaration | jq --argjson n "$n" --arg other "$([ $((RANDOM % 2)) -eq 0 ] && echo "backend-$((RANDOM % 6 + 1))" || echo "worker-$i")" '
+		  .roles.backend.replicas = $n
+		  | .roles[$other] = { command: ["claude"], provides: ["build"] }
+		  | .resources.concurrency = 40')"
+		if names="$(printf '%s' "$decl" | fabriek_declaration_validate 2>/dev/null | jq -r '.roles | keys[]')" && [ -n "$names" ]; then
+			[ "$(printf '%s\n' "$names" | sort | uniq -d | wc -l)" -eq 0 ]
+			for k in $(seq 1 "$n"); do printf '%s\n' "$names" | grep -qx "backend-$k"; done
+			printf '%s\n' "$names" | grep -qx "$(printf '%s' "$decl" | jq -r '.roles | keys[] | select(startswith("worker-") or (test("^backend-[0-9]+$")))' | head -1)"
+		else
+			## Refused: only ever because the other name was a replica's.
+			printf '%s' "$decl" | jq -e --argjson n "$n" '.roles | keys | map(select(test("^backend-[0-9]+$")) | sub("^backend-"; "") | tonumber) | any(. <= $n)' >/dev/null
+		fi
+	done
 }

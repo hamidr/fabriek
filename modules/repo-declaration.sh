@@ -24,9 +24,9 @@ fabriek_declaration_program() {
 	## schema and by the clamp that meets one against the other.
 	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider", "catalogue"]\n'
 	printf '  , decider:   ["policy"]\n'
-	printf '  , role:      ["command", "provides", "shell", "specialists"]\n'
+	printf '  , role:      ["command", "provides", "shell", "specialists", "replicas"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
-	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout", "verdict"]\n'
+	printf '  , stage:     ["needs", "ready", "done", "gate", "verdict"]\n'
 	printf '  , budget:    ["runs"]\n'
 	printf '  , resources: %s\n  };\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
@@ -35,6 +35,8 @@ fabriek_declaration_program() {
 | (if ($d.roles | type) == "object" then $d.roles else {} end) as $roles
 | ([$roles[] | (.provides? // []) | .[]] | unique) as $provided
 | ($roles | keys) as $roleNames
+## Roles after replicas (ADR-053): a role with replicas = N is N roles.
+| ([$roles[] | (if (.replicas? | type) == "number" then .replicas else 1 end)] | add // 0) as $expanded
 | [
     unknown($d; schema.top; "declaration"),
 
@@ -68,8 +70,30 @@ fabriek_declaration_program() {
           then ["role \($r): specialists must be a list of names from the catalogue"]
           elif ($v.specialists | map(type != "string") | any)
           then ["role \($r): specialists must be a list of names, one per element"]
-          else [] end)
+          else [] end),
+         ## replicas = N expands into <role>-1 .. <role>-N (ADR-053); a
+         ## count of one is a copy of nothing, and a name a replica would
+         ## take is nobody else's to declare.
+         (if ($v.replicas? // null) == null then []
+          elif ($v.replicas | type) != "number" or ($v.replicas | floor) != $v.replicas or $v.replicas < 2
+          then ["role \($r): replicas must be a whole number of at least 2"]
+          else ([range(1; $v.replicas + 1) | "\($r)-\(.)"]
+                | map(select(. as $n | ($roleNames | index($n)) != null)
+                      | "role \(.) is declared by hand and is also a replica of \($r)"))
+          end)
        ] | cat) | cat),
+
+    ## The bridge is a /24 handing cages .10 upward (bridge.nix).
+    (if $expanded > 244
+     then ["declaration: \($expanded) roles after replicas, and the bridge has addresses for 244"]
+     else [] end),
+
+    ## A declared concurrency below the roles it would size for; an absent
+    ## one is left as it is (ADR-053 point 5).
+    ((($d.resources? // {}) | if type == "object" then .concurrency? else null end) as $c
+     | if ($c | type) == "number" and $c < $expanded
+       then ["resources: concurrency is \($c), below the \($expanded) roles declared after replicas"]
+       else [] end),
 
     ((if ($d.workflows | type) == "object" then $d.workflows else {} end)
      | to_entries | map(
@@ -212,10 +236,37 @@ fabriek_declaration_check_names() {
 	return "$failed"
 }
 
-## JSON in, the same JSON out when it is a declaration, and a message naming
-## what was wrong when it is not.
+## Replicas expanded (ADR-053): a role with replicas = N becomes <role>-1
+## .. <role>-N, each the role's declaration without the count, and a
+## consults entry naming either side names every replica of it. Done here,
+## once, so that everything reading a declaration after this sees N roles
+## and nothing about replicas.
+fabriek_declaration_expand() {
+	jq '
+    def replicasOf($r): (.roles[$r].replicas? // null) as $n
+      | if ($n | type) == "number" then [range(1; $n + 1) | "\($r)-\(.)"] else [$r] end;
+    . as $d
+    | (.roles | to_entries
+       | map(.key as $r | .value as $v
+             | ($d | replicasOf($r)) | map({key: ., value: ($v | del(.replicas))}) | .[])
+       | from_entries) as $roles
+    | .roles = $roles
+    | if (.workflows | type) == "object" then
+        .workflows |= with_entries(
+          .value |= (if (.consults | type) == "object" then
+            .consults |= (to_entries
+              | map(.key as $asker | .value as $askees
+                    | ($d | replicasOf($asker))
+                    | map({key: ., value: ([$askees[] | . as $a | ($d | replicasOf($a)) | .[]])}) | .[])
+              | from_entries)
+          else . end))
+      else . end'
+}
+
+## JSON in, the same JSON out with replicas expanded when it is a
+## declaration, and a message naming what was wrong when it is not.
 fabriek_declaration_validate() {
-	local declaration failed=0
+	local declaration expanded failed=0
 	declaration="$(cat)"
 
 	if ! printf '%s' "$declaration" | jq -e . >/dev/null 2>&1; then
@@ -225,10 +276,12 @@ fabriek_declaration_validate() {
 
 	printf '%s' "$declaration" |
 		fabriek_schema_check "$(fabriek_declaration_program)" declaration >/dev/null || failed=1
-	fabriek_declaration_check_names "$declaration" || failed=1
-
 	[ "$failed" -eq 0 ] || return 1
-	printf '%s\n' "$declaration"
+	## Names are checked on the expanded form, so a replica's name is held
+	## to the same alphabet and length as a declared one.
+	expanded="$(printf '%s' "$declaration" | fabriek_declaration_expand)" || return 1
+	fabriek_declaration_check_names "$expanded" || return 1
+	printf '%s\n' "$expanded"
 }
 
 ## A string, as nix will read it back. The flake reference below is built from

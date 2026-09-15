@@ -35,6 +35,11 @@
   ## No 'command': a role runs pi, the agent fabriek supports (ADR-029), in
   ## the mode its loop drives. Declaring one is allowed and wins word for
   ## word; it is argv, never a shell line.
+  ##
+  ## 'replicas = N' makes a role N roles, backend-1 to backend-N, each with
+  ## this block and a cage, a worktree, a key and an account of its own; the
+  ## base name is then no role (ADR-053). Capacity at a stage is how many
+  ## roles provide what it needs.
   roles = {
     architect = {
       provides = [ "design" ];
@@ -131,7 +136,10 @@
     ## Tokens, input and output, the factory may spend before the proxy
     ## refuses (ADR-037). The operator's ceiling caps it like the rest.
     tokens = 2000000;
-    concurrency = 3;
+    ## How many cages the machine's memory and cores are divided among.
+    ## Every declared role runs, replicas included, so a count below the
+    ## roles is refused rather than sizing each cage for fewer (ADR-053).
+    concurrency = 5;
     taskAttempts = 3;
     runTimeoutSeconds = 3600;
 
