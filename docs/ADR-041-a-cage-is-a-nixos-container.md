@@ -1,13 +1,13 @@
 ---
 id: ADR-041
 title: A cage is a NixOS declarative container, and nixcage leaves the design
-status: proposed
+status: superseded
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-15
 summary: with roles known at build time, each cage is a containers.<role> of the machine, and nixcage leaves the flake
 depends_on: [ADR-018, ADR-019, ADR-037, ADR-040]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-057]
 ---
 
 ## Context

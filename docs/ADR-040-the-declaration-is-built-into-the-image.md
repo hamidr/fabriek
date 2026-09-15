@@ -1,13 +1,13 @@
 ---
 id: ADR-040
 title: The declaration is built into the machine's image
-status: implemented
+status: superseded
 date: 2026-09-12
-status_date: 2026-09-13
+status_date: 2026-09-15
 summary: a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time
 depends_on: [ADR-016, ADR-019, ADR-020, ADR-030]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-057]
 ---
 
 ## Context

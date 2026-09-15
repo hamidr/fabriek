@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 008
 
-**Next ADR number:** 057
+**Next ADR number:** 058
 
 ## PRDs
 
@@ -65,8 +65,8 @@ document, then regenerate.
 | [ADR-037](ADR-037-a-private-network-per-cage.md) | A private network per cage, attributed by address, with the budget at the proxy | accepted | -- | ADR-018, ADR-019, ADR-033 | each cage has one veth on a per-factory bridge; two bridge rules make attribution proof and the proxy holds the cap |  |
 | [ADR-038](ADR-038-three-sources-and-no-ledger.md) | A factory is observed from three sources, and nothing writes a ledger | accepted | -- | ADR-033, ADR-036, ADR-037 | the thread is what a role said, the proxy what it spent, the probes what it ran; events go to the bus, unpersisted |  |
 | [ADR-039](ADR-039-the-operators-client-is-a-tui-on-a-relay.md) | The operator's client is a TUI on a relay, and fabriek is the machine | implemented | -- | ADR-019, ADR-034, ADR-035, ADR-036 | a TUI on the operator host reads a JSONL relay and writes through the CLI; the host holds a launcher and no decision |  |
-| [ADR-040](ADR-040-the-declaration-is-built-into-the-image.md) | The declaration is built into the machine's image | implemented | -- | ADR-016, ADR-019, ADR-020, ADR-030 | a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time |  |
-| [ADR-041](ADR-041-a-cage-is-a-nixos-container.md) | A cage is a NixOS declarative container, and nixcage leaves the design | proposed | -- | ADR-018, ADR-019, ADR-037, ADR-040 | with roles known at build time, each cage is a containers.<role> of the machine, and nixcage leaves the flake |  |
+| [ADR-040](ADR-040-the-declaration-is-built-into-the-image.md) | The declaration is built into the machine's image | superseded | -- | ADR-016, ADR-019, ADR-020, ADR-030 | a generated machine flake pins the worked repository; roles, workflows and devShells resolve at build time |  |
+| [ADR-041](ADR-041-a-cage-is-a-nixos-container.md) | A cage is a NixOS declarative container, and nixcage leaves the design | superseded | -- | ADR-018, ADR-019, ADR-037, ADR-040 | with roles known at build time, each cage is a containers.<role> of the machine, and nixcage leaves the flake |  |
 | [ADR-042](ADR-042-a-role-is-a-set-of-specialists-from-a-catalogue.md) | A role is a set of specialists from a catalogue, and a specialist is a directory | implemented | -- | ADR-016, ADR-020, ADR-029, ADR-030, ADR-031, ADR-040 | a role names specialists; each is a directory of prompt, tools and skills, composed at build and read by pi in the cage |  |
 | [ADR-043](ADR-043-a-specialist-declares-its-language-servers.md) | A specialist declares its language servers, and pi-lsp starts them | implemented | -- | ADR-029, ADR-030, ADR-031, ADR-042 | language-server tools come from the pi-lsp extension in the floor, configured per role from what its specialists declare |  |
 | [ADR-044](ADR-044-the-loop-refuses-code-before-a-failing-test.md) | The loop refuses production code before a failing test, and done before a passing run | implemented | -- | ADR-033, ADR-035, ADR-038, ADR-042 | the loop's test-first guard refuses edits and done by the order of test edits, runs and code edits, per specialist |  |
@@ -82,3 +82,4 @@ document, then regenerate.
 | [ADR-054](ADR-054-a-role-is-told-about-the-cage-in-its-system-prompt.md) | A role is told about the cage in its system prompt, and reads the repository's guidance from its worktree | implemented | -- | ADR-030, ADR-035, ADR-042, ADR-050 | role-guidance.md is the front of every role's APPEND_SYSTEM.md; the actor reads docs/factory-guidance.md into the brief |  |
 | [ADR-055](ADR-055-concurrency-is-the-ceiling-on-tasks-in-flight.md) | concurrency is the ceiling on tasks in flight, held by the executor and used to size every cage | implemented | -- | ADR-019, ADR-020, ADR-034, ADR-053 | assign is refused past resources.concurrency; a cage is sized by it; absent, it is the role count |  |
 | [ADR-056](ADR-056-a-factory-keeps-its-lessons.md) | A factory keeps its lessons, and a session's failure meets what failed before | proposed | -- | ADR-035, ADR-037, ADR-038, ADR-044, ADR-048, ADR-050, ADR-051 | an uncaged lessons service on the machine records failures and observed fixes; a failed call is answered with them |  |
+| [ADR-057](ADR-057-the-machine-is-an-appliance-and-a-factory-arrives-as-json.md) | The machine is built once as an appliance, and a factory arrives as JSON at start | proposed | -- | ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042 | one image per fabriek; the declaration, caps and rev are handed over at up; the machine's daemon realises toolchains |  |
