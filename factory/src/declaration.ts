@@ -77,6 +77,9 @@ export function readDeclaration(text: string): Declaration {
   for (const [name, r] of Object.entries(raw["roles"])) {
     if (!isRoleName(name)) refuse(`role ${name}: not a usable role name`);
     if (!isRecord(r)) refuse(`role ${name}: not an object`);
+    // The build expands replicas into named roles before it writes the
+    // file (ADR-053); one reaching here was written by hand.
+    if (r["replicas"] !== undefined) refuse(`role ${name}: replicas is expanded by the build and cannot reach the machine`);
     const role: Role = { provides: names(r["provides"], `role ${name}: provides`) };
     if (r["command"] !== undefined) {
       if (!Array.isArray(r["command"]) || !r["command"].every((w) => typeof w === "string")) {

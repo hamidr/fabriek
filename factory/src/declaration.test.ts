@@ -48,6 +48,11 @@ describe("the declaration on the machine", () => {
     assert.equal(stageOf(d, "ship", "build")?.verdict, false);
   });
 
+  it("a replicas key on a role is refused, because the build expands replicas before the file is written (ADR-053)", () => {
+    const text = JSON.stringify({ ...acme, roles: { ...acme.roles, builder: { ...acme.roles.builder, replicas: 2 } } });
+    assert.throws(() => readDeclaration(text), (e: unknown) => e instanceof DeclarationError && /builder.*replicas/.test(String(e)));
+  });
+
   it("a role that names no command runs pi (ADR-029) and is read as declared", () => {
     const d = readDeclaration(JSON.stringify({ ...acme, roles: { architect: { provides: ["design"], specialists: ["architect"] } } }));
     assert.deepEqual(Object.keys(d.roles), ["architect"]);
