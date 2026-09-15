@@ -289,6 +289,11 @@ One package, built through the flake, tests in its own runner.
 - 6.7 `resources.concurrency`. Done 2026-09-15 (ADR-055): the ceiling on
   tasks in flight, held by the executor, told to the decider, and the
   divisor for every cage; absent means the role count.
+- 6.8 `tests/manual/host-autostart.sh` passes on a NixOS host (ADR-048):
+  the unit active after boot, `fabriek ps` by hand seeing its machine, and
+  both agreeing across a stop and a start. Everything else of ADR-048 is
+  asserted on this host by `host_module.bats`, `operator_config.bats` and
+  `machine.bats`. Not run as of 2026-09-15.
 
 ## Where the log's open items landed (its section 6)
 

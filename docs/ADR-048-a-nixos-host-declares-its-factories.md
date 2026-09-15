@@ -1,9 +1,9 @@
 ---
 id: ADR-048
 title: A NixOS host declares its factories, and the same file serves every other host
-status: proposed
+status: implemented
 date: 2026-09-14
-status_date: 2026-09-14
+status_date: 2026-09-15
 summary: services.fabriek renders the operator's config.toml and a unit per auto-started factory; the CLI reads /etc too
 depends_on: [ADR-019, ADR-020, ADR-025, ADR-047]
 supersedes: []
@@ -46,7 +46,9 @@ true` gives `fabriek-<name>.service`: `fabriek up <name>` at start,
 `fabriek down <name>` at stop, `Type=oneshot` with `RemainAfterExit`,
 after the network and nix-daemon, machines under `/var/lib/fabriek`. The
 CLI by hand and the unit are the same program on the same state, so
-`fabriek ps` shows both.
+`fabriek ps` shows both: a hand that reads the host's file keeps its
+machines under `/var/lib/fabriek/machines` too, and a person with a file
+of their own keeps them under their own state, as before.
 
 **4. The module writes the file; the CLI never does.** There is no
 `fabriek register`; a factory is registered by editing the file or the
@@ -76,6 +78,14 @@ nix develop --command bats tests/unit/operator_config.bats
 
 `host_module.bats` evaluates a NixOS configuration with the module for
 real and reads back the rendered TOML and the unit; `operator_config.bats`
-asserts the order the CLI reads the files in. On a NixOS host: a factory
-with `autoStart` is running after boot and `fabriek ps` says so; not run
-as of this document's date.
+asserts the order the CLI reads the files in; `machine.bats` asserts that
+a hand reading the host's file finds the unit's machines. On a NixOS
+host, `tests/manual/host-autostart.sh` is the proof: the unit active after
+boot, `fabriek ps` by hand seeing what it started, and both agreeing
+across a stop and a start. Scripted, not run, as of 2026-09-15: no NixOS
+host here.
+
+Implemented 2026-09-15. Point 3's "same state" was not true for a hand
+until today: the unit set `FABRIEK_MACHINES` and a hand did not, so
+`fabriek ps` by root on a NixOS host read an empty directory under its
+home. `fabriek_machine_root` now follows the file that was read.
