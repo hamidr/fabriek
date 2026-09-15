@@ -1,10 +1,10 @@
 ---
 id: ADR-057
-title: The machine is built once as an appliance, and a factory arrives as JSON at start
+title: The machine is built once as an appliance, and a factory arrives as TOML at start
 status: proposed
 date: 2026-09-15
 status_date: 2026-09-15
-summary: one image per fabriek; the declaration, caps and rev are handed over at up; the machine's daemon realises toolchains
+summary: one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles
 depends_on: [ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042]
 supersedes: [ADR-040, ADR-041]
 superseded_by: []
@@ -110,23 +110,74 @@ is one script of fabriek's in the appliance, reading `runtime.json` from
 the directory it is run in, which `up` writes from the operator's config
 and the factory's directory; the script prints `-m` and `-smp` from the
 clamped resources, a user-mode netdev with the ssh port
-forwarded and its virtio-net device, and one `-fw_cfg` credential per file
-the machine needs at boot. Before the first start `up` creates `store.img`
+forwarded and its virtio-net device, and one `-fw_cfg` credential per
+file of point 3. Before the first start `up` creates `store.img`
 and `pool.img` at the sizes the caps allow. qemu takes the last `-m` and
 `-smp` it is given, which the measurement plan below checks on the first
 boot rather than assumes.
 
-**3. A factory arrives as credentials at boot.** Two: `factory.json`, with
-the factory's name, the operator's caps, which header carries which
-endpoint's credential, the models, the embedder's URL when the host runs
-one (ADR-056 point 3; the proxy's vhost for it is rendered at prepare
-like the endpoints'), the repository's remote and the rev to work
-(resolved from `HEAD` as ADR-020 point 3a did, and moved only by
-`--update`); and `authorized_keys`, the operator's key. sshd reads the
-second from `/run/credentials/@system/authorized_keys`, so the machine is
-reachable before anything else runs. Neither is a secret and neither is
-in the store (ADR-025 point 1 stands: the model credential still arrives
-over ssh after boot).
+**3. A factory arrives as four credentials at boot, one per reader, in
+TOML.** Under `/run/credentials/@system/`:
+
+`fabriek.factory`, read by `factory-prepare`: the name, the host's
+system, and the repository's remote and the rev to work (resolved from
+`HEAD` as ADR-020 point 3a did, and moved only by `--update`).
+
+```toml
+name = "acme"
+hostSystem = "aarch64-darwin"
+
+[repository]
+remote = "git@github.com:acme/acme.git"
+rev = "3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0"
+```
+
+`fabriek.caps`, read by the clamp: the operator's `[caps]` table, byte
+for byte, so `schema.sh` refuses on the machine exactly what it refuses
+on the host.
+
+```toml
+memory = "16G"
+cores = 8
+roleQuota = "50G"
+recordQuota = "8G"
+tokens = 5000000
+concurrency = 4
+egress = ["api.anthropic.com"]
+```
+
+`fabriek.endpoints`, read by the proxy's renderer and the floor's
+`models.json`: which header carries which endpoint's credential, never a
+value (ADR-025 point 1 stands: the model credential still arrives over
+ssh after boot), the models, and the embedder's URL when the host runs
+one (ADR-056 point 3; its vhost is rendered at prepare like the
+endpoints').
+
+```toml
+embedder = "http://10.0.2.2:8080"
+
+[credentials]
+"api.anthropic.com" = "x-api-key"
+
+[models]
+"api.anthropic.com" = "claude-opus-5"
+```
+
+`fabriek.authorized_keys`, read by sshd and nothing else, so the machine
+is reachable before anything else runs.
+
+TOML because these are the operator's `config.toml` split by who reads
+it, and a person reading one beside the other should see the same
+spelling; the reader is the one `operator-config.sh` already has
+(`builtins.fromTOML` through `nix eval`), sourced on the machine as on
+the host, so there is one parser and one set of refusals. What the
+machine writes for its own programs (`declaration.json`, `bridge.json`,
+`profiles.json`) stays JSON, as does `runtime.json` on the host, which
+the runner's script reads with `jq`: those are program to program.
+Splitting by reader means the proxy's unit never sees the repository's
+remote and sshd sees only the key, each with `LoadCredential=` of its
+own; a change to the caps rerenders the clamp's outputs and nothing
+else.
 
 **4. `factory-prepare` does at boot what the build did**, in this order,
 each step idempotent because `up` runs after every restart: clone the
@@ -190,7 +241,7 @@ evaluating is on a machine built to be discarded rather than on the
 operator's own host.
 
 **7. A run's identity is the image plus the file.** Reproducing a run is
-the image's store path, `factory.json`, and the store paths of the
+the image's store path, the four credentials, and the store paths of the
 profiles prepare realised, which prepare writes to
 `/var/lib/fabriek/factory/profiles.json` and `fabriek show` prints.
 ADR-040's lock under the machine directory goes; `--update` moves the rev
@@ -214,8 +265,8 @@ is good before paying for a boot.
 An operator's host runs Nix once, to build or fetch the appliance, and
 against the worked repository only for `check`. A factory on a second host
 is the same image and a different file. `services.fabriek` (ADR-048)
-renders `factory.json` per factory instead of a flake, and its unit starts
-the runner with the file.
+renders the four credentials per factory instead of a flake, and its
+unit starts the runner with them.
 
 The first `up` of a factory is slower than a boot: the toolchain is
 substituted on the machine over the user-mode NIC rather than on the
@@ -249,7 +300,7 @@ volume. It is not decided here.
 Prepare is a step after boot that can fail or half-finish, and a role's
 session must not start without its profile; the model gains a prepared
 state and that invariant before the code, and stale becomes a running
-machine whose `factory.json` is older than the file on the host.
+machine whose credentials are older than the files on the host.
 
 `tests/command/factory_flake.bats`, which fails the build by an unknown
 key's name and by a role naming a devShell the flake lacks, becomes a test
@@ -272,7 +323,7 @@ realised:
 fabriek up example
 ssh -p "$(cat ~/.local/share/fabriek/example/port)" root@localhost \
   'grep MemTotal /proc/meminfo; nproc; ls /run/credentials/@system'
-                                              # the clamped memory, cores; factory.json authorized_keys
+                                              # the clamped memory, cores; the four fabriek.* credentials
 fabriek down example
 fabriek up example 2>&1 | tee /tmp/second-up.log
 grep -c "copying path" /tmp/second-up.log     # expected: 0
