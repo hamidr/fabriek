@@ -6,9 +6,9 @@ document, then regenerate.
 
 **Generated:** 2026-09-15
 
-**Next PRD number:** 007
+**Next PRD number:** 008
 
-**Next ADR number:** 056
+**Next ADR number:** 057
 
 ## PRDs
 
@@ -20,6 +20,7 @@ document, then regenerate.
 | [PRD-004](PRD-004-a-factory-of-its-own.md) | A factory brings its own machine and declares itself | implementing | 4/5 | PRD-003 | a factory is declared in the repository it works and runs in a VM fabriek builds for it on either platform |  |
 | [PRD-005](PRD-005-agents-that-take-their-own-work.md) | Agents that take their own work from the record | superseded | 0/5 | PRD-004 | agents poll the record, take work by leased claim and run until stopped; the dispatching supervisor is not built |  |
 | [PRD-006](PRD-006-a-factory-that-runs-itself.md) | A factory that runs itself, and an operator who watches from one place | implementing | 5/6 | PRD-004 | a filed goal is assigned, worked, tested and opened as a pull request with nothing typed after it, trusting no cage |  |
+| [PRD-007](PRD-007-a-factory-that-remembers-what-failed.md) | A factory that remembers what failed, and a manager who reads it across threads | proposed | 0/5 | PRD-006 | a role that fails a call is shown what failed that way before and what then worked; the manager sees it summed |  |
 
 ## ADRs
 
@@ -80,3 +81,4 @@ document, then regenerate.
 | [ADR-053](ADR-053-a-role-declares-replicas-and-each-is-a-role.md) | A role declares replicas, and each replica is a role in everything but its declaration | implemented | -- | ADR-010, ADR-020, ADR-033, ADR-034, ADR-036, ADR-037 | replicas = N expands one declared role into N named roles before anything reads the declaration; nothing else changes |  |
 | [ADR-054](ADR-054-a-role-is-told-about-the-cage-in-its-system-prompt.md) | A role is told about the cage in its system prompt, and reads the repository's guidance from its worktree | implemented | -- | ADR-030, ADR-035, ADR-042, ADR-050 | role-guidance.md is the front of every role's APPEND_SYSTEM.md; the actor reads docs/factory-guidance.md into the brief |  |
 | [ADR-055](ADR-055-concurrency-is-the-ceiling-on-tasks-in-flight.md) | concurrency is the ceiling on tasks in flight, held by the executor and used to size every cage | implemented | -- | ADR-019, ADR-020, ADR-034, ADR-053 | assign is refused past resources.concurrency; a cage is sized by it; absent, it is the role count |  |
+| [ADR-056](ADR-056-a-factory-keeps-its-lessons.md) | A factory keeps its lessons, and a session's failure meets what failed before | proposed | -- | ADR-035, ADR-037, ADR-038, ADR-044, ADR-048, ADR-050, ADR-051 | an uncaged lessons service on the machine records failures and observed fixes; a failed call is answered with them |  |
