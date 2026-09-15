@@ -283,15 +283,15 @@ export class Executor {
       const status = outcome.c.body.split("\n")[0]?.replace(/^outcome:\s*/, "").trim();
       const stage = this.stageLabel(i);
       const bare = i.labels.filter((l) => !STATE_LABELS.has(l));
+      const at = stage ? stageOf(this.o.declaration, this.o.workflow, stage) : null;
       switch (status) {
         case "done": {
-          if ((await this.o.git.commitsSince(workBranch(i.assignee), tipOf(started?.c.body ?? ""))) === 0) {
+          if (!at?.verdict && (await this.o.git.commitsSince(workBranch(i.assignee), tipOf(started?.c.body ?? ""))) === 0) {
             await this.o.board.comment(i.number, "not done: no commit on the role's branch for this task");
             await this.o.board.setLabels(i.number, bare);
             await this.o.board.assign(i.number, null);
             break;
           }
-          const at = stage ? stageOf(this.o.declaration, this.o.workflow, stage) : null;
           await this.o.board.assign(i.number, null);
           if (at?.next) {
             await this.o.board.setLabels(i.number, [at.next]);

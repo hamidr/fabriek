@@ -26,7 +26,7 @@ fabriek_declaration_program() {
 	printf '  , decider:   ["policy"]\n'
 	printf '  , role:      ["command", "provides", "shell", "specialists"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
-	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout"]\n'
+	printf '  , stage:     ["needs", "ready", "done", "gate", "fanout", "verdict"]\n'
 	printf '  , budget:    ["runs"]\n'
 	printf '  , resources: %s\n  };\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
@@ -90,6 +90,12 @@ fabriek_declaration_program() {
               (if ($s.ready? // null) == null then []
                elif ($s.ready | type) != "array"
                then ["workflow \($w) stage \($i): ready must be a list of field names"]
+               else [] end),
+              ## A stage whose done is a verdict and not a change (ADR-051):
+              ## the executor asks no commit of it.
+              (if ($s.verdict? // null) == null then []
+               elif ($s.verdict | type) != "boolean"
+               then ["workflow \($w) stage \($i): verdict must be true or false"]
                else [] end)
             ] | cat) | cat),
          ((($v.consults? // {}) | if type == "object" then . else {} end)

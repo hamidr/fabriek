@@ -37,9 +37,15 @@ describe("the declaration on the machine", () => {
 
   it("a stage is found by its workflow and its label, which is its capability", () => {
     const d = readDeclaration(JSON.stringify(acme));
-    assert.deepEqual(stageOf(d, "ship", "test"), { workflow: "ship", index: 1, needs: "test", next: "review" });
-    assert.deepEqual(stageOf(d, "ship", "review"), { workflow: "ship", index: 2, needs: "review", next: null });
+    assert.deepEqual(stageOf(d, "ship", "test"), { workflow: "ship", index: 1, needs: "test", next: "review", verdict: false });
+    assert.deepEqual(stageOf(d, "ship", "review"), { workflow: "ship", index: 2, needs: "review", next: null, verdict: false });
     assert.equal(stageOf(d, "ship", "deploy"), null);
+  });
+
+  it("a stage declared verdict says so where the executor reads it, and one not declared does not", () => {
+    const d = readDeclaration(JSON.stringify({ ...acme, workflows: { ship: { stages: [{ needs: "build" }, { needs: "review", verdict: true }] } } }));
+    assert.equal(stageOf(d, "ship", "review")?.verdict, true);
+    assert.equal(stageOf(d, "ship", "build")?.verdict, false);
   });
 
   it("a role that names no command runs pi (ADR-029) and is read as declared", () => {

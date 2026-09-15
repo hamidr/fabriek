@@ -18,8 +18,9 @@ const declaration = readDeclaration(
     roles: {
       builder: { command: ["pi"], provides: ["build", "test"] },
       reviewer: { command: ["pi"], provides: ["review"] },
+      manager: { command: ["pi"], provides: ["inspect"] },
     },
-    workflows: { ship: { stages: [{ needs: "build" }, { needs: "test" }, { needs: "review" }] } },
+    workflows: { ship: { stages: [{ needs: "build" }, { needs: "test" }, { needs: "review" }, { needs: "inspect", verdict: true }] } },
     resources: { taskAttempts: 2, tokens: 1000 },
   }),
 );
@@ -275,14 +276,28 @@ describe("the executor", () => {
 
   it("a done outcome at the last stage closes the issue", async () => {
     const { x, f } = await executor();
-    await f.board.create("t", "b", "review");
-    x.heard("reviewer", { kind: "ready", capabilities: ["review"] });
-    await x.apply({ verb: "assign", issue: 1, role: "reviewer" });
-    x.heard("reviewer", { kind: "ack", issue: 1 });
+    await f.board.create("t", "b", "inspect");
+    x.heard("manager", { kind: "ready", capabilities: ["inspect"] });
+    await x.apply({ verb: "assign", issue: 1, role: "manager" });
+    x.heard("manager", { kind: "ack", issue: 1 });
     await x.settle();
-    f.roleComment(1, "reviewer", "outcome: done\n\nlgtm");
+    f.roleComment(1, "manager", "outcome: done\n\nnothing to change");
     await x.checkOutcomes();
     assert.equal(f.issues.get(1)?.state, "closed");
+  });
+
+  it("a stage declared verdict takes done with no commit, and one not declared still does not", async () => {
+    const { x, f } = await executor();
+    await f.board.create("t", "b", "inspect");
+    x.heard("manager", { kind: "ready", capabilities: ["inspect"] });
+    await x.apply({ verb: "assign", issue: 1, role: "manager" });
+    x.heard("manager", { kind: "ack", issue: 1 });
+    await x.settle();
+    f.setCommits(0);
+    f.roleComment(1, "manager", "outcome: done\n\nnothing to change");
+    await x.checkOutcomes();
+    assert.equal(f.issues.get(1)?.state, "closed");
+    assert.ok(!f.issues.get(1)?.thread.some((c) => /no commit/.test(c.body)));
   });
 
   it("a blocked outcome labels the issue blocked and the role keeps it", async () => {

@@ -69,6 +69,16 @@ validate_with() {
 	assert_output --partial 'acme'
 }
 
+# ADR-051: a stage whose done is a verdict and not a change is declared so.
+@test "a stage may declare that done is a verdict, and only as true or false" {
+	run validate_with '.workflows.ship.stages[0].verdict = true'
+	assert_success
+	assert_output --partial '"verdict": true'
+	run validate_with '.workflows.ship.stages[0].verdict = "yes"'
+	assert_failure
+	assert_output --partial "verdict"
+}
+
 @test "everything but the roles that work the repository is optional" {
 	run validate_with 'del(.resources, .workflows)'
 	assert_success

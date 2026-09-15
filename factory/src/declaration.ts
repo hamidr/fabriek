@@ -17,6 +17,8 @@ export interface Stage {
   ready?: string[];
   done?: string;
   gate?: string;
+  /** Done at this stage is a verdict, not a change: no commit is asked (ADR-051). */
+  verdict?: boolean;
 }
 
 export interface Workflow {
@@ -102,6 +104,7 @@ export function readDeclaration(text: string): Declaration {
         if (s["ready"] !== undefined) stage.ready = names(s["ready"], `workflow ${name} stage ${i}: ready`);
         if (typeof s["done"] === "string") stage.done = s["done"];
         if (typeof s["gate"] === "string") stage.gate = s["gate"];
+        if (typeof s["verdict"] === "boolean") stage.verdict = s["verdict"];
         return stage;
       });
       const workflow: Workflow = { stages };
@@ -145,6 +148,7 @@ export interface StageAt {
   needs: string;
   /** The capability the next stage needs, or null at the pipeline's end. */
   next: string | null;
+  verdict: boolean;
 }
 
 /** A stage by its workflow and its label, which is the capability it needs. */
@@ -154,5 +158,5 @@ export function stageOf(d: Declaration, workflow: string, label: string): StageA
   const index = w.stages.findIndex((s) => s.needs === label);
   if (index < 0) return null;
   const next = w.stages[index + 1];
-  return { workflow, index, needs: label, next: next ? next.needs : null };
+  return { workflow, index, needs: label, next: next ? next.needs : null, verdict: w.stages[index]?.verdict ?? false };
 }
