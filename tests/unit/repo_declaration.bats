@@ -413,11 +413,13 @@ validate_example() {
 	assert_output --partial "244"
 }
 
-@test "a declared concurrency below the expanded role count is refused naming both numbers, and an absent one is left alone" {
-	run validate_with '.roles.backend.replicas = 3 | .resources.concurrency = 3'
-	assert_failure
-	assert_output --partial "4"
-	assert_output --partial "3"
+# ADR-055: concurrency is the ceiling on tasks in flight, held by the
+# executor, so fewer than the roles is the usual case and not a mistake.
+@test "a concurrency below the role count is accepted, and an absent one is left absent" {
+	run validate_with '.roles.backend.replicas = 3 | .resources.concurrency = 2'
+	assert_success
+	run jq -c '.resources.concurrency' <<<"$output"
+	assert_output '2'
 	run validate_with '.roles.backend.replicas = 3 | del(.resources.concurrency)'
 	assert_success
 	run jq -c '.resources.concurrency' <<<"$output"

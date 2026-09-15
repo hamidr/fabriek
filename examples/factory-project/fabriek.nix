@@ -136,10 +136,10 @@
     ## Tokens, input and output, the factory may spend before the proxy
     ## refuses (ADR-037). The operator's ceiling caps it like the rest.
     tokens = 2000000;
-    ## How many cages the machine's memory and cores are divided among.
-    ## Every declared role runs, replicas included, so a count below the
-    ## roles is refused rather than sizing each cage for fewer (ADR-053).
-    concurrency = 5;
+    ## How many tasks may be in flight at once: the executor refuses an
+    ## assignment past it, and each cage is sized for the machine divided
+    ## by it (ADR-055). Fewer than the roles: an idle session costs little.
+    concurrency = 3;
     taskAttempts = 3;
     runTimeoutSeconds = 3600;
 

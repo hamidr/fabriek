@@ -88,13 +88,6 @@ fabriek_declaration_program() {
      then ["declaration: \($expanded) roles after replicas, and the bridge has addresses for 244"]
      else [] end),
 
-    ## A declared concurrency below the roles it would size for; an absent
-    ## one is left as it is (ADR-053 point 5).
-    ((($d.resources? // {}) | if type == "object" then .concurrency? else null end) as $c
-     | if ($c | type) == "number" and $c < $expanded
-       then ["resources: concurrency is \($c), below the \($expanded) roles declared after replicas"]
-       else [] end),
-
     ((if ($d.workflows | type) == "object" then $d.workflows else {} end)
      | to_entries | map(
        .key as $w | .value as $v |

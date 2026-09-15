@@ -40,7 +40,16 @@ declare_resources() {
 	assert_line --index 3 "1"
 }
 
-@test "with no concurrency declared, one cage at a time gets everything" {
+# ADR-055: every role's session runs from up, so with no ceiling declared
+# every role may be busy at once and the machine is shared by all of them.
+@test "with no concurrency declared, every role may be busy at once, so a cage gets the machine divided by the roles" {
+	printf '{ "name": "acme", "roles": { "a": { "provides": ["build"] }, "b": { "provides": ["build"] }, "c": { "provides": ["review"] } }, "resources": { "memory": "3G", "cores": 3 } }\n' >"$DECL"
+	run fabriek_cage_bounds "$DECL"
+	assert_line --index 1 "1024M"
+	assert_line --index 3 "1"
+}
+
+@test "with no concurrency declared and one role, that role gets everything" {
 	declare_resources '{ "memory": "2G", "cores": 3 }'
 	run fabriek_cage_bounds "$DECL"
 	assert_line --index 1 "2048M"

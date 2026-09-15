@@ -53,14 +53,16 @@ fabriek_cage_network() {
 }
 
 ## The bounds a cage gets on its scope (nixcage ADR-012), one argv word per
-## line: what the factory declared it may use, divided by how many cages it
-## said may run at once, never less than one cpu. Nothing declared, nothing
+## line: what the factory declared it may use, divided by how many tasks
+## may be in flight at once, the same number the executor holds assignments
+## to (ADR-055); with none declared, by the roles, since every role's
+## session runs from up. Never less than one cpu. Nothing declared, nothing
 ## bounded: the machine's own size is the ceiling then.
 fabriek_cage_bounds() {
 	local declaration="$1" memory cores concurrency mib
 	memory="$(jq -r '.resources.memory // empty' "$declaration")"
 	cores="$(jq -r '.resources.cores // empty' "$declaration")"
-	concurrency="$(jq -r '.resources.concurrency // 1' "$declaration")"
+	concurrency="$(jq -r '.resources.concurrency // (.roles | length)' "$declaration")"
 	[ "$concurrency" -ge 1 ] 2>/dev/null || concurrency=1
 	if [ -n "$memory" ]; then
 		mib="$(fabriek_size_mib "$memory")" || return 1
