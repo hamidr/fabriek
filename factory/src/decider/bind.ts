@@ -97,9 +97,14 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
     return { issues, ready: [...ready], routing };
   }
 
-  /** One judgement at a time; a change that lands mid-thought is thought about next, not dropped. */
+  /** One judgement at a time; a change that lands mid-thought is thought
+   *  about next, not dropped. A snapshot the same as the last one thought
+   *  about is not thought about again: the tick is a safety net for a
+   *  change the streams did not carry, and a model asked the same question
+   *  every thirty seconds spent the factory's whole ceiling answering it. */
   let again = false;
-  async function think(): Promise<void> {
+  let last = "";
+  async function think(force = false): Promise<void> {
     if (stopped) return;
     if (busy) {
       again = true;
@@ -110,6 +115,9 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       do {
         again = false;
         const s = await snapshot();
+        const key = JSON.stringify(s);
+        if (!force && key === last) break;
+        last = key;
         await o.think(core.prompt(s), s);
       } while (again && !stopped);
     } catch (e) {
@@ -156,7 +164,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       client = await o.connect();
       void listen();
       setInterval(() => void think(), o.tickMs ?? 30000).unref();
-      await think();
+      await think(true);
     },
     stop() {
       stopped = true;

@@ -86,6 +86,46 @@ describe("binding a decider", () => {
     }
   });
 
+  // Measured on a machine: a tick every thirty seconds with the whole board
+  // in it was nine million tokens in half an hour, the factory's ceiling
+  // spent by the one role that does no work.
+  it("given a tick with nothing changed on the board or the ready set, then it does not think again", async () => {
+    const thought: Snapshot[] = [];
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
+    await bound.start();
+    try {
+      await tick();
+      await tick();
+      assert.equal(thought.length, 1, `thought once on an unchanged board, not ${thought.length} times`);
+    } finally {
+      bound.stop();
+    }
+  });
+
+  it("given a tick after the board changed underneath, then it thinks once more", async () => {
+    const thought: Snapshot[] = [];
+    let assignee: { login: string }[] = [];
+    const moving: DeciderForge = {
+      ...forge,
+      call: async <T,>(_method: string, path: string): Promise<T> => {
+        if (path.includes("/issues?")) return [{ number: 7, title: "Add importer", labels: [{ name: "build" }], assignees: assignee }] as T;
+        throw new Error(`unscripted ${path}`);
+      },
+    };
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
+    await bound.start();
+    try {
+      await tick();
+      assignee = [{ login: "builder" }];
+      await tick();
+      await tick();
+      assert.equal(thought.length, 2, `thought once more after the change, not ${thought.length} times`);
+      assert.equal(thought.at(-1)?.issues[0]?.assignee, "builder");
+    } finally {
+      bound.stop();
+    }
+  });
+
   it("given a command through the core, then it lands on the commands stream as JSON, and one the gate refuses does not", async () => {
     const bus = scriptedBus([]);
     const bound = bindDecider({ declaration, policy: null, connect: async () => bus, forge, think: async () => {}, tickMs: 60000, retryMs: 1 });
