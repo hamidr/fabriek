@@ -301,3 +301,60 @@ fabriek_operator_catalogues() {
 	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq -r '(.catalogues // [])[]'
 }
+
+## The factory registered here for a repository, by its resolved path, or
+## nothing when none is. What lets check, given a path, find the entry that
+## may declare it.
+##
+## fabriek_operator_factory_for_path <config.json> <absolute repo path>
+fabriek_operator_factory_for_path() {
+	local json="$1" repo="$2" factory path
+	while IFS=$'\t' read -r factory path; do
+		[ -n "$path" ] || continue
+		[ "$(cd "$path" 2>/dev/null && pwd)" = "$repo" ] || continue
+		printf '%s\n' "$factory"
+		return 0
+	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | to_entries[] | "\(.key)\t\(.value.path // "")"')
+	return 1
+}
+
+## Where a factory's declaration is (ADR-061 point 2): the operator's file
+## when the entry for this factory carries one, the repository's
+## fabriek.toml otherwise. Prints the file. The config may be absent
+## (check on a repository nobody registered): then the repository is the
+## one place. Says nothing about a double declaration; resolve does.
+##
+## fabriek_declaration_source <config.toml-or-empty> <factory-or-empty> <repo>
+fabriek_declaration_source() {
+	local config="$1" factory="$2" repo="$3" json
+	if [ -n "$config" ] && [ -f "$config" ] && json="$(fabriek_operator_config "$config" 2>/dev/null)"; then
+		[ -n "$factory" ] || factory="$(fabriek_operator_factory_for_path "$json" "$repo")" || factory=""
+		if [ -n "$factory" ] && printf '%s' "$json" | jq -e --arg f "$factory" \
+			'.factories[$f] | has("roles") or has("workflows") or has("resources") or has("decider") or has("catalogue")' >/dev/null; then
+			printf '%s\n' "$config"
+			return 0
+		fi
+	fi
+	printf '%s/fabriek.toml\n' "$repo"
+}
+
+## The declaration itself, from wherever it is, validated: the operator's
+## entry named after the factory, or the repository's file at the rev;
+## refused naming both when both declare it.
+##
+## fabriek_declaration_resolve <config.toml-or-empty> <factory-or-empty> <repo> <rev>
+fabriek_declaration_resolve() {
+	local config="$1" factory="$2" repo="$3" rev="$4" source json
+	source="$(fabriek_declaration_source "$config" "$factory" "$repo")"
+	if [ "$source" = "$repo/fabriek.toml" ]; then
+		fabriek_declaration_read "$repo" "$rev"
+		return
+	fi
+	json="$(fabriek_operator_config "$config")" || return 1
+	[ -n "$factory" ] || factory="$(fabriek_operator_factory_for_path "$json" "$repo")"
+	if git -C "$repo" cat-file -e "$rev:fabriek.toml" 2>/dev/null; then
+		echo "fabriek: $factory is declared twice: in $config and in $repo/fabriek.toml at $rev; a factory is declared once" >&2
+		return 1
+	fi
+	fabriek_operator_declaration_of "$json" "$factory"
+}

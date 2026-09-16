@@ -157,3 +157,39 @@ shell = "backend-jvm"' ''
 	assert_success
 	assert_line --partial "backend: committer, developer, python"
 }
+
+# ADR-061: a factory may be declared in the operator's file instead of the
+# repository, and never in both.
+@test "a factory declared in the operator's file is checked from there when the repository declares nothing" {
+	git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m empty
+	cat >"$FABRIEK_CONFIG" <<TOML
+[factories.acme]
+path = "$REPO"
+
+[factories.acme.roles.backend]
+provides = ["build"]
+specialists = ["python"]
+
+[[factories.acme.workflows.ship.stages]]
+needs = "build"
+TOML
+	check
+	assert_success
+	assert_line --index 0 --partial "acme at $(git -C "$REPO" rev-parse --short HEAD), declared in $FABRIEK_CONFIG"
+	assert_line --partial "backend: committer, developer, python"
+}
+
+@test "a factory declared in the operator's file and in the repository is refused naming both" {
+	declare_roles '[roles.backend]
+provides = ["build"]' ''
+	cat >"$FABRIEK_CONFIG" <<TOML
+[factories.acme]
+path = "$REPO"
+
+[factories.acme.roles.backend]
+provides = ["build"]
+TOML
+	check
+	assert_failure
+	assert_output --partial "acme is declared twice: in $FABRIEK_CONFIG and in $REPO/fabriek.toml"
+}

@@ -69,7 +69,9 @@ fabriek_check_read() {
 	}
 	FABRIEK_CHECK_REPO="$absolute"
 	FABRIEK_CHECK_REV="$(fabriek_declaration_rev "$absolute")" || return 1
-	FABRIEK_CHECK_DECLARATION="$(fabriek_declaration_read "$absolute")" || return 1
+	## From the operator's file when the factory registered for this
+	## repository is declared there (ADR-061), the repository otherwise.
+	FABRIEK_CHECK_DECLARATION="$(fabriek_declaration_resolve "$(fabriek_operator_config_path)" "" "$absolute" "$FABRIEK_CHECK_REV")" || return 1
 }
 
 ## The shells the roles name, each looked for in the repository's flake at
@@ -103,7 +105,10 @@ fabriek_check_repo() {
 	fabriek_check_shells "$FABRIEK_CHECK_REPO" "$FABRIEK_CHECK_REV" "$system" "$FABRIEK_CHECK_DECLARATION" || return 1
 	name="$(printf '%s' "$FABRIEK_CHECK_DECLARATION" | jq -r .name)"
 	if [ -z "${FABRIEK_JSON:-}" ]; then
-		echo "checked $name at $(git -C "$FABRIEK_CHECK_REPO" rev-parse --short "$FABRIEK_CHECK_REV")"
+		local where="" source
+		source="$(fabriek_declaration_source "$(fabriek_operator_config_path)" "" "$FABRIEK_CHECK_REPO")"
+		[ "$source" = "$FABRIEK_CHECK_REPO/fabriek.toml" ] || where=", declared in $source"
+		echo "checked $name at $(git -C "$FABRIEK_CHECK_REPO" rev-parse --short "$FABRIEK_CHECK_REV")$where"
 		if [ -n "$(git -C "$FABRIEK_CHECK_REPO" status --porcelain 2>/dev/null)" ]; then
 			echo "note: the working tree differs from that commit; fabriek up reads the commit"
 		fi

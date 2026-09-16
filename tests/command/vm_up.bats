@@ -278,6 +278,42 @@ ro-store"
 	[ ! -f "$NIX_CALLS" ]
 }
 
+# ADR-061: the operator's file may declare the factory whole; then the
+# machine is sized from it and the repository must declare nothing.
+@test "up sizes the machine from a declaration in the operator's file when the repository has none" {
+	git -C "$REPO" rm -q fabriek.toml
+	git -C "$REPO" -c commit.gpgsign=false commit -qm undeclare
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[factories.acme.roles.builder]
+provides = ["build"]
+
+[[factories.acme.workflows.ship.stages]]
+needs = "build"
+
+[factories.acme.resources]
+memory = "4G"
+cores = 2
+TOML
+	run_fabriek up acme
+	assert_success
+	run jq -c '{mem, cpus}' "$FABRIEK_MACHINES/acme/runtime.json"
+	assert_output '{"mem":4096,"cpus":2}'
+}
+
+@test "a factory declared in the operator's file and in the repository stops up naming both, before anything is written" {
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[factories.acme.roles.builder]
+provides = ["build"]
+TOML
+	run_fabriek up acme
+	assert_failure
+	assert_output --partial "acme is declared twice: in $FABRIEK_CONFIG and in $REPO/fabriek.toml"
+	[ ! -f "$FABRIEK_MACHINES/acme/fabriek.toml" ]
+	[ ! -f "$FABRIEK_MACHINES/acme/pid" ]
+}
+
 # A build that fails prints a trace with the thrown message at its end,
 # which is the one line the operator can act on.
 @test "when the appliance's build fails, the thrown message is printed first and the trace after it" {

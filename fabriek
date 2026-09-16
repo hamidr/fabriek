@@ -256,18 +256,22 @@ machine_handover() {
       return 1
     }
   fi
-  fabriek_operator_config "$config" >"$dir/config.json.new" || return 1
-  fabriek_credential_toml "$dir/config.json.new" "$factory" "$remote" "$rev" "$(host_system)" >"$credential.new" || return 1
+  ## The declaration, from the operator's file or the repository at the pin
+  ## (ADR-061), before anything is written: a factory declared twice is
+  ## refused with nothing on disk to say it was ever started.
+  local declaration local_file spec
+  declaration="$(mktemp)"
+  local_file="$(mktemp)"
+  fabriek_declaration_resolve "$config" "$factory" "$path" "$rev" >"$declaration" || { rm -f "$declaration" "$local_file"; return 1; }
+
+  fabriek_operator_config "$config" >"$dir/config.json.new" || { rm -f "$declaration" "$local_file"; return 1; }
+  fabriek_credential_toml "$dir/config.json.new" "$factory" "$remote" "$rev" "$(host_system)" >"$credential.new" || { rm -f "$declaration" "$local_file"; return 1; }
   rm -f "$dir/config.json.new"
   mv "$credential.new" "$credential"
 
   ## The machine's size is what the factory asked and the operator allows,
   ## clamped here from the declaration at the pin, which since ADR-058 is a
   ## file this host reads without evaluating anything of the repository's.
-  local declaration local_file spec
-  declaration="$(mktemp)"
-  local_file="$(mktemp)"
-  fabriek_declaration_read "$path" "$rev" >"$declaration" || { rm -f "$declaration" "$local_file"; return 1; }
   jq -n --arg factory "$factory" --argjson caps "$(fabriek_operator_caps "$config")" \
     '{ factory: $factory, caps: $caps }' >"$local_file"
   spec="$(fabriek_machine_spec "$declaration" "$local_file" 2>/dev/null)" || {
