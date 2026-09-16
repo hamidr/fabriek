@@ -158,3 +158,73 @@ fabriek_render_decider_dir() {
 	cp -r "$floor/decider/extensions" "$out/extensions" || return 1
 	printf '%s\n' "$models" >"$out/models.json"
 }
+
+## The credential the machine booted with (ADR-057 point 3), as JSON. One
+## file, the operator's config.toml projected for this factory plus the
+## pin; read by the one TOML reader (repo-declaration.sh).
+##
+## fabriek_render_credential <fabriek.toml>
+fabriek_render_credential() {
+	local file="$1"
+	if [ ! -f "$file" ]; then
+		echo "fabriek: no credential at $file; the machine was started without a factory" >&2
+		return 1
+	fi
+	fabriek_toml_json "$file"
+}
+
+## The local facts the clamp reads (machine-spec.sh), from the credential:
+## the same shape the operator's host used to write beside the machine
+## flake, minus the port and the key, which are the runner's now.
+##
+## fabriek_render_local <credential.json>
+fabriek_render_local() {
+	local credential="$1"
+	jq -c '{ factory: .factory.name, hostSystem: .factory.hostSystem,
+	         caps: (.caps // {}), credentials: (.credentials // {}), models: (.models // {}) }' "$credential"
+}
+
+## The URIs a profile's evaluation may reach (ADR-057 point 6): the clone at
+## the pin, fabriek itself, and every input the repository's flake locks,
+## by the reference the lock records. Nothing else; with the host's store as
+## the lower layer, an unrestricted evaluation could read all of it.
+##
+## fabriek_profile_allowed_uris <clone> <rev> <self>
+fabriek_profile_allowed_uris() {
+	local clone="$1" rev="$2" self="$3" lock
+	printf '%s\n' "git+file://$clone" "path:$self"
+	if lock="$(git -C "$clone" show "$rev:flake.lock" 2>/dev/null)"; then
+		printf '%s' "$lock" | jq -r '
+		  .nodes | to_entries[] | .value.locked // empty
+		  | if .type == "github" then "github:\(.owner)/\(.repo)/\(.rev)"
+		    elif .type == "gitlab" then "gitlab:\(.owner)/\(.repo)/\(.rev)"
+		    elif .type == "git" then .url
+		    elif .type == "tarball" then .url
+		    else empty end' | sort -u
+	fi
+}
+
+## One role's profile, built by the machine's daemon from the repository at
+## the pin (ADR-057 point 5, modules/profile.nix). Prints the store path, or
+## nix's own refusal, which names the role and what it lacked.
+##
+## fabriek_profile_build <clone> <rev> <self> <system> <role> <declaration.json>
+fabriek_profile_build() {
+	local clone="$1" rev="$2" self="$3" system="$4" role="$5" declaration="$6"
+	local specialists shell catalogue uris
+	specialists="$(jq -c --arg r "$role" '.roles[$r].specialists // []' "$declaration")"
+	shell="$(jq -c --arg r "$role" '.roles[$r].shell // null' "$declaration")"
+	catalogue="$(jq -c '.catalogue // null' "$declaration")"
+	uris="$(fabriek_profile_allowed_uris "$clone" "$rev" "$self" | tr '\n' ' ')"
+	## One line, so a record of the call is one line too.
+	local expr
+	expr="import $self/modules/profile.nix {"
+	expr="$expr fabriek = builtins.getFlake $(fabriek_nix_string "path:$self");"
+	expr="$expr clone = $(fabriek_nix_string "$clone"); rev = $(fabriek_nix_string "$rev");"
+	expr="$expr system = $(fabriek_nix_string "$system"); role = $(fabriek_nix_string "$role");"
+	expr="$expr specialists = builtins.fromJSON $(fabriek_nix_string "$specialists");"
+	expr="$expr shell = $shell; catalogue = $catalogue; }"
+	nix build --no-link --print-out-paths --impure \
+		--restrict-eval --allowed-uris "${uris% }" \
+		--expr "$expr"
+}

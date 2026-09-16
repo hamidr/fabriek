@@ -1,0 +1,271 @@
+#!/usr/bin/env bats
+# What factory-render does at boot from the credential the machine was
+# handed (ADR-057 points 3 to 5, 7): reads fabriek.toml, fetches the
+# repository at the pin, reads its declaration, clamps it against the caps,
+# writes what the services include under the state directory, fills the
+# bridge's set, tightens the record's bound, builds a profile per role with
+# the machine's daemon and composes its pi directory, and writes
+# profiles.json. Then the services that include any of it are reloaded.
+#
+# nix build, nft, systemctl and nixcage-container are stubbed; nix eval is
+# the real one, since the TOML reader and the declaration's schema are what
+# is under test too.
+
+load ../test_helper/common
+
+setup() {
+	setup_temp_dir
+	STATE="$TEST_TEMP_DIR/state"
+	STUB_DIR="$TEST_TEMP_DIR/bin"
+	ETC="$TEST_TEMP_DIR/etc"
+	RUN="$TEST_TEMP_DIR/run"
+	CALLS="$TEST_TEMP_DIR/calls"
+	mkdir -p "$STATE" "$STUB_DIR" "$RUN" "$CALLS"
+	REAL_NIX="$(command -v nix)"
+	PATH="$STUB_DIR:$PATH"
+	export PATH STATE
+	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
+	export FABRIEK_BRIDGE=fabriek0 FABRIEK_BRIDGE_HOST=10.77.0.1 FABRIEK_PROXY_PORT=8118 \
+		FABRIEK_FORGEJO_PORT=3000 FABRIEK_VALKEY_PORT=6379
+	export FABRIEK_FLOOR="$TEST_TEMP_DIR/floor" FABRIEK_SELF="$TEST_TEMP_DIR/self" FABRIEK_SYSTEM=aarch64-linux
+	mkdir -p "$FABRIEK_FLOOR/extensions/fabriek" "$FABRIEK_FLOOR/decider/extensions/fabriek" "$FABRIEK_SELF"
+	echo loop >"$FABRIEK_FLOOR/extensions/fabriek/index.ts"
+	echo decider >"$FABRIEK_FLOOR/decider/extensions/fabriek/index.ts"
+	echo '# Working as a factory role' >"$FABRIEK_FLOOR/guidance.md"
+
+	# The repository the factory works, with its declaration committed, and
+	# an origin the machine clones from.
+	REPO="$TEST_TEMP_DIR/origin"
+	mkdir -p "$REPO/docs"
+	git init -q -b main "$REPO"
+	git -C "$REPO" config user.name factory
+	git -C "$REPO" config user.email factory@invalid
+	cat >"$REPO/fabriek.toml" <<'TOML'
+name = "acme"
+
+[roles.builder]
+provides = ["build"]
+specialists = ["python"]
+shell = "backend"
+
+[roles.reviewer]
+provides = ["review"]
+
+[[workflows.ship.stages]]
+needs = "build"
+
+[[workflows.ship.stages]]
+needs = "review"
+
+[resources]
+memory = "4G"
+cores = 2
+recordQuota = "3G"
+tokens = 500000
+egress = ["api.anthropic.com", "api.openai.com"]
+
+[decider]
+policy = "docs/policy.md"
+TOML
+	echo "Prefer finishing started work." >"$REPO/docs/policy.md"
+	printf '{ outputs = { self }: { }; }\n' >"$REPO/flake.nix"
+	git -C "$REPO" add -A
+	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
+	REV="$(git -C "$REPO" rev-parse HEAD)"
+
+	# The credential the machine booted with (ADR-057 point 3).
+	CRED="$TEST_TEMP_DIR/fabriek.toml"
+	cat >"$CRED" <<TOML
+[factory]
+name = "acme"
+hostSystem = "aarch64-darwin"
+
+[repository]
+path = "$REPO"
+remote = "$REPO"
+
+[pin]
+rev = "$REV"
+
+[caps]
+memory = "16G"
+cores = 8
+recordQuota = "8G"
+tokens = 1000000
+egress = ["api.anthropic.com"]
+
+[credentials]
+"api.anthropic.com" = "x-api-key"
+
+[models]
+"api.anthropic.com" = "claude-opus-5"
+
+[embedder]
+url = "http://10.0.2.2:8080"
+TOML
+	export FABRIEK_CREDENTIAL="$CRED"
+
+	# nix: build answers with a store path named after the role it was
+	# asked for, and records the line; everything else is the real nix.
+	cat >"$STUB_DIR/nix" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = build ]; then
+	printf '%s\n' "\$*" >>"$CALLS/nix-build"
+	role="\$(printf '%s\n' "\$*" | sed -n 's/.*role = "\([^"]*\)".*/\1/p')"
+	if [ -e "$CALLS/fail-\$role" ]; then echo "error: role \$role names devShell backend, which the repository does not define" >&2; exit 1; fi
+	out="$TEST_TEMP_DIR/store/fabriek-role-\$role"
+	mkdir -p "\$out/share/fabriek/specialist/skills" "\$out/bin"
+	echo '{}' >"\$out/share/fabriek/specialist/lsp.json"
+	echo '{}' >"\$out/share/fabriek/specialist/tests.json"
+	echo "## \$role" >"\$out/share/fabriek/specialist/APPEND_SYSTEM.md"
+	echo "\$out"
+	exit 0
+fi
+exec "$REAL_NIX" "\$@"
+EOF
+	for tool in nft systemctl; do
+		cat >"$STUB_DIR/$tool" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS/$tool"
+EOF
+	done
+	cat >"$STUB_DIR/nixcage-container" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS/nixcage-container"
+case "\$1" in
+veth) echo "nc-\$2" ;;
+storage) echo "$STATE/forgejo" ;;
+esac
+EOF
+	cat >"$STUB_DIR/id" <<'EOF'
+#!/usr/bin/env bash
+echo 993
+EOF
+	chmod +x "$STUB_DIR"/*
+}
+
+teardown() {
+	teardown_temp_dir
+}
+
+@test "render reads the credential, fetches the pin and writes the clamped declaration for the machine program" {
+	run_fabriek_container factory-render
+	assert_success
+	[ -f "$ETC/declaration.json" ]
+	run jq -c '[.name, (.roles | keys), .resources.cores, .resources.egress]' "$ETC/declaration.json"
+	assert_output '["acme",["builder","reviewer"],2,["api.anthropic.com"]]'
+	run cat "$ETC/rev"
+	assert_output "$REV"
+}
+
+@test "what the clamp changed is said, and kept for up to print" {
+	run_fabriek_container factory-render
+	assert_success
+	assert_output --partial "egress asked for api.openai.com, which this host does not allow; dropped"
+	run jq -r '.[]' "$ETC/notes.json"
+	assert_output --partial "api.openai.com"
+}
+
+@test "the bridge plan is written and the cages set filled from it" {
+	run_fabriek_container factory-render
+	assert_success
+	run jq -c '[.bridge, .cages]' "$ETC/bridge.json"
+	assert_output '["fabriek0",{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"}]'
+	run cat "$CALLS/nft"
+	assert_line --index 0 'flush set bridge fabriek-cages cages'
+	assert_line --index 1 'add element bridge fabriek-cages cages { "nc-builder" . 10.77.0.10, "nc-decider" . 10.77.0.2, "nc-reviewer" . 10.77.0.11 }'
+}
+
+@test "the proxy's ceiling and locations, the endpoints and the model are written, and nginx reloaded after the headers" {
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$ETC/proxy/endpoints.conf"
+	assert_line --index 0 'set $spend_ceiling 500000;'
+	assert_output --partial 'location /api.anthropic.com/ {'
+	refute_output --partial 'api.openai.com'
+	run jq -c . "$ETC/endpoints.json"
+	assert_output '{"credentials":{"api.anthropic.com":"x-api-key"},"embedder":"http://10.0.2.2:8080","models":{"api.anthropic.com":"claude-opus-5"}}'
+	run cat "$ETC/model.json"
+	assert_output '{"model":"claude-opus-5","provider":"anthropic"}'
+	run cat "$CALLS/systemctl"
+	assert_line --partial 'restart fabriek-egress-credentials'
+	assert_line --partial 'reload-or-restart nginx'
+}
+
+@test "the record's bound is tightened to what the factory asked and the operator allowed" {
+	run_fabriek_container factory-render
+	assert_success
+	run grep "storage ensure" "$CALLS/nixcage-container"
+	assert_output "storage ensure $STATE/forgejo 993 3072M"
+}
+
+@test "the decider's policy is read from the pin and its directory composed from the floor" {
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$ETC/decider-policy.md"
+	assert_output "Prefer finishing started work."
+	run cat "$ETC/pi-decider/extensions/fabriek/index.ts"
+	assert_output decider
+	[ -f "$ETC/pi-decider/models.json" ]
+}
+
+# ADR-057 point 5: the machine's daemon builds each role's profile from the
+# repository at the pin, restricted to the clone, fabriek and the flake's
+# locked inputs, and the session finds it linked beside the pi directory.
+@test "a profile per role is built by the daemon at the pin, restricted, and linked with a pi directory beside it" {
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$CALLS/nix-build"
+	assert_line --index 0 --partial '--restrict-eval'
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme path:$FABRIEK_SELF"
+	assert_line --index 0 --partial "rev = \"$REV\""
+	assert_line --index 0 --partial 'role = "builder"'
+	assert_line --index 0 --partial 'shell = "backend"'
+	assert_line --index 1 --partial 'role = "reviewer"'
+	assert_line --index 1 --partial 'shell = null'
+	[ "$(readlink "$ETC/roles/builder/profile")" = "$TEST_TEMP_DIR/store/fabriek-role-builder" ]
+	[ "$(readlink "$ETC/roles/reviewer/profile")" = "$TEST_TEMP_DIR/store/fabriek-role-reviewer" ]
+	run cat "$ETC/roles/builder/pi/APPEND_SYSTEM.md"
+	assert_line --index 0 '# Working as a factory role'
+	assert_line --index 1 '## builder'
+	run jq -c '[.rev, .roles, .decider]' "$ETC/profiles.json"
+	assert_output "[\"$REV\",{\"builder\":\"$TEST_TEMP_DIR/store/fabriek-role-builder\",\"reviewer\":\"$TEST_TEMP_DIR/store/fabriek-role-reviewer\"},\"$ETC/pi-decider\"]"
+}
+
+@test "a role whose profile does not build is refused by name, and no session can start on it" {
+	touch "$CALLS/fail-builder"
+	run_fabriek_container factory-render
+	assert_failure
+	assert_output --partial "role builder names devShell backend"
+	[ ! -e "$ETC/roles/builder/profile" ]
+	[ ! -e "$ETC/profiles.json" ]
+}
+
+@test "a second render changes nothing and builds again what the store already has" {
+	run_fabriek_container factory-render
+	assert_success
+	local before
+	before="$(find "$ETC" -type f -exec md5sum {} + | sort)"
+	run_fabriek_container factory-render
+	assert_success
+	[ "$(find "$ETC" -type f -exec md5sum {} + | sort)" = "$before" ]
+	[ "$(wc -l <"$CALLS/nix-build")" = 4 ]
+}
+
+@test "a declaration the schema refuses stops render naming the key, before anything is written" {
+	echo 'colour = "blue"' >>"$REPO/fabriek.toml"
+	git -C "$REPO" -c commit.gpgsign=false commit -qam colour
+	sed -i.bak "s/rev = \".*\"/rev = \"$(git -C "$REPO" rev-parse HEAD)\"/" "$CRED" && rm "$CRED.bak"
+	run_fabriek_container factory-render
+	assert_failure
+	assert_output --partial colour
+	[ ! -e "$ETC/declaration.json" ]
+}
+
+@test "without the credential, render says so and does nothing" {
+	rm "$CRED"
+	run_fabriek_container factory-render
+	assert_failure
+	assert_output --partial "no credential at $CRED"
+	[ ! -e "$ETC/declaration.json" ]
+}

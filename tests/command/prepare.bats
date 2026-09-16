@@ -19,7 +19,9 @@ setup() {
 	mkdir -p "$STATE" "$STUB_DIR" "$ETC" "$FORGE"
 	PATH="$STUB_DIR:$PATH"
 	export PATH STATE
-	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
+	RUN="$TEST_TEMP_DIR/run"
+	mkdir -p "$RUN"
+	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
 	# Where a push of main to the forge lands here: a bare repository, so no
 	# test waits on an address that is not on this host.
 	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
@@ -129,7 +131,10 @@ teardown() {
 @test "prepare marks the machine prepared after the last credential is handed over, and starts the executor on it" {
 	run_fabriek_container factory-prepare acme
 	assert_success
-	[ -f "$STATE/prepared" ]
+	# Under /run, per boot: the lifecycle model found a mark on the pool
+	# outliving the credentials it was written for (ADR-057).
+	[ -f "$RUN/prepared" ]
+	[ ! -e "$STATE/prepared" ]
 	run cat "$FORGE/systemctl-calls"
 	assert_output --partial "restart fabriek-executor"
 	# the mark is the last thing written: after the decider's chown

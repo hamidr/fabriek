@@ -318,13 +318,16 @@ fabriek_toml_json() {
 ## declares. A repository that still declares through its flake's fabriek
 ## output is told that the output is not read, because the roles it
 ## expects would otherwise be missing with no word why.
+##
+## fabriek_declaration_read <repo> [<rev>]: HEAD when no rev is given; the
+## machine reads at the pin the credential names (ADR-057).
 fabriek_declaration_read() {
-	local repo="$1" rev absolute text
+	local repo="$1" rev="${2:-}" absolute text
 	if ! absolute="$(cd "$repo" 2>/dev/null && pwd)"; then
 		echo "fabriek: no such repository: $repo" >&2
 		return 1
 	fi
-	rev="$(fabriek_declaration_rev "$absolute")" || return 1
+	[ -n "$rev" ] || rev="$(fabriek_declaration_rev "$absolute")" || return 1
 	if ! text="$(git -C "$absolute" show "$rev:fabriek.toml" 2>/dev/null)"; then
 		local hint=""
 		if git -C "$absolute" show "$rev:flake.nix" 2>/dev/null | grep -q 'fabriek *='; then

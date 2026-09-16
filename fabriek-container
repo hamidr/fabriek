@@ -36,6 +36,10 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/repo-declaration.sh"
 # shellcheck source=modules/machine-plan.sh
 . "$FABRIEK_LIB/machine-plan.sh"
+# shellcheck source=modules/machine-spec.sh
+. "$FABRIEK_LIB/machine-spec.sh"
+# shellcheck source=modules/factory-render.sh
+. "$FABRIEK_LIB/factory-render.sh"
 # shellcheck source=modules/transcript.sh
 . "$FABRIEK_LIB/transcript.sh"
 # shellcheck source=modules/forge.sh
@@ -403,10 +407,135 @@ cmd_role_worktree() {
 
 ## What a machine needs to have before a factory can run on it, made once
 ## and confirmed on every up (ADR-036, roadmap 2.3): bus passwords and the
+## What the machine was handed at boot (ADR-057 point 3), and where render
+## puts what it makes of it. Overridable so the suite can hand a machine a
+## credential of its own.
+FABRIEK_CREDENTIAL="${FABRIEK_CREDENTIAL:-/run/credentials/@system/fabriek.toml}"
+
+## The repository at the pin: cloned once as the factory's own clone
+## (ADR-032), fetched so the pin is there, and the declaration read from
+## that commit and never a working tree (ADR-058). Prints the clone's path.
+render_clone() {
+	local factory="$1" remote="$2" rev="$3" clone
+	clone="$(fabriek_factory_clone_ensure "$STATE_DIR" "$factory" "$remote")" ||
+		die "could not clone $remote for $factory"
+	git -C "$clone" cat-file -e "$rev^{commit}" 2>/dev/null ||
+		git -C "$clone" fetch --quiet origin "$rev" ||
+		die "$remote does not have the pinned commit $rev"
+	printf '%s\n' "$clone"
+}
+
+## The files the services include and the machine program reads, from the
+## clamped spec: the declaration, the rev, the notes, the bridge plan, the
+## proxy's configuration, the endpoints, the model, the decider's policy
+## and directory (modules/factory-render.sh). Written by rename where a
+## reader might be mid-read.
+render_files() {
+	local spec="$1" clone="$2" rev="$3" plan models policy
+	mkdir -p "$FABRIEK_ETC/proxy"
+	jq -c .declaration "$spec" >"$FABRIEK_ETC/declaration.json.new" &&
+		mv "$FABRIEK_ETC/declaration.json.new" "$FABRIEK_ETC/declaration.json"
+	printf '%s\n' "$rev" >"$FABRIEK_ETC/rev"
+	jq -c .notes "$spec" >"$FABRIEK_ETC/notes.json"
+	fabriek_render_bridge_plan "$FABRIEK_ETC/declaration.json" "$FABRIEK_BRIDGE" \
+		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_VALKEY_PORT" >"$FABRIEK_ETC/bridge.json"
+	fabriek_render_proxy "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/proxy/endpoints.conf"
+	jq -cS '{ credentials: (.egressHeaders // {}), models: (.egressModels // {}), embedder: .embedder }' "$spec" \
+		>"$FABRIEK_ETC/endpoints.json"
+	fabriek_render_model "$FABRIEK_ETC/declaration.json" "$(jq -c '.egressModels // {}' "$spec")" >"$FABRIEK_ETC/model.json"
+	policy="$(jq -r '.declaration.decider.policy // empty' "$spec")"
+	if [ -n "$policy" ]; then
+		git -C "$clone" show "$rev:$policy" >"$FABRIEK_ETC/decider-policy.md" ||
+			die "the declaration names a policy at $policy, which the commit $rev does not have"
+	else
+		rm -f "$FABRIEK_ETC/decider-policy.md"
+	fi
+	plan="$(jq -r .proxy "$FABRIEK_ETC/bridge.json")"
+	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$plan")"
+	fabriek_render_decider_dir "$FABRIEK_FLOOR" "$models" "$FABRIEK_ETC/pi-decider"
+}
+
+## The bridge's set, from the plan: flushed and filled, so a role that left
+## the declaration loses its port. The record's bound, asked of the storage
+## primitive again with the clamped number (ADR-036).
+render_machine() {
+	local spec="$1" elements quota
+	elements="$(fabriek_render_cage_elements "$FABRIEK_ETC/bridge.json")" || die "could not name the cages' veths"
+	nft flush set bridge fabriek-cages cages
+	nft add element bridge fabriek-cages cages "{ $elements }" || die "could not fill the bridge's cages set"
+	quota="$(jq -r '.recordQuota // empty' "$spec")"
+	if [ -n "$quota" ]; then
+		nixcage-container storage ensure "$STATE_DIR/forgejo" "$(id -u forgejo)" "${quota}M" >/dev/null ||
+			die "could not bound the record at ${quota}M"
+	fi
+}
+
+## A profile per role, built by the daemon at the pin and linked beside a pi
+## directory composed from the floor (ADR-057 point 5); then profiles.json,
+## which is the run's identity with the image and the credential (point 7).
+## A role that does not build ends render by name, with no link for it and
+## no profiles.json, so no session starts on it.
+render_profiles() {
+	local clone="$1" rev="$2" role profile models built="{}"
+	rm -f "$FABRIEK_ETC/profiles.json"
+	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")")"
+	while IFS= read -r role; do
+		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json")" || {
+			rm -f "$FABRIEK_ETC/roles/$role/profile"
+			die "could not build a profile for role $role"
+		}
+		mkdir -p "$FABRIEK_ETC/roles/$role"
+		ln -sfn "$profile" "$FABRIEK_ETC/roles/$role/profile"
+		fabriek_render_pi_dir "$FABRIEK_FLOOR" "$profile" "$models" "$FABRIEK_ETC/roles/$role/pi" ||
+			die "could not compose the pi directory for role $role"
+		built="$(jq -c --arg r "$role" --arg p "$profile" '. + {($r): $p}' <<<"$built")"
+	done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
+	jq -cn --arg rev "$rev" --argjson roles "$built" --arg decider "$FABRIEK_ETC/pi-decider" \
+		'{ rev: $rev, roles: $roles, decider: $decider }' >"$FABRIEK_ETC/profiles.json"
+}
+
+## What the build did, at boot, from the credential (ADR-057 point 4): the
+## repository at the pin, its declaration clamped against the caps, the
+## files the services include, the bridge's set, the record's bound, a
+## profile and a pi directory per role. Idempotent: up runs it after every
+## restart. What the clamp changed is said here, as the build's log was not.
+cmd_factory_render() {
+	[ -n "${FABRIEK_FLOOR:-}" ] && [ -n "${FABRIEK_SELF:-}" ] && [ -n "${FABRIEK_SYSTEM:-}" ] ||
+		die "FABRIEK_FLOOR, FABRIEK_SELF and FABRIEK_SYSTEM name the image's floor, source and system; the machine sets them"
+	local credential local_file spec factory remote rev clone declaration
+	credential="$(mktemp)"
+	fabriek_render_credential "$FABRIEK_CREDENTIAL" >"$credential" || exit 1
+	factory="$(jq -r '.factory.name // empty' "$credential")"
+	remote="$(jq -r '.repository.remote // empty' "$credential")"
+	rev="$(jq -r '.pin.rev // empty' "$credential")"
+	[ -n "$factory" ] && [ -n "$remote" ] && [ -n "$rev" ] ||
+		die "the credential names no factory, remote or pin"
+	fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+
+	clone="$(render_clone "$factory" "$remote" "$rev")" || exit 1
+	declaration="$(mktemp)"
+	fabriek_declaration_read "$clone" "$rev" >"$declaration" || exit 1
+	local_file="$(mktemp)"
+	fabriek_render_local "$credential" >"$local_file"
+	spec="$(mktemp)"
+	fabriek_machine_spec "$declaration" "$local_file" >"$spec" || exit 1
+	jq -c --slurpfile c "$credential" '. + { embedder: $c[0].embedder.url }' "$spec" >"$spec.2" && mv "$spec.2" "$spec"
+
+	mkdir -p "$FABRIEK_ETC"
+	render_files "$spec" "$clone" "$rev"
+	render_machine "$spec"
+	render_profiles "$clone" "$rev"
+	systemctl restart fabriek-egress-credentials.service
+	systemctl reload-or-restart nginx.service
+	jq -r '.[]' "$FABRIEK_ETC/notes.json"
+	rm -f "$credential" "$declaration" "$local_file" "$spec"
+	echo "$factory: rendered at $rev"
+}
+
 ## ACL, the operator's account and token, the repository, an account and a
 ## read-only-repository token per role, a read-only token for the decider,
 ## a label per stage plus blocked and memory, and each role's memory issue.
-## Everything reads the declaration the build put on the machine.
+## Everything reads the declaration render put on the machine.
 cmd_factory_prepare() {
 	local factory="${1:-}" origin="${2:-}"
 	[ -n "$factory" ] || die "usage: fabriek-container factory-prepare <factory> [origin]"
@@ -499,8 +628,11 @@ cmd_factory_prepare() {
 	## The executor starts every session, and a session started before its
 	## credentials are the cage's is one that fails or is deaf, so the
 	## executor's unit waits for this mark and is started on it. Written
-	## last, and by rename, so that a mark seen is a machine prepared.
-	: >"$STATE_DIR/prepared.new" && mv "$STATE_DIR/prepared.new" "$STATE_DIR/prepared"
+	## last, and by rename, so that a mark seen is a machine prepared; under
+	## /run, so a reboot with new credentials is not prepared for the old
+	## ones (models/vm-lifecycle.qnt).
+	mkdir -p "$(fabriek_run_dir)"
+	: >"$(fabriek_run_dir)/prepared.new" && mv "$(fabriek_run_dir)/prepared.new" "$(fabriek_run_dir)/prepared"
 	systemctl restart fabriek-executor.service
 	echo "$factory: prepared"
 }
@@ -669,6 +801,7 @@ main() {
 	role-enter) cmd_role_enter "$@" ;;
 	role-worktree) cmd_role_worktree "$@" ;;
 	task-file) cmd_task_file "$@" ;;
+	factory-render) cmd_factory_render "$@" ;;
 	factory-prepare) cmd_factory_prepare "$@" ;;
 	role-stop) cmd_role_stop "$@" ;;
 	role-transcript) cmd_role_transcript "$@" ;;
