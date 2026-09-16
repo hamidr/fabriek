@@ -258,6 +258,30 @@ teardown() {
 	[ "$(wc -l <"$CALLS/nix-build")" = 4 ]
 }
 
+# ADR-057 point 6: what the repository's lock names may be fetched. nix
+# asks for a locked input by its reference with the narHash appended, and
+# an allowed prefix admits a subdirectory but not a query, so the lock's
+# entry is allowed as nix will spell it (measured 2026-09-16: "access to
+# URI 'github:...?narHash=...' is forbidden in restricted mode").
+@test "the repository's locked inputs are allowed as nix asks for them, narHash and all" {
+	cat >"$REPO/flake.lock" <<'JSON'
+{ "nodes": {
+    "parts": { "locked": { "type": "github", "owner": "hercules-ci", "repo": "flake-parts",
+      "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993", "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=" } },
+    "pkgs": { "locked": { "type": "git", "url": "https://example.invalid/pkgs.git",
+      "rev": "aaaa", "narHash": "sha256-AAAA=" } },
+    "root": { "inputs": { "parts": "parts", "pkgs": "pkgs" } } },
+  "root": "root", "version": 7 }
+JSON
+	git -C "$REPO" add flake.lock
+	git -C "$REPO" -c commit.gpgsign=false commit -qm lock
+	sed -i.bak "s/rev = \".*\"/rev = \"$(git -C "$REPO" rev-parse HEAD)\"/" "$CRED" && rm "$CRED.bak"
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$CALLS/nix-build"
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AAAA%3D "
+}
+
 @test "a declaration the schema refuses stops render naming the key, before anything is written" {
 	echo 'colour = "blue"' >>"$REPO/fabriek.toml"
 	git -C "$REPO" -c commit.gpgsign=false commit -qam colour

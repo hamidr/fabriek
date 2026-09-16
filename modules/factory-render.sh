@@ -194,14 +194,18 @@ fabriek_render_local() {
 fabriek_profile_allowed_uris() {
 	local clone="$1" rev="$2" lock
 	printf '%s\n' "git+file://$clone"
+	## nix asks for a locked input by its reference with the narHash as a
+	## query, and an allowed prefix admits a subdirectory but not a query,
+	## so the entry is spelled as nix will ask for it.
 	if lock="$(git -C "$clone" show "$rev:flake.lock" 2>/dev/null)"; then
 		printf '%s' "$lock" | jq -r '
 		  .nodes | to_entries[] | .value.locked // empty
-		  | if .type == "github" then "github:\(.owner)/\(.repo)/\(.rev)"
-		    elif .type == "gitlab" then "gitlab:\(.owner)/\(.repo)/\(.rev)"
-		    elif .type == "git" then .url
-		    elif .type == "tarball" then .url
-		    else empty end' | sort -u
+		  | (if .type == "github" then "github:\(.owner)/\(.repo)/\(.rev)"
+		     elif .type == "gitlab" then "gitlab:\(.owner)/\(.repo)/\(.rev)"
+		     elif .type == "git" then .url
+		     elif .type == "tarball" then .url
+		     else empty end) as $ref
+		  | if .narHash then "\($ref)\(if ($ref | contains("?")) then "&" else "?" end)narHash=\(.narHash | @uri)" else $ref end' | sort -u
 	fi
 }
 
