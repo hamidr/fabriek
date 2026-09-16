@@ -77,6 +77,9 @@ runtime_script() {
 	assert_output --partial 'local-overlay://'
 	assert_output --partial 'lower-store=local%3Froot%3D%2Fnix%2F.ro-host'
 	assert_output --partial 'upper-layer=/nix/.rw-store/store&check-mount=false'
+	# The overlay's own db, on the volume and not on the root tmpfs, so a
+	# second boot knows what the first built.
+	assert_output --partial '&state=/nix/.rw-store/var/nix&'
 	run machine_eval 'c.nix.settings.experimental-features'
 	assert_output --partial 'local-overlay-store'
 }

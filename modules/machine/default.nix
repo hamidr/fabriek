@@ -307,7 +307,11 @@ in
     ## mount is off: the overlay is mounted in the initrd, so /proc/self/mounts
     ## records its layers under /sysroot and the check refuses a mount that
     ## is right (measured 2026-09-16, "mounted incorrectly").
-    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=${lowerRoot}&read-only=true"}&upper-layer=${storeOverlay}/store&check-mount=false";
+    ## The overlay's own state, its db of what the machine built, is on
+    ## store.img beside the upper layer and not under /nix/var/nix, which
+    ## is the root tmpfs: with it there a second boot rebuilt every
+    ## profile the first had (measured 2026-09-16).
+    nix.settings.store = "local-overlay://?root=/&state=${storeOverlay}/var/nix&lower-store=${lib.escapeURL "local?root=${lowerRoot}&read-only=true"}&upper-layer=${storeOverlay}/store&check-mount=false";
 
     boot = {
       supportedFilesystems.zfs = true;
