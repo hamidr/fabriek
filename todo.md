@@ -1,32 +1,28 @@
 # To do
 
-Host is a NixOS PC as of 2026-09-16; every machine proof below can run here.
+Host is a NixOS PC as of 2026-09-16; the machine proofs run here. The
+example is served to the machine over git:// from a bare mirror under the
+proof directory (`git daemon --base-path=/tmp/fabriek-proof/git`); the
+checkout's origin is `git://10.0.2.2/fabriek-example.git`.
 
-- ADR-057's measurement plan (roadmap 6.9): the runtime line takes effect,
-  a second `up` copies nothing, nixcage's closure query answers for a host
-  path through `local-overlay-store` over the shared db, 9p timed against
-  virtiofs. The overlay store is the one claim that can sink the design;
-  the fallback (host as substituter) is named in point 1a. First.
-- The manual proofs that need a machine (roadmap 6.1 to 6.4, 6.8):
-  specialist.sh, host-autostart.sh, isolation.sh with the daemon's two
-  probes, nixcage ADR-014's session start over ~1000 binds. Run with the
-  item above.
-- ADR-046, the dependency cache warmed at the machine build: there is no
-  machine build to warm at under ADR-057. Re-decide: fetched by the
-  evaluator at render, or warmed on the host and shipped as a volume.
-  Fold in the profile question below.
-- ADR-038 has no status line against its code; audit it as ADR-045, 047
-  and 048 were. ADR-036 and ADR-037 carry a 2026-09-13 status from a
-  machine that predates ADR-057; re-check them once the machine runs here.
-- ADR-052 step 1, the read-only workspace of submodules, after its two
-  machine measurements (safe.directory fetch as root, --reference across
-  datasets). ADR-056, the lessons service, proposed and untouched.
-- The clone never fetches main after the first up: a role's branch is cut
-  from the main the machine first cloned, so docs/factory-guidance.md
-  committed later never reaches a brief (found by tests/manual/specialist.sh,
-  ADR-054). Which main a role starts from, and when it moves, wants a record
-  of its own (ADR-032 is where the clone was decided). Under ADR-057 render
-  fetches the pin on every up, which covers the pinned commit and not main.
+- ADR-057's 9p timing and the macOS half of the plan: not measurable here.
+  Peak memory during prepare was not captured either.
+- ADR-046, re-decided 2026-09-16: fetch on the host at `up` into the lower
+  store, lay out at render. Implement (roadmap 6.5).
+- ADR-059, proposed 2026-09-16: cut a role's branch from the forge's main
+  and reset it once merged. Implement; specialist.sh's guidance scenario
+  is the machine proof.
+- ADR-052 step 1, the read-only workspace of submodules: its two machine
+  measurements passed 2026-09-16, so it can start. ADR-056, the lessons
+  service, proposed and untouched.
+- `tests/manual/host-autostart.sh` (roadmap 6.8): wants `services.fabriek`
+  in this host's NixOS configuration, a rebuild and a reboot, and no
+  personal config. The operator's change.
+- The gated Thens of specialist.sh and isolation.sh: a model in the loop
+  (`FABRIEK_PROOF_MODEL=1`), `enter --print-argv` against seam.bats, and a
+  token ceiling under 5000 for the 429.
+- nixcage: `nixcage-container exec` keeps an argument's first line only
+  (seen 2026-09-16 from a hand session). Upstream, per ADR-018.
 - Compose one specialist profile per replicated base and link the rest,
   instead of N identical builds (ADR-053 consequence); under ADR-057 that is
   N `nix build` calls at render, the same store path each time. Evaluation

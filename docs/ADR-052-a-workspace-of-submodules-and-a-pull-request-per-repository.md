@@ -3,7 +3,7 @@ id: ADR-052
 title: A factory works a workspace of submodules, and its output is a pull request per repository
 status: proposed
 date: 2026-09-15
-status_date: 2026-09-15
+status_date: 2026-09-16
 summary: the declaring repository pins the others as submodules; one board and record, push and mirror fan out per repository
 depends_on: [ADR-010, ADR-011, ADR-020, ADR-034, ADR-036, ADR-040]
 supersedes: []
@@ -166,12 +166,16 @@ relies on for the shared `objects`.
 with the agent, once. The machine's build is unchanged: the modules'
 commits are pinned by the workspace commit the lock names.
 
-Two things left open, to be measured on the machine before
-implementation: that the executor's fetch from a role-owned clone runs
-as root with `safe.directory` and nothing more (point 5), and that
-`--reference` survives the module directory being on a dataset of its
-own when the worktree is one. Point 3's placement is measured on this
-host's git; the machine's git is the one that counts.
+Two things were left open, to be measured on the machine before
+implementation, and were measured 2026-09-16 on the appliance (git
+2.55.0 on the machine): a clone under a role's worktree, owned by the
+role's uid on the worktree's own dataset, made with `--reference` to the
+factory clone on the pool's state dataset. Root's `git fetch` from it
+succeeded with `-c safe.directory=<path>` and, on this git, without it
+too; the fetched commit was the role's. Its `objects/info/alternates`
+named the factory clone's objects across the two datasets, its own
+objects were 3.0K, and `git fsck --connectivity-only` passed. Step 1 of
+the plan below can start.
 
 ## Plan
 

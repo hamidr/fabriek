@@ -3,7 +3,7 @@ id: ADR-036
 title: Forgejo in the guest is the board, the record and the forge
 status: accepted
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-16
 summary: issues are tasks, stages are labels, per-role accounts are the authorization matrix; the operator merges and mirrors
 depends_on: [ADR-009, ADR-010, ADR-015, ADR-032, ADR-033]
 supersedes: [ADR-011, ADR-022]
@@ -106,3 +106,10 @@ the record mirrored to origin. It found prepare making no `assigning` or
 `assigned` label and putting no `main` on the forge, both fixed. The
 decision-52 probe script has not been rerun against the image the
 machine pins; that rerun is what keeps this at accepted.
+
+Status 2026-09-16: on the appliance (ADR-057) on a NixOS host, prepare
+made the accounts, the tokens and `main` on the forge for the example's
+six roles, the executor started every session and the decider read an
+empty board and waited. The probe script is still not rerun against the
+image, and no task went through a pull request on that machine: what
+keeps this at accepted is the same as before.

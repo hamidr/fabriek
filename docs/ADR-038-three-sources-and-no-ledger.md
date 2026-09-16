@@ -3,7 +3,7 @@ id: ADR-038
 title: A factory is observed from three sources, and nothing writes a ledger
 status: accepted
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-16
 summary: the thread is what a role said, the proxy what it spent, the probes what it ran; events go to the bus, unpersisted
 depends_on: [ADR-033, ADR-036, ADR-037]
 supersedes: [ADR-027]
@@ -60,3 +60,16 @@ Status 2026-09-13: turn and tool events reach the bus as events
 entry carries the role its uid belongs to (`tests/command/probes.bats`).
 Not yet seen on a machine: a process started in a cage appearing on
 `probes`, and the cap holding; that is what keeps this at accepted.
+
+Status 2026-09-16: on the appliance (ADR-057) on a NixOS host, a process
+started in a cage appears on `probes` with that cage's uid and, after the
+first refresh, its role; the stream is written with `MAXLEN ~ 10000` and
+held 149 entries after a boot with six roles, so the cap is asserted by
+`probes.bats` and not reached. Two things the machine found, both fixed
+(`[ADR-038]` commits of that day): the probes exited clean before a
+declaration and were restarted on failure only, so a fresh boot ran
+without them; and nspawn runs a cage's payload in a child cgroup of its
+scope, so the id the kernel stamps was the child's and every probe
+carried an empty role. A hand session (`fabriek enter`) runs in the ssh
+session's cgroup, not the cage's, and is published with its uid and no
+role, which is right: it is not the actor.

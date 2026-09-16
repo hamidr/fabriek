@@ -268,20 +268,28 @@ One package, built through the flake, tests in its own runner.
   specialists' prompt where pi appends it, the skill where pi discovers
   skills (ADR-042). Everything else of ADR-042 is asserted on this host by
   `catalogue.bats`, `factory_flake.bats`, `machine_services.bats` and
-  `seam.bats`. Not run as of 2026-09-13.
+  `seam.bats`. Run 2026-09-16 on a NixOS host, the example with six
+  roles: every ungated check passes; the gated ones need a model or a
+  token and are listed by the proof.
 - 6.2 The same proof's language-server scenario (ADR-043): lsp.json where
   pi-lsp reads it, the binary in the cage, and with a model, diagnostics
-  appended after a write. Not run as of 2026-09-13.
+  appended after a write. Run 2026-09-16: lsp.json, jdtls and the
+  extension pass; the diagnostics stay gated on a model.
 - 6.3 The same proof's guard scenario (ADR-044): tests.json where the loop
   reads it, and with a model, an edit without a test refused with
-  guard_refused on the bus. Not run as of 2026-09-14.
+  guard_refused on the bus. Run 2026-09-16: tests.json passes; the
+  refusal stays gated on a model.
 - 6.4 The same proof's nixcage scenario (ADR-045): status from the scope,
   MemoryMax on it, a hand inside the actor's cage, and enter --print-argv
-  against seam.bats. Not run as of 2026-09-14.
+  against seam.bats. Run 2026-09-16: status, the bound and the hand pass;
+  --print-argv stays gated. One thing the hand found: `nixcage-container
+  exec` keeps an argument's first line only, so a script handed to a cage
+  goes on one line until nixcage fixes it (ADR-018: upstream).
 - 6.5 ADR-046's cache: a derivation per lockfile the commit has, bound
   read-only into every session with the tools told to work offline; the
-  npm shape first, the JVM shapes behind a lockfile convention. Proposed,
-  not started, as of 2026-09-14.
+  npm shape first, the JVM shapes behind a lockfile convention. Re-decided
+  2026-09-16 for ADR-057: fetched on the host at `up` into the lower
+  store, laid out by the machine at render. Proposed, not started.
 - 6.6 The brief's `this factory:` section. Done 2026-09-15 (ADR-054): the
   actor reads `docs/factory-guidance.md` from its worktree into the brief,
   and the role guidance itself moved from a file nothing read into the
@@ -298,13 +306,23 @@ One package, built through the flake, tests in its own runner.
   `tests/manual/isolation.sh` gained the daemon's two probes. Everything
   else of ADR-057 is asserted on this host by `machine_services.bats`,
   `render.bats`, `vm_up.bats`, `factory_render.bats` and
-  `credential.bats`. Not run as of 2026-09-16: no Linux host here, and
-  `local-overlay-store` over a shared db is unproven.
+  `credential.bats`. Run 2026-09-16 on a NixOS host: the runtime line
+  takes effect once the shared memory is a second NUMA node, the overlay
+  store answers for a host path once the lower db is a checkpointed
+  snapshot taken at boot, a second `up` and a fresh factory copy nothing,
+  and `ls -R` over the system closure (688 paths, 273868 entries) on
+  virtiofs is 19.6s cold and 12.8s warm; 9p is not timed here. The
+  eleven things the first boot found, their fixes and the numbers are in
+  ADR-057's verification. `isolation.sh` passes whole, its ceiling
+  scenario gated on the example's 20M tokens.
 - 6.8 `tests/manual/host-autostart.sh` passes on a NixOS host (ADR-048):
   the unit active after boot, `fabriek ps` by hand seeing its machine, and
   both agreeing across a stop and a start. Everything else of ADR-048 is
   asserted on this host by `host_module.bats`, `operator_config.bats` and
-  `machine.bats`. Not run as of 2026-09-15.
+  `machine.bats`. Not run as of 2026-09-16: it wants `services.fabriek`
+  in this host's own NixOS configuration, a rebuild and a reboot, and no
+  personal config, which is the operator's change to make and not this
+  repository's.
 
 ## Where the log's open items landed (its section 6)
 

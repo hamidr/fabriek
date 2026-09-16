@@ -3,7 +3,7 @@ id: ADR-037
 title: A private network per cage, attributed by address, with the budget at the proxy
 status: accepted
 date: 2026-09-12
-status_date: 2026-09-12
+status_date: 2026-09-16
 summary: each cage has one veth on a per-factory bridge; two bridge rules make attribution proof and the proxy holds the cap
 depends_on: [ADR-018, ADR-019, ADR-033]
 supersedes: [ADR-025]
@@ -81,3 +81,15 @@ cage, a spoofed source dropped. The two Thens that read the proxy's count,
 and the soft and hard limits, are gated on a credential the endpoint
 accepts. The counting filter itself is driven with the API's own bodies
 since 2026-09-13 (`modules/guest/spend.test.mjs`).
+
+Status 2026-09-16: `tests/manual/isolation.sh` ran on the appliance
+(ADR-057) on a NixOS host with a credential the endpoint accepts. Every
+Then passes: the bridge, one address per cage, no route off the machine,
+no cage to cage, the proxy answering, one request through it counted for
+the sender and for nobody else, a spoofed source dropped, and the
+machine's daemon substituting and never fetching. The hard limit's 429
+is gated: the example declares 20M tokens and fifty one-token requests
+cannot reach it. The proof itself changed to what a cage has, which is
+neither `ip` nor `curl`: the address from `/proc/net/fib_trie`, the
+requests over bash's `/dev/tcp`, the body read to its end so the filter
+sees the usage.

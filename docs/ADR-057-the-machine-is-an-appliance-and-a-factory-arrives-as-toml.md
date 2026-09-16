@@ -368,11 +368,61 @@ order on the wire; `prepare.bats` and `seam.bats` follow the mark under
 declaration. `lib.factory`, `modules/factory.nix`, the per-factory flake
 and `factory_flake.bats` are gone.
 
-Not run, and said so: the measurement plan above needs a machine
-(roadmap 6.9). Two things in it are claims this host cannot check:
-`local-overlay-store` over a shared db on nix 2.34.8 (the fallback is
-named in point 1a), and qemu taking the last `-m` and `-smp`. One thing
-the appliance's build found on the way: the linux builder on this host
-has a corrupted store and cannot build `pi-lsp` today, so the floor is
-asserted by its build command's text here and built where the appliance
-is.
+Measured 2026-09-16 on a NixOS host (x86_64-linux, nix 2.34.8, 62G, 20
+cores), the example factory (six roles, two of them replicas) with the
+operator's caps at 16G/8 cores clamped to the declaration's 8G/4. The
+first `up` on a Linux host found eleven things, each fixed with a
+scenario in the same commit, from `227d708` to `776a196`:
+
+- The runtime line does not simply win: with a virtiofs share the runner
+  backs the image's memory with one shared memfd NUMA node of the image's
+  size, and qemu refuses a `-m` the nodes do not sum to. The script adds
+  a second shared node for the rest. After it: `MemTotal` 8134396 kB,
+  `nproc` 4.
+- `store.img` was an empty file with no filesystem; the initrd formats it
+  once, by serial, before the check and the mount, with e2fsprogs.
+- `local-overlay-store` holds, with two amendments. nix's check of the
+  overlay mount reads `/proc/self/mounts`, where a mount from the initrd
+  records its layers under `/sysroot`, so `check-mount=false`. And a store
+  opened read-only is opened immutable, which ignores sqlite's write-ahead
+  log, while the host's daemon checkpoints every 40000 pages: the newest
+  paths, the appliance's own system among them, were "not valid". The
+  host's db is shared aside and `VACUUM INTO` takes a checkpointed copy
+  onto `store.img` at every boot (3s for a 200MB db), bound where the
+  lower store reads. A host path made after the boot is not in it; `up`
+  runs after every restart, so the snapshot is as old as the boot. The
+  overlay's own state, its db of what the machine built, moved onto
+  `store.img` too: on the root tmpfs a second boot rebuilt every profile.
+- The image set `FABRIEK_FLOOR` and not `FABRIEK_SELF`, `FABRIEK_SYSTEM`;
+  and `environment.variables` reach a login shell and not a unit, so the
+  executor's unit is told every `FABRIEK_` variable itself.
+- The profile build did `getFlake` on fabriek, which fetches every input
+  fabriek locks; fabriek and its nixpkgs are two store paths the image
+  names, on the evaluator's search path. `allowed-uris` needed the lock's
+  entries as nix asks for them: with the narHash as a query, `/` kept and
+  `=` encoded, and the clone spelled twice, for `getFlake` and for
+  `fetchGit`. `or` and `pathExists` swallowed the refusals as "devShell
+  not defined"; they are asked with `?` and `readDir` now.
+- The share daemons: `up` read supervisord's event listener as one and ran
+  a python script as bash. The host key: a pool made anew answers as a new
+  host, so `up` forgets the old one with it.
+
+Point 3's four credentials are two in the code: one `fabriek.toml`
+carrying `[factory]`, `[repository]`, `[pin]`, `[caps]`, `[credentials]`,
+`[models]`, and the key. The split by reader did not happen; a `[credentials]`
+table carries header names and no value, so nothing is widened. The
+record stands corrected here rather than the code.
+
+The plan's numbers: first `up` of a fresh factory (new images, the
+example's flake evaluated and every profile built on the machine) 1:34
+wall, `copying path` 0; second `up` 2:11 wall with the appliance
+rebuilt on the host, `copying path` 0, `profiles.json` identical; a
+fresh factory after `rm` of both images, `copying path` 0.
+`nix-store --query --requisites /run/current-system` on the machine's
+default store answers 688 paths in 0.09s, the first a host path. `ls -R`
+over that closure on `/nix/.ro-host` over virtiofs: 273868 entries, 19.6s
+cold, 12.8s warm. 9p is not timed: no macOS host here. Peak memory during
+prepare was not captured; `free` after it showed 730M used of 7943M.
+`tests/manual/isolation.sh`'s two daemon probes pass: a fixed-output
+derivation does not build on the machine, and a second render substitutes
+nothing.
