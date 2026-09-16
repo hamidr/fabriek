@@ -20,6 +20,7 @@
   config,
   lib,
   pkgs,
+  utils,
   ...
 }:
 let
@@ -50,13 +51,25 @@ let
   ## fabriek up writes; the script is the image's and the facts are the
   ## host's. It runs on the host, so it is made of the host's packages, as
   ## the runner is (vm.nix): a macOS host cannot exec the guest's jq. qemu
-  ## takes the last -m and -smp it is given.
+  ## takes the last -m and -smp it is given, but on a Linux host the shares
+  ## make the runner back the image's memory with one shared memfd NUMA
+  ## node of the image's size, and qemu refuses a -m the nodes do not sum
+  ## to. The memory above the image's is a second node of the same kind,
+  ## which vhost-user-fs needs of every byte the guest has.
   hostPkgs = config.microvm.vmHostPackages;
+  numaNode = hostPkgs.stdenv.hostPlatform.isLinux && config.microvm.shares != [ ];
   runtimeArgs = hostPkgs.writeShellScript "fabriek-runtime-args" ''
     set -eu
     r=runtime.json
     [ -f "$r" ] || { echo "fabriek: no $r in $PWD; fabriek up writes it" >&2; exit 1; }
-    args="-m $(${hostPkgs.jq}/bin/jq -r .mem "$r")M -smp $(${hostPkgs.jq}/bin/jq -r .cpus "$r")"
+    mem="$(${hostPkgs.jq}/bin/jq -r .mem "$r")"
+    args="-m ''${mem}M -smp $(${hostPkgs.jq}/bin/jq -r .cpus "$r")"
+    ${lib.optionalString numaNode ''
+      if [ "$mem" -gt ${toString config.microvm.mem} ]; then
+        args="$args -object memory-backend-memfd,id=fabriek-mem,size=$((mem - ${toString config.microvm.mem}))M,share=on"
+        args="$args -numa node,memdev=fabriek-mem"
+      fi
+    ''}
     args="$args -netdev user,id=fabriek,hostfwd=tcp:127.0.0.1:$(${hostPkgs.jq}/bin/jq -r .sshPort "$r")-:22"
     args="$args -device virtio-net-pci,netdev=fabriek"
     while IFS=$'\t' read -r name file; do
@@ -70,6 +83,13 @@ let
   ## the store.
   poolSerial = "fabriek-pool";
   poolDevice = "/dev/disk/by-id/virtio-${poolSerial}";
+
+  ## The store's upper layer, found the same way. fabriek up makes the
+  ## image as an empty file (ADR-057 point 2) and the machine puts the
+  ## filesystem on it at first boot, so that a macOS host needs no mkfs.
+  storeSerial = "fabriek-store";
+  storeDevice = "/dev/disk/by-id/virtio-${storeSerial}";
+  storeOverlay = "/nix/.rw-store";
 
   ## The one way a credential reaches this machine (ADR-025 point 1). The
   ## operator names a host and pipes the secret in; where it lands is the
@@ -157,7 +177,7 @@ in
     microvm = {
       hypervisor = "qemu";
       storeOnDisk = false;
-      writableStoreOverlay = "/nix/.rw-store";
+      writableStoreOverlay = storeOverlay;
       shares = [
         {
           source = "/nix/store";
@@ -176,7 +196,8 @@ in
       volumes = [
         {
           image = "store.img";
-          mountPoint = "/nix/.rw-store";
+          mountPoint = storeOverlay;
+          serial = storeSerial;
           autoCreate = false;
         }
         {
@@ -192,11 +213,37 @@ in
       forwardPorts = [ ];
     };
 
+    ## The upper layer is mounted by its serial, as the pool is found, and
+    ## formatted in the initrd the first time it is seen empty, before the
+    ## check and the mount that need a filesystem on it. An image with a
+    ## filesystem is left alone, whatever it holds.
+    fileSystems.${storeOverlay}.device = lib.mkForce storeDevice;
+    boot.initrd.systemd = {
+      initrdBin = [ pkgs.e2fsprogs ];
+      services.fabriek-store-format = {
+        description = "Put a filesystem on an empty store image";
+        unitConfig.DefaultDependencies = false;
+        requires = [ "${utils.escapeSystemdPath storeDevice}.device" ];
+        after = [ "${utils.escapeSystemdPath storeDevice}.device" ];
+        before = [
+          "systemd-fsck@${utils.escapeSystemdPath storeDevice}.service"
+          "${utils.escapeSystemdPath "/sysroot${storeOverlay}"}.mount"
+        ];
+        requiredBy = [ "${utils.escapeSystemdPath "/sysroot${storeOverlay}"}.mount" ];
+        serviceConfig.Type = "oneshot";
+        script = ''
+          if ! blkid -p ${storeDevice} >/dev/null 2>&1; then
+            mkfs.ext4 -q -L ${storeSerial} ${storeDevice}
+          fi
+        '';
+      };
+    };
+
     ## The overlay is the machine's default store, so the daemon, nix build
     ## at prepare and nixcage's closure query for every session all answer
     ## for a host path as valid (ADR-057 point 1a). Experimental in this nix;
     ## the measurement plan checks it on a machine.
-    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=/nix/.ro-host&read-only=true"}&upper-layer=/nix/.rw-store/store";
+    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=/nix/.ro-host&read-only=true"}&upper-layer=${storeOverlay}/store";
 
     boot = {
       supportedFilesystems.zfs = true;

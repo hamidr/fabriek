@@ -26,9 +26,28 @@ machine_eval() {
 	  }).config; in $1" 2> >(grep -v -e 'Nix search path entry' -e "^building '" >&2)
 }
 
+## What the runtime args script appends on a Linux host for memory above
+## the image's own (ADR-057 point 2), and nothing elsewhere.
+numa_node() {
+	[[ "$HOST" == *-linux ]] || return 0
+	local base
+	base="$(machine_eval 'c.microvm.mem')"
+	printf ' -object memory-backend-memfd,id=fabriek-mem,size=%sM,share=on -numa node,memdev=fabriek-mem' "$(($1 - base))"
+}
+
 ## The same, for a string-valued attribute: the text itself, unescaped.
 machine_text() {
 	machine_eval "$1" | jq -r .
+}
+
+## The runtime args script, built so that it can be run here. Building it by
+## its store path would find nothing when the text has changed since the
+## appliance was last built.
+runtime_script() {
+	nix build --no-link --print-out-paths --impure --expr "
+	  ((builtins.getFlake \"path:$FABRIEK_ROOT\").lib.appliance {
+	    system = \"$MACHINE\"; hostSystem = \"$HOST\";
+	  }).config.microvm.extraArgsScript" 2> >(grep -v -e 'Nix search path entry' -e "^building '" >&2)
 }
 
 @test "nothing of a factory, an operator or a host is in the image" {
@@ -70,26 +89,69 @@ machine_text() {
 	esac
 }
 
+# fabriek up makes store.img as an empty file and never runs mkfs, so the
+# machine has to: in the initrd, on the volume found by its serial, before
+# the check and the mount that need a filesystem there (measured
+# 2026-09-16: the first boot on a Linux host stopped in the emergency
+# shell on "Can't find ext4 filesystem").
+@test "the store's upper layer is formatted by the initrd at first boot, before it is checked and mounted" {
+	run machine_eval 'c.fileSystems."/nix/.rw-store".device'
+	assert_output '"/dev/disk/by-id/virtio-fabriek-store"'
+	run machine_eval 'with c.boot.initrd.systemd.services.fabriek-store-format; { inherit before requiredBy; }'
+	assert_output '{"before":["systemd-fsck@dev-disk-by\\x2did-virtio\\x2dfabriek\\x2dstore.service","sysroot-nix-.rw\\x2dstore.mount"],"requiredBy":["sysroot-nix-.rw\\x2dstore.mount"]}'
+	run machine_text 'c.boot.initrd.systemd.services.fabriek-store-format.script'
+	assert_output --partial 'blkid -p /dev/disk/by-id/virtio-fabriek-store'
+	assert_output --partial 'mkfs.ext4 -q -L fabriek-store /dev/disk/by-id/virtio-fabriek-store'
+}
+
 # ADR-057 point 2: the runner is the image's; the host's facts arrive on the
 # hypervisor's command line from a script that reads runtime.json where the
 # runner is started.
 @test "the runtime args script gives qemu the memory, the cores, the ssh port and one fw_cfg credential per file" {
 	local script
-	script="$(machine_text 'c.microvm.extraArgsScript')"
+	script="$(runtime_script)"
 	[ -n "$script" ]
-	nix build --no-link "$script" 2>/dev/null || true
 	cat >"$TEST_TEMP_DIR/runtime.json" <<'JSON'
 { "mem": 16384, "cpus": 8, "sshPort": 22100,
   "credentials": { "fabriek.toml": "fabriek.toml", "fabriek.authorized_keys": "id_ed25519.pub" } }
 JSON
 	run bash -c "cd '$TEST_TEMP_DIR' && bash '$script'"
 	assert_success
-	assert_output "-m 16384M -smp 8 -netdev user,id=fabriek,hostfwd=tcp:127.0.0.1:22100-:22 -device virtio-net-pci,netdev=fabriek -fw_cfg name=opt/io.systemd.credentials/fabriek.toml,file=fabriek.toml -fw_cfg name=opt/io.systemd.credentials/fabriek.authorized_keys,file=id_ed25519.pub"
+	assert_output "-m 16384M -smp 8$(numa_node 16384) -netdev user,id=fabriek,hostfwd=tcp:127.0.0.1:22100-:22 -device virtio-net-pci,netdev=fabriek -fw_cfg name=opt/io.systemd.credentials/fabriek.toml,file=fabriek.toml -fw_cfg name=opt/io.systemd.credentials/fabriek.authorized_keys,file=id_ed25519.pub"
+}
+
+# A virtiofs share on a Linux host makes the runner back the image's memory
+# with one shared memfd NUMA node, and qemu refuses a -m that the nodes do
+# not sum to. The script adds a second node for the rest, so the machine
+# is the size the caps allow and not the image's default (measured
+# 2026-09-16: the first boot on a Linux host died on that check).
+@test "on a Linux host the runtime args script adds a shared NUMA node for the memory above the image's" {
+	[[ "$HOST" == *-linux ]] || skip "only a Linux host runs virtiofs"
+	local script base
+	script="$(runtime_script)"
+	base="$(machine_eval 'c.microvm.mem')"
+	cat >"$TEST_TEMP_DIR/runtime.json" <<'JSON'
+{ "mem": 8192, "cpus": 4, "sshPort": 22100, "credentials": {} }
+JSON
+	run bash -c "cd '$TEST_TEMP_DIR' && bash '$script'"
+	assert_success
+	assert_output --partial " -object memory-backend-memfd,id=fabriek-mem,size=$((8192 - base))M,share=on -numa node,memdev=fabriek-mem"
+	assert_output --partial "-m 8192M"
+}
+
+@test "a machine no larger than the image's memory gets no second NUMA node" {
+	local script base
+	script="$(runtime_script)"
+	base="$(machine_eval 'c.microvm.mem')"
+	printf '{ "mem": %s, "cpus": 1, "sshPort": 22100, "credentials": {} }\n' "$base" >"$TEST_TEMP_DIR/runtime.json"
+	run bash -c "cd '$TEST_TEMP_DIR' && bash '$script'"
+	assert_success
+	refute_output --partial "numa"
 }
 
 @test "without runtime.json the runner refuses to start rather than boot a machine of default size" {
 	local script
-	script="$(machine_text 'c.microvm.extraArgsScript')"
+	script="$(runtime_script)"
 	run bash -c "cd '$TEST_TEMP_DIR' && bash '$script'"
 	assert_failure
 	assert_output --partial 'no runtime.json'
