@@ -99,6 +99,25 @@ the double one, and resolves every specialist the roles name across the
 four sources; `ls` lists the operator's specialists and skills with the
 shipped ones; `show <specialist>` says which source it came from.
 
+**8. A name nothing has is a refusal, by name, before a machine boots.**
+The rule of ADR-042 point 6, extended to the file. A role naming a
+specialist no source has; a specialist extending a parent or naming a
+skill no source has; a `tools` or `lsp` entry that is not an attribute of
+the machine's nixpkgs; a `prompt` or `skill` path that does not exist or
+cannot be read; a `SKILL.md` a catalogue directory lacks; a name declared
+by two sources: each is one plain line naming the factory, the role or
+the specialist, the name, and what was offered instead (the sources'
+names for a specialist, the nearest attribute for a tool). It fires at
+`fabriek check` on the host, evaluation only, and at `up` before the
+credential is written or a machine started; a factory with one bad role
+is a factory that does not start (ADR-057 point 5). In `services.fabriek`
+a `prompt` or `skill` given as a path that does not exist fails the
+NixOS evaluation itself; the rest is not the module's to check and
+surfaces at `check`. A `[specialists.<name>]` or `[skills.<name>]` nothing
+names is evaluated and checked all the same, and `ls` lists it. Never a
+specialist dropped, a shipped one substituted, or a role started with
+fewer tools than it named.
+
 ## Consequences
 
 An operator can run a factory on a repository that says nothing about
@@ -137,7 +156,8 @@ docmeta-check docs && docmeta-tracker --check docs
 
 Scenarios, written first: the operator's file declaring a factory whole
 and `up` writing it into the credential; a factory declared in both
-places refused at `check` and at `up` naming both; a TOML specialist
+places refused at `check` and at `up` naming both; each refusal of
+point 8 as one line naming what was missing and what was offered; a TOML specialist
 composed with a shipped parent and its tool on a role's PATH
 (`catalogue.bats`, built for real); a TOML specialist named like a shipped
 one refused; `services.fabriek` rendering roles, stages, a specialist and
