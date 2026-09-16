@@ -39,7 +39,7 @@ EOF
 	cat >"$STUB_DIR/cw-nix" <<EOF
 #!/usr/bin/env bash
 case "\$1" in
-build) printf '%s\n' "\$*" >>"$NIX_CALLS"; echo "$RUNNER" ;;
+build) printf '%s\n' "\$*" >>"$NIX_CALLS"; [ "\$2" = --out-link ] && ln -sfn "$RUNNER" "\$3"; echo "$RUNNER" ;;
 path-info) exit 0 ;;
 *) exec "$REAL_NIX" "\$@" ;;
 esac
@@ -423,3 +423,27 @@ EOF
 # ADR-027 point 8. The ledger is bounded by what the factory declared and the
 # operator allowed, converted here for the same reason memory is: a person
 # writes a size and the thing on the far side counts MiB.
+
+# ADR-057 point 7: a run's identity is the image, the pin and the profiles
+# the machine built; show -f with nothing named prints it from the machine.
+@test "show -f with no role asks the running machine what the factory is made of" {
+	run_fabriek up acme
+	assert_success
+	run_fabriek -f acme show
+	assert_success
+	assert_line --index 0 "image: $RUNNER"
+	assert_line --index 1 "rev: abc"
+	assert_line --index 2 "  builder: /nix/store/aaaa-fabriek-role-builder"
+	assert_line --index 3 "  decider: /var/lib/fabriek/factory/pi-decider"
+	run_fabriek -f acme show --json
+	assert_success
+	run jq -r '.image, .rev' <<<"$output"
+	assert_line --index 0 "$RUNNER"
+	assert_line --index 1 abc
+}
+
+@test "show -f on a factory that is not running says the machine is the one to ask" {
+	run_fabriek -f acme show
+	assert_failure
+	assert_output --partial "not running"
+}

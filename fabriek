@@ -72,7 +72,7 @@ usage_of() {
   ps)      echo "usage: fabriek ps [--json]" ;;
   check)   echo "usage: fabriek check [--json] [REPO]" ;;
   ls)      echo "usage: fabriek ls [--json] [REPO]" ;;
-  show)    echo "usage: fabriek show [--json] NAME [REPO]   or   fabriek -f FACTORY show ROLE" ;;
+  show)    echo "usage: fabriek show [--json] NAME [REPO]   or   fabriek -f FACTORY show [ROLE]" ;;
   enter)   echo "usage: fabriek [-f FACTORY] enter ROLE [-- CMD...]" ;;
   stop)    echo "usage: fabriek [-f FACTORY] stop [-k] ROLE" ;;
   steer)   echo "usage: fabriek [-f FACTORY] steer ROLE [TEXT|-]" ;;
@@ -605,6 +605,23 @@ cmd_show() {
     *) if [[ -z "$name" ]]; then name="$arg"; else repo="$arg"; fi ;;
     esac
   done
+  ## show -f FACTORY, nothing named: what a running factory is made of
+  ## (ADR-057 point 7), the run's identity: the appliance, the pin, and the
+  ## profile the machine built for each role.
+  if [[ -z "$name" && (-n "$FACTORY_OPT" || -n "${FABRIEK_FACTORY:-}") ]]; then
+    local factory dir profiles
+    factory="$(factory_of "")" || exit 2
+    dir="$(fabriek_machine_dir "$factory")" || exit 1
+    fabriek_machine_running "$factory" || { log_err "$factory is not running; its profiles are the machine's to say"; exit 1; }
+    profiles="$(machine factory-profiles "$factory")" || exit 1
+    if [[ -n "$json" ]]; then
+      printf '%s' "$profiles" | jq -c --arg image "$(readlink "$dir/appliance" 2>/dev/null || true)" '. + {image: $image}'
+    else
+      echo "image: $(readlink "$dir/appliance" 2>/dev/null || echo unknown)"
+      printf '%s' "$profiles" | jq -r '"rev: \(.rev)", (.roles | to_entries[] | "  \(.key): \(.value)"), "  decider: \(.decider)"'
+    fi
+    return
+  fi
   [[ -n "$name" ]] || usage_error show
   local system
   system="$(machine_system)" || exit 1
@@ -832,7 +849,9 @@ ${BOLD}Commands:${NC}
                      every specialist each role names, in seconds, no build
   ls [REPO]          Every specialist and skill, fabriek's and the repository's
   show NAME [REPO]   What a specialist brings; with -f, what a role of the
-                     factory is composed of, at its commit
+                     factory is composed of, at its commit; with -f and no
+                     NAME, what the running factory is made of: image, pin,
+                     the profile built for each role
   enter ROLE [-- CMD...]
                      Enter a declared role in its own worktree and uid, by hand
   stop [-k] ROLE     End a role's running turn through the executor; -k ends
