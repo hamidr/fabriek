@@ -236,19 +236,27 @@ in
     fileSystems.${storeOverlay}.device = lib.mkForce storeDevice;
     boot.initrd.systemd = {
       initrdBin = [ pkgs.e2fsprogs ];
+      ## Wanted by the target that wants the mount, not required by the
+      ## mount: the real root's fstab regenerates the mount unit after the
+      ## switch, and a requirement on it would start this a second time
+      ## with the volume mounted. Asked of e2fsprogs, which the initrd has
+      ## for the check; blkid is not there.
       services.fabriek-store-format = {
         description = "Put a filesystem on an empty store image";
-        unitConfig.DefaultDependencies = false;
+        unitConfig = {
+          DefaultDependencies = false;
+          ConditionPathIsMountPoint = "!/sysroot${storeOverlay}";
+        };
         requires = [ "${utils.escapeSystemdPath storeDevice}.device" ];
         after = [ "${utils.escapeSystemdPath storeDevice}.device" ];
         before = [
           "systemd-fsck@${utils.escapeSystemdPath storeDevice}.service"
           "${utils.escapeSystemdPath "/sysroot${storeOverlay}"}.mount"
         ];
-        requiredBy = [ "${utils.escapeSystemdPath "/sysroot${storeOverlay}"}.mount" ];
+        wantedBy = [ "initrd-fs.target" ];
         serviceConfig.Type = "oneshot";
         script = ''
-          if ! blkid -p ${storeDevice} >/dev/null 2>&1; then
+          if ! e2label ${storeDevice} >/dev/null 2>&1; then
             mkfs.ext4 -q -L ${storeSerial} ${storeDevice}
           fi
         '';

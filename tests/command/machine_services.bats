@@ -110,10 +110,10 @@ runtime_script() {
 @test "the store's upper layer is formatted by the initrd at first boot, before it is checked and mounted" {
 	run machine_eval 'c.fileSystems."/nix/.rw-store".device'
 	assert_output '"/dev/disk/by-id/virtio-fabriek-store"'
-	run machine_eval 'with c.boot.initrd.systemd.services.fabriek-store-format; { inherit before requiredBy; }'
-	assert_output '{"before":["systemd-fsck@dev-disk-by\\x2did-virtio\\x2dfabriek\\x2dstore.service","sysroot-nix-.rw\\x2dstore.mount"],"requiredBy":["sysroot-nix-.rw\\x2dstore.mount"]}'
+	run machine_eval 'with c.boot.initrd.systemd.services.fabriek-store-format; { inherit before wantedBy; once = unitConfig.ConditionPathIsMountPoint; }'
+	assert_output '{"before":["systemd-fsck@dev-disk-by\\x2did-virtio\\x2dfabriek\\x2dstore.service","sysroot-nix-.rw\\x2dstore.mount"],"once":"!/sysroot/nix/.rw-store","wantedBy":["initrd-fs.target"]}'
 	run machine_text 'c.boot.initrd.systemd.services.fabriek-store-format.script'
-	assert_output --partial 'blkid -p /dev/disk/by-id/virtio-fabriek-store'
+	assert_output --partial 'e2label /dev/disk/by-id/virtio-fabriek-store'
 	assert_output --partial 'mkfs.ext4 -q -L fabriek-store /dev/disk/by-id/virtio-fabriek-store'
 }
 
