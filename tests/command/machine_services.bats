@@ -70,13 +70,13 @@ runtime_script() {
 	run machine_eval 'c.microvm.storeOnDisk'
 	assert_output false
 	run machine_eval 'map (s: [s.source s.mountPoint]) c.microvm.shares'
-	assert_output '[["/nix/store","/nix/.ro-host/nix/store"],["/nix/var/nix/db","/nix/.ro-host/nix/var/nix/db"]]'
+	assert_output '[["/nix/store","/nix/.ro-host/nix/store"],["/nix/var/nix/db","/nix/.ro-host-db"]]'
 	run machine_eval 'c.microvm.writableStoreOverlay'
 	assert_output '"/nix/.rw-store"'
 	run machine_text 'c.nix.settings.store'
 	assert_output --partial 'local-overlay://'
 	assert_output --partial 'lower-store=local%3Froot%3D%2Fnix%2F.ro-host'
-	assert_output --partial 'upper-layer=/nix/.rw-store/store'
+	assert_output --partial 'upper-layer=/nix/.rw-store/store&check-mount=false'
 	run machine_eval 'c.nix.settings.experimental-features'
 	assert_output --partial 'local-overlay-store'
 }
@@ -87,6 +87,19 @@ runtime_script() {
 	*-linux) assert_output '"virtiofs"' ;;
 	*) assert_output '"9p"' ;;
 	esac
+}
+
+# The host's db is shared aside and snapshotted at boot, because a store
+# opened read-only ignores the host's write-ahead log and the newest paths
+# are only there (measured 2026-09-16).
+@test "the lower store reads a checkpointed snapshot of the host's db, taken before the daemon starts" {
+	run machine_eval 'with c.systemd.services.fabriek-lower-db; { inherit before; mounts = unitConfig.RequiresMountsFor; }'
+	assert_output '{"before":["nix-daemon.service","nix-daemon.socket","sysinit.target"],"mounts":["/nix/.ro-host-db","/nix/.rw-store"]}'
+	run machine_text 'c.systemd.services.fabriek-lower-db.script'
+	assert_output --partial "sqlite3 -readonly /nix/.ro-host-db/db.sqlite \"VACUUM INTO '/nix/.rw-store/lower-db/db.sqlite'\""
+	assert_output --partial 'mount --bind /nix/.rw-store/lower-db /nix/.ro-host/nix/var/nix/db'
+	run machine_eval 'c.systemd.services.nix-daemon.requires'
+	assert_output '["fabriek-lower-db.service"]'
 }
 
 # fabriek up makes store.img as an empty file and never runs mkfs, so the
@@ -270,6 +283,12 @@ JSON
 	assert_regex "$floor" '^/nix/store/.*-fabriek-floor$'
 	run machine_text 'c.environment.variables.FABRIEK_ETC'
 	assert_output '/var/lib/fabriek/factory'
+	# And where render evaluates a profile from (ADR-057 point 5): fabriek
+	# itself, in the store, for the machine's system.
+	run machine_text 'c.environment.variables.FABRIEK_SELF'
+	assert_regex "$output" '^/nix/store/.*-source$'
+	run machine_text 'c.environment.variables.FABRIEK_SYSTEM'
+	assert_output "$MACHINE"
 	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'
 	assert_output --partial pi-coding-agent
 	# Evaluated, not built: what the index files import is in the build

@@ -91,6 +91,22 @@ let
   storeDevice = "/dev/disk/by-id/virtio-${storeSerial}";
   storeOverlay = "/nix/.rw-store";
 
+  ## The host's store as the lower store: its paths under /nix/.ro-host and
+  ## its database where a local store at that root looks for one. The
+  ## host's db is shared as it is, but a store opened read-only ignores the
+  ## write-ahead log, and on a host whose daemon checkpoints every 40000
+  ## pages the newest paths, the appliance's own among them, are only
+  ## there (measured 2026-09-16: "path ... is not valid" for the system
+  ## the machine was booted from). So the share is mounted aside and the
+  ## machine takes a checkpointed snapshot of it at every boot, on
+  ## store.img beside the upper layer, and binds that where the lower
+  ## store reads. A host path made after the boot is not in it; up runs
+  ## after every restart, so a snapshot is as old as the boot.
+  lowerRoot = "/nix/.ro-host";
+  hostDb = "/nix/.ro-host-db";
+  lowerDb = "${lowerRoot}/nix/var/nix/db";
+  lowerDbSnapshot = "${storeOverlay}/lower-db";
+
   ## The one way a credential reaches this machine (ADR-025 point 1). The
   ## operator names a host and pipes the secret in; where it lands is the
   ## machine's business, so nothing on the operator's side spells the state
@@ -187,7 +203,7 @@ in
         }
         {
           source = "/nix/var/nix/db";
-          mountPoint = "/nix/.ro-host/nix/var/nix/db";
+          mountPoint = hostDb;
           tag = "ro-db";
           proto = cfg.shareProto;
         }
@@ -239,11 +255,51 @@ in
       };
     };
 
+    systemd.services.fabriek-lower-db = {
+      description = "Snapshot the host's store database for the lower store";
+      wantedBy = [ "sysinit.target" ];
+      before = [
+        "nix-daemon.service"
+        "nix-daemon.socket"
+        "sysinit.target"
+      ];
+      unitConfig = {
+        DefaultDependencies = false;
+        RequiresMountsFor = [
+          hostDb
+          storeOverlay
+        ];
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [
+        pkgs.coreutils
+        pkgs.util-linux
+        pkgs.sqlite-interactive
+      ];
+      script = ''
+        set -eu
+        rm -rf ${lowerDbSnapshot}
+        mkdir -p ${lowerDbSnapshot} ${lowerDb}
+        ## VACUUM INTO reads through the log where an immutable open does
+        ## not, and writes one file with no log to carry.
+        sqlite3 -readonly ${hostDb}/db.sqlite "VACUUM INTO '${lowerDbSnapshot}/db.sqlite'"
+        cp ${hostDb}/schema ${lowerDbSnapshot}/schema
+        mount --bind ${lowerDbSnapshot} ${lowerDb}
+      '';
+    };
+    systemd.services.nix-daemon.requires = [ "fabriek-lower-db.service" ];
+
     ## The overlay is the machine's default store, so the daemon, nix build
     ## at prepare and nixcage's closure query for every session all answer
     ## for a host path as valid (ADR-057 point 1a). Experimental in this nix;
-    ## the measurement plan checks it on a machine.
-    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=/nix/.ro-host&read-only=true"}&upper-layer=${storeOverlay}/store";
+    ## the measurement plan checks it on a machine. nix's own check of the
+    ## mount is off: the overlay is mounted in the initrd, so /proc/self/mounts
+    ## records its layers under /sysroot and the check refuses a mount that
+    ## is right (measured 2026-09-16, "mounted incorrectly").
+    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=${lowerRoot}&read-only=true"}&upper-layer=${storeOverlay}/store&check-mount=false";
 
     boot = {
       supportedFilesystems.zfs = true;
