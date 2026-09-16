@@ -1,7 +1,7 @@
 ---
 id: ADR-064
 title: The bridge's rules are nixcage's, and fabriek names only the three ports a cage may reach
-status: implementing
+status: implemented
 date: 2026-09-16
 status_date: 2026-09-16
 summary: attribution and cage-to-cage isolation move to nixcage with the lock bump; bridge.nix keeps the address and the firewall
@@ -109,3 +109,17 @@ finds no `fabriek-cages`; `tests/command/render.bats` runs prepare with no
 `nft` on `PATH`; `tests/command/seam.bats` is unchanged and passes. Open:
 `tests/manual/isolation.sh` on a machine, recorded here and in nixcage
 ADR-015 when run.
+
+Measured 2026-09-16 on a machine built from `1af4e65` with nixcage
+`3cdcfe6`: `tests/manual/isolation.sh` against a factory of six roles,
+every Then passing and one gated. The bridge is `fabriek0`; a cage sees
+`host0` and nothing else besides `lo`; two roles hold `10.77.0.10` and
+`10.77.0.11`; no route off the machine and no name resolves; a connection
+to the peer's address fails and one to the proxy answers; one request
+moves the sender's count and nobody else's; a request forged as the peer's
+address from the sender's namespace moves no count; the daemon substitutes
+and never fetches. The 429 at the hard limit passed in a run with a
+ceiling of 300 tokens and is gated at the example's twenty million. A
+ceiling this proof can reach is also one the decider's first turn exceeds
+(6273 tokens observed), so the two Thens are proved in two runs, never
+one. Recorded in nixcage ADR-015 with the same run.
