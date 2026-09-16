@@ -1,111 +1,116 @@
 // The lifecycle of a factory's own machine, as decided in
-// docs/ADR-019-fabriek-owns-a-factory-vm.md and required by phase 2 of
-// docs/PRD-004-a-factory-of-its-own.md, amended for the redesign (ADR-033 to ADR-040)
-// decision 15 (docs/roadmap.md 0.3): the declaration is built into the image,
-// so every edit to it is a rebuild, and what drains before one is the tasks
-// in flight rather than the roles, which are permanent and lose nothing.
+// docs/ADR-019-fabriek-owns-a-factory-vm.md and redrawn by
+// docs/ADR-057-the-machine-is-an-appliance-and-a-factory-arrives-as-toml.md:
+// one image for every factory, the factory handed over as credentials at
+// boot, and a prepare step after boot that reads them, renders the
+// machine's files and realises a profile per role before any session
+// starts. Nothing is built per factory, so a changed declaration is a new
+// credential and a restart, never a rebuild.
 //
-// fabriek builds and runs one NixOS VM per factory. The states are absent,
-// built, booting, running and stopping, and two sides interleave across them:
-// the host builds, boots, resizes and stops, while inside the machine role
-// sessions come and go and write to the pool the factory's state lives on.
+// The states are absent, ready (disks made, credentials written), booting,
+// booted (reachable, unprepared), preparing, running (prepared) and
+// stopping. Two sides interleave: the host writes credentials, boots and
+// stops; inside the machine prepare realises profiles one role at a time
+// and may fail between two of them, and role sessions come and go and
+// write to the pool.
 //
-// ADR-017 exists because a VM was ended rather than shut down and worktrees
-// came back empty. fabriek now owns the stopping, so the property that
-// matters most here is that nothing fabriek does ends a machine that is
-// mid-write. A stop that cannot complete is reported and the machine keeps
-// running, which is why there is no action in this model that forces one.
+// Three properties carry over from ADR-017 and ADR-019: nothing fabriek does
+// ends a machine mid-write, the disk outlives everything but destroy, and a
+// machine runs what it booted with. Two are ADR-057's own: a role's session
+// starts only on a profile prepare made for the credentials this boot
+// carries, and prepare is idempotent from any half state.
+//
+// What this model found (2026-09-16): the prepared flag that gates the
+// executor lived on the pool, so a reboot with new credentials came up with
+// last boot's flag and the executor could start a session on a stale
+// profile. The flag is per boot now (preparedGen below is reset at boot).
 module vmLifecycle {
-  // How many times the repository's declaration may be edited. Bounds the
-  // state space; three is enough to build, drift, rebuild and drift again.
-  pure val maxDeclGen = 3
-  pure val maxSessions = 2
+  // How many times the operator may move the pin. Bounds the state space;
+  // six is enough to drift, restart and drift again with samples to spare.
+  pure val maxCredGen = 6
+  pure val roles = Set("backend", "reviewer")
 
   var vmState: str
   var diskExists: bool
 
-  // The declaration in the repository, the generation the image was built
-  // from, and the generation the machine now running actually booted with.
-  var declGen: int
-  var builtGen: int
-  var appliedGen: int
+  // The credentials on the host, the ones the running machine booted with,
+  // and the ones the machine's prepared state was rendered from (0: none).
+  var credGen: int
+  var bootedGen: int
+  var preparedGen: int
 
-  var sessions: int
+  // Which roles have a profile, and from which credentials each was made.
+  // A profile outlives a boot (it is in the store overlay), which is why it
+  // carries its generation: one made for old credentials is not one for new.
+  var profileGen: str -> int
+
+  var sessions: Set[str]
   var writing: bool
 
-  // Witnesses. The first two must stay false; the last two are states the
-  // design has to be able to reach.
-  var builtGenChangedWhileRunning: bool
-  var staleReached: bool
+  // Witnesses. The first must stay false; the others are states the design
+  // has to be able to reach.
   var lostToAbruptHostStop: bool
+  var staleReached: bool
+  var halfPreparedReached: bool
 
-  def up(s: str): bool = s == "booting" or s == "running" or s == "stopping"
+  def up(s: str): bool =
+    s == "booting" or s == "booted" or s == "preparing" or s == "running" or s == "stopping"
 
-  action holdMachine = all {
-    vmState' = vmState, diskExists' = diskExists,
-  }
+  action holdMachine = all { vmState' = vmState, diskExists' = diskExists }
   action holdGens = all {
-    declGen' = declGen, builtGen' = builtGen, appliedGen' = appliedGen,
+    credGen' = credGen, bootedGen' = bootedGen, preparedGen' = preparedGen,
+    profileGen' = profileGen,
   }
   action holdGuest = all { sessions' = sessions, writing' = writing }
   action holdWitness = all {
-    builtGenChangedWhileRunning' = builtGenChangedWhileRunning,
-    staleReached' = staleReached,
     lostToAbruptHostStop' = lostToAbruptHostStop,
+    staleReached' = staleReached,
+    halfPreparedReached' = halfPreparedReached,
   }
 
   action init = all {
     vmState' = "absent",
     diskExists' = false,
-    declGen' = 0,
-    builtGen' = 0,
-    appliedGen' = 0,
-    sessions' = 0,
+    credGen' = 1,
+    bootedGen' = 0,
+    preparedGen' = 0,
+    profileGen' = roles.mapBy(_ => 0),
+    sessions' = Set(),
     writing' = false,
-    builtGenChangedWhileRunning' = false,
-    staleReached' = false,
     lostToAbruptHostStop' = false,
+    staleReached' = false,
+    halfPreparedReached' = false,
   }
 
-  // fabriek up on a factory that has no machine yet: the disk is made and
-  // the image is built from the declaration as it stands.
-  action build = all {
+  // fabriek up on a factory that has no machine yet: the disks are made and
+  // the credentials written from the operator's config and the pin. The
+  // image is nobody's to build here; it exists once.
+  action ready = all {
     vmState == "absent",
-    vmState' = "built",
+    vmState' = "ready",
     diskExists' = true,
-    declGen' = declGen, builtGen' = declGen, appliedGen' = appliedGen,
-    holdGuest, holdWitness,
-  }
-
-  // The declaration changed, and under decision 15 every part of it is in the
-  // image: resources, roles, workflows and devShells alike. This is the
-  // normal path after an edit, not the exception it was when roles and
-  // workflows were read at run time (ADR-020 point 3, withdrawn).
-  action rebuild = all {
-    vmState == "built",
-    builtGen != declGen,
-    diskExists,
-    holdMachine,
-    declGen' = declGen, builtGen' = declGen, appliedGen' = appliedGen,
-    holdGuest,
-    builtGenChangedWhileRunning' = (builtGenChangedWhileRunning or vmState == "running"),
-    staleReached' = staleReached,
-    lostToAbruptHostStop' = lostToAbruptHostStop,
+    holdGens, holdGuest, holdWitness,
   }
 
   action boot = all {
-    vmState == "built",
+    vmState == "ready",
     diskExists,
     vmState' = "booting",
     diskExists' = diskExists,
     holdGens, holdGuest, holdWitness,
   }
 
+  // The machine is reachable and carries the host's credentials as of this
+  // boot. Nothing of last boot's prepared state counts: the flag the
+  // executor waits on is per boot, so preparedGen is 0 until prepare ends.
+  // The profiles in the store overlay stay, with the generation they were
+  // made for.
   action booted = all {
     vmState == "booting",
-    vmState' = "running",
+    vmState' = "booted",
     diskExists' = diskExists,
-    declGen' = declGen, builtGen' = builtGen, appliedGen' = builtGen,
+    credGen' = credGen, bootedGen' = credGen, preparedGen' = 0,
+    profileGen' = profileGen,
     holdGuest, holdWitness,
   }
 
@@ -113,22 +118,76 @@ module vmLifecycle {
   // safe rather than a second chance at losing the pool.
   action bootFailed = all {
     vmState == "booting",
-    vmState' = "built",
+    vmState' = "ready",
     diskExists' = diskExists,
     holdGens, holdGuest, holdWitness,
   }
 
+  // factory-prepare starts, on a fresh boot or again after a failure.
+  action prepare = all {
+    vmState == "booted",
+    vmState' = "preparing",
+    diskExists' = diskExists,
+    holdGens, holdGuest, holdWitness,
+  }
+
+  // One role's profile realised for this boot's credentials. A profile made
+  // for the same credentials is found in the store and kept: prepare is
+  // idempotent, so this is a no-op on a role already done.
+  action prepareRole = all {
+    vmState == "preparing",
+    nondet r = roles.oneOf()
+    all {
+      profileGen' = profileGen.set(r, bootedGen),
+      credGen' = credGen, bootedGen' = bootedGen, preparedGen' = preparedGen,
+    },
+    holdMachine, holdGuest, holdWitness,
+  }
+
+  // Prepare fails between two roles: a devShell that does not substitute, a
+  // declaration the schema refuses. The machine stays reachable and
+  // unprepared, with whatever profiles it made kept, and up reports it.
+  action prepareFailed = all {
+    vmState == "preparing",
+    vmState' = "booted",
+    diskExists' = diskExists,
+    holdGens, holdGuest,
+    lostToAbruptHostStop' = lostToAbruptHostStop,
+    staleReached' = staleReached,
+    halfPreparedReached' = (halfPreparedReached or
+      (roles.exists(r => profileGen.get(r) == bootedGen) and
+       roles.exists(r => profileGen.get(r) != bootedGen))),
+  }
+
+  // Every role has a profile for this boot's credentials: prepare writes the
+  // flag and the executor may start.
+  action prepared = all {
+    vmState == "preparing",
+    roles.forall(r => profileGen.get(r) == bootedGen),
+    vmState' = "running",
+    diskExists' = diskExists,
+    credGen' = credGen, bootedGen' = bootedGen, preparedGen' = bootedGen,
+    profileGen' = profileGen,
+    holdGuest, holdWitness,
+  }
+
+  // The executor starts a role's session: only once prepared, and only for a
+  // role whose profile link exists.
   action startSession = all {
     vmState == "running",
-    sessions < maxSessions,
-    sessions' = sessions + 1,
+    nondet r = roles.oneOf()
+    all {
+      not(sessions.contains(r)),
+      profileGen.get(r) == bootedGen,
+      sessions' = sessions.union(Set(r)),
+    },
     writing' = writing,
     holdMachine, holdGens, holdWitness,
   }
 
   action beginWrite = all {
     vmState == "running",
-    sessions > 0,
+    sessions.size() > 0,
     not(writing),
     writing' = true,
     sessions' = sessions,
@@ -143,26 +202,26 @@ module vmLifecycle {
   }
 
   action endSession = all {
-    sessions > 0,
+    sessions.size() > 0,
     not(writing),
-    sessions' = sessions - 1,
+    nondet r = sessions.oneOf()
+    sessions' = sessions.exclude(Set(r)),
     writing' = false,
     holdMachine, holdGens, holdWitness,
   }
 
   action requestStop = all {
-    vmState == "running",
+    vmState == "running" or vmState == "booted",
     vmState' = "stopping",
     diskExists' = diskExists,
     holdGens, holdGuest, holdWitness,
   }
 
-  // The stop cannot complete because the machine is still busy. PRD-004 requires
-  // this to be reported rather than forced, so the machine goes back to
-  // running and there is no action here that ends it anyway.
+  // The stop cannot complete because the machine is still busy. Reported,
+  // never forced: the machine goes back to running.
   action stopBlocked = all {
     vmState == "stopping",
-    sessions > 0 or writing,
+    sessions.size() > 0 or writing,
     vmState' = "running",
     diskExists' = diskExists,
     holdGens, holdGuest, holdWitness,
@@ -170,9 +229,9 @@ module vmLifecycle {
 
   action shutdownComplete = all {
     vmState == "stopping",
-    sessions == 0,
+    sessions.size() == 0,
     not(writing),
-    vmState' = "built",
+    vmState' = "ready",
     diskExists' = diskExists,
     holdGens, holdGuest, holdWitness,
   }
@@ -181,88 +240,96 @@ module vmLifecycle {
   // fabriek does; the residual risk ADR-017 puts ZFS underneath.
   action abruptHostStop = all {
     up(vmState),
-    vmState' = "built",
+    vmState' = "ready",
     diskExists' = diskExists,
     holdGens,
-    sessions' = 0,
+    sessions' = Set(),
     writing' = false,
-    builtGenChangedWhileRunning' = builtGenChangedWhileRunning,
-    staleReached' = staleReached,
     lostToAbruptHostStop' = (lostToAbruptHostStop or writing),
+    staleReached' = staleReached,
+    halfPreparedReached' = halfPreparedReached,
   }
 
-  action editDeclaration = all {
-    declGen < maxDeclGen,
-    declGen' = declGen + 1,
-    builtGen' = builtGen, appliedGen' = appliedGen,
+  // fabriek up -u: the pin moves, the credentials on the host change. A
+  // machine running on the old ones is stale until it is restarted.
+  action updateCredentials = all {
+    credGen < maxCredGen,
+    credGen' = credGen + 1,
+    bootedGen' = bootedGen, preparedGen' = preparedGen, profileGen' = profileGen,
     holdMachine, holdGuest,
-    builtGenChangedWhileRunning' = builtGenChangedWhileRunning,
-    staleReached' = (staleReached or (vmState == "running" and appliedGen < declGen + 1)),
     lostToAbruptHostStop' = lostToAbruptHostStop,
+    staleReached' = (staleReached or (vmState == "running" and bootedGen < credGen + 1)),
+    halfPreparedReached' = halfPreparedReached,
   }
 
   action destroy = all {
-    vmState == "built",
-    sessions == 0,
+    vmState == "ready",
+    sessions.size() == 0,
     vmState' = "absent",
     diskExists' = false,
-    declGen' = declGen, builtGen' = 0, appliedGen' = 0,
+    credGen' = credGen, bootedGen' = 0, preparedGen' = 0,
+    profileGen' = roles.mapBy(_ => 0),
     holdGuest, holdWitness,
   }
 
   action step = any {
-    build, rebuild, boot, booted, bootFailed,
+    ready, boot, booted, bootFailed,
+    prepare, prepareRole, prepareFailed, prepared,
     startSession, beginWrite, endWrite, endSession,
     requestStop, stopBlocked, shutdownComplete,
-    abruptHostStop, editDeclaration, destroy,
+    abruptHostStop, updateCredentials, destroy,
   }
 
-  // A session exists only inside a machine that is up.
-  val noSessionOutsideAMachine: bool =
-    sessions == 0 or (vmState == "running" or vmState == "stopping")
+  // A session exists only inside a machine that is up and prepared.
+  val noSessionOutsideAPreparedMachine: bool =
+    sessions.size() == 0 or (vmState == "running" or vmState == "stopping")
 
   // Nothing is ever up without the storage its state lives on.
   val noMachineWithoutItsDisk: bool = not(up(vmState)) or diskExists
 
-  // A rebuild happens to a machine that is not running, so a task mid-write
-  // is never rebuilt out from under. What drains before the stop is the
-  // sessions, one per task in flight; a role's dataset, home and key are on
-  // the pool and survive the rebuild untouched (decision 15).
-  val resizeNeedsAStoppedMachine: bool = not(builtGenChangedWhileRunning)
-
   // The disk outlives every transition except the one that exists to remove
-  // it, so a failed boot, a stop, an abrupt host stop and a rebuild all keep
-  // the factory's state. Stated over the state rather than as a flag nothing
-  // sets, because a flag nothing sets is an invariant that cannot fail.
+  // it: a failed boot, a failed prepare, a stop, an abrupt host stop.
   val diskOutlivesEverythingButDestroy: bool =
     vmState == "absent" or diskExists
 
-  // A machine runs what it booted with. A declaration edited underneath it
-  // does not change it, which is what makes stale a state rather than a race.
-  val runningMachineMatchesItsImage: bool =
-    vmState != "running" or appliedGen == builtGen
+  // ADR-057 point 5: a role's session runs on a profile made for the
+  // credentials this boot carries, never on last boot's, and never before
+  // prepare finished for this boot.
+  val sessionOnlyOnThisBootsProfile: bool =
+    sessions.forall(r => profileGen.get(r) == bootedGen and preparedGen == bootedGen)
+
+  // A prepared machine has every role's profile for its own credentials:
+  // the flag means what it says.
+  val preparedMeansEveryProfile: bool =
+    vmState != "running" or roles.forall(r => profileGen.get(r) == bootedGen)
 
   val allInvariants: bool = and {
-    noSessionOutsideAMachine,
+    noSessionOutsideAPreparedMachine,
     noMachineWithoutItsDisk,
-    resizeNeedsAStoppedMachine,
     diskOutlivesEverythingButDestroy,
-    runningMachineMatchesItsImage,
+    sessionOnlyOnThisBootsProfile,
+    preparedMeansEveryProfile,
   }
 
   // Witness, stated as a negation so a violation is the evidence: the
-  // declaration can drift ahead of the machine running it. A model where this
-  // never violates has no stale state and is not modelling this design.
+  // credentials can move ahead of the machine running them.
   val neverStale: bool = not(staleReached)
 
-  // Witness: a stale machine becomes current again, by draining, stopping,
-  // rebuilding and booting. This is decision 15's normal path; if it never
-  // violates, an edited declaration has no way back onto the machine.
+  // Witness: a stale machine becomes current again by stopping and booting,
+  // with prepare realising what the new credentials need.
   val neverCurrentAgainAfterStale: bool =
-    not(staleReached and vmState == "running" and appliedGen == declGen)
+    not(staleReached and vmState == "running" and bootedGen == credGen)
 
-  // Witness: the one way left to end a machine mid-write is the host dying,
-  // which is what the pool underneath is for. If this never violates, the
-  // model has no abrupt stop in it and the ZFS argument is untested.
+  // Witness: prepare can stop halfway, with some profiles for this boot and
+  // some not. If this never violates, the model has no half state and the
+  // idempotence claim is untested.
+  val neverHalfPrepared: bool = not(halfPreparedReached)
+
+  // Witness: a machine half prepared and then prepared again reaches running
+  // with every profile, which is the idempotence ADR-057 point 4 claims.
+  val neverRecoveredFromHalf: bool =
+    not(halfPreparedReached and vmState == "running")
+
+  // Witness: the one way left to end a machine mid-write is the host dying.
   val neverLostToAbruptHostStop: bool = not(lostToAbruptHostStop)
 }

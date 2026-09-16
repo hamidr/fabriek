@@ -296,11 +296,20 @@ be re-decided: fetched by the evaluator as `builtins.fetchurl` from the
 lockfile at prepare, or warmed on the operator's host and shipped as a
 volume. It is not decided here.
 
-`models/vm-lifecycle.qnt` models a generation applied by a rebuild.
-Prepare is a step after boot that can fail or half-finish, and a role's
-session must not start without its profile; the model gains a prepared
-state and that invariant before the code, and stale becomes a running
-machine whose credentials are older than the files on the host.
+`models/vm-lifecycle.qnt` is redrawn for this design (2026-09-16): no
+build, credentials per boot, prepare as a step that realises one role's
+profile at a time and can fail between two, sessions only on a profile
+made for this boot's credentials, stale as a running machine whose
+credentials are older than the host's. `quint run --invariant=allInvariants
+--max-steps=60 --max-samples=5000` finds no violation; every witness
+(stale, current again after stale, half prepared, recovered from half,
+lost to an abrupt host stop) is reached. It found one thing: the flag the
+executor waits on, `/var/lib/nixcage/prepared` today
+(`modules/machine/executor.nix`, `fabriek-container`), is on the pool and
+survives a reboot, so a machine booted with new credentials would start
+the executor on last boot's profiles before prepare ran. Under this
+record the flag is per boot, under `/run`, and prepare writes it last;
+with the flag kept across boots the model violates in under a second.
 
 `tests/command/factory_flake.bats`, which fails the build by an unknown
 key's name and by a role naming a devShell the flake lacks, becomes a test
