@@ -22,8 +22,16 @@ FABRIEK_PROBES_REFRESH=60
 FABRIEK_CGROUP_ROOT="${FABRIEK_CGROUP_ROOT:-/sys/fs/cgroup}"
 
 ## A cgroup's id is its directory's inode.
+## The scope's id and its children's: nspawn runs the payload in a child
+## cgroup of the scope, and the id the kernel stamps on a process is the
+## child's. One per line.
 fabriek_probes_cgroup_id() {
-	stat -c %i "$FABRIEK_CGROUP_ROOT/$1" 2>/dev/null
+	local dir="$FABRIEK_CGROUP_ROOT/$1" child
+	stat -c %i "$dir" 2>/dev/null || return 1
+	for child in "$dir"/*/; do
+		[ -d "$child" ] && stat -c %i "$child" 2>/dev/null
+	done
+	return 0
 }
 
 ## fabriek_probes_publish <state> <plan.json> <declaration.json>
@@ -55,8 +63,9 @@ fabriek_probes_publish() {
 				case "$status" in
 				running\ *)
 					read -r _ _ path <<<"$status"
-					id="$(fabriek_probes_cgroup_id "$path")"
-					[ -n "$id" ] && role_of[$id]="$r"
+					while IFS= read -r id; do
+						[ -n "$id" ] && role_of[$id]="$r"
+					done < <(fabriek_probes_cgroup_id "$path")
 					;;
 				esac
 			done

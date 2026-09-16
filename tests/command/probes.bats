@@ -71,6 +71,22 @@ LINES
 	assert_line --index 1 --partial "cgroup $DECIDER_CG role decider event connect cgroup=$DECIDER_CG uid=60192 pid=4300 comm=node"
 }
 
+# nspawn runs the cage's payload in a child cgroup of its scope, so the id
+# the kernel stamps on a process is the child's and not the scope's
+# (measured 2026-09-16: every probe of a cage carried an empty role).
+@test "a process in a child cgroup of a cage's scope is that cage's" {
+	echo probes-pass >"$STATE/bus/probes"
+	mkdir -p "$FABRIEK_CGROUP_ROOT/machine.slice/machine-builder.scope/payload" "$FABRIEK_CGROUP_ROOT/machine.slice/machine-builder.scope/supervisor"
+	local payload
+	payload="$(inode "$FABRIEK_CGROUP_ROOT/machine.slice/machine-builder.scope/payload")"
+	run publish <<LINES
+exec cgroup=$payload uid=60000 pid=4242 comm=git
+LINES
+	assert_success
+	run cat "$TEST_TEMP_DIR/bus-calls"
+	assert_line --index 0 --partial "cgroup $payload role builder event"
+}
+
 @test "the entry is written as the probes user, with the password in the environment and not on argv" {
 	echo probes-pass >"$STATE/bus/probes"
 	run publish <<<"exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=sh"
