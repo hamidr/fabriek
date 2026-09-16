@@ -100,8 +100,9 @@ fab() {
 @test "ls --json is the same listing as a structure" {
 	fab ls --json
 	assert_success
-	run jq -r '.specialists.django | join(",")' <<<"$output"
-	assert_output "python"
+	# Each entry with its parents and where it came from (ADR-061 point 7).
+	run jq -r '.specialists.django | "\(.extends | join(",")) \(.source | split("/") | last)"' <<<"$output"
+	assert_output "python django"
 }
 
 # ADR-050: the root of the tree is who works in a worktree, not a builder;
@@ -125,4 +126,56 @@ fab() {
 	assert_output --partial "decider"
 	assert_output --partial "factory-guidance.md"
 	assert_output --partial "next machine build"
+}
+
+# ADR-061 point 7: the operator's own specialists, skills and catalogue
+# directories are read by ls, show and check on the host, and a name is
+# shown with the source it came from.
+@test "ls and show read the operator's TOML specialists and skills, and say they are the operator's" {
+	printf -- '---\nname: profile\ndescription: Profile it here.\n---\n# P\n' >"$TEST_TEMP_DIR/SKILL.md"
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[specialists.strict]
+extends = ["reviewer"]
+tools = ["hello"]
+skills = ["profile"]
+prompt = "Be strict."
+
+[skills.profile]
+skill = "$TEST_TEMP_DIR/SKILL.md"
+TOML
+	fab ls
+	assert_success
+	assert_line --partial "strict: extends reviewer (config.toml)"
+	assert_line --partial "profile: Profile it here. (config.toml)"
+	fab show strict
+	assert_success
+	assert_line --partial "order: committer, reviewer, strict"
+	assert_line --partial "tools:"
+	assert_output --partial "hello"
+	assert_output --partial "Be strict."
+}
+
+@test "check resolves a role's operator-declared specialist, and refuses a tool nixpkgs lacks by name" {
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[specialists.strict]
+extends = ["reviewer"]
+tools = ["no-such-package-xyz"]
+prompt = "Be strict."
+TOML
+	git -C "$REPO" rm -q fabriek.toml
+	git -C "$REPO" -c commit.gpgsign=false commit -qm undeclare
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[factories.acme.roles.reviewer]
+provides = ["review"]
+specialists = ["strict"]
+
+[[factories.acme.workflows.ship.stages]]
+needs = "review"
+TOML
+	run bash "$FABRIEK_ROOT/fabriek" check "$REPO"
+	assert_failure
+	assert_output --partial "specialist strict: tool no-such-package-xyz is not a package of nixpkgs"
 }

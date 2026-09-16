@@ -33,6 +33,19 @@ fabriek_catalogue_eval() {
 		project="null"
 		extra="[ ]"
 	fi
+	## The operator's own (ADR-061 points 3 and 4), from the file when
+	## there is one: TOML specialists and skills as declared, catalogue
+	## directories before the repository's.
+	local config declared='{ specialists = { }; skills = { }; }' dirs="" json path
+	config="$(fabriek_operator_config_path)"
+	if [ -f "$config" ] && json="$(fabriek_operator_config "$config" 2>/dev/null)"; then
+		declared="builtins.fromJSON $(fabriek_nix_string "$(printf '%s' "$json" | jq -c '{specialists: (.specialists // {}), skills: (.skills // {})}')")"
+		while IFS= read -r path; do
+			[ -n "$path" ] || continue
+			dirs="$dirs $path"
+		done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[]')
+	fi
+	extra="[$dirs ] ++ ($extra)"
 	err="$(mktemp)"
 	if out="$(nix eval --json --impure --expr "
 	  let flake = builtins.getFlake $(fabriek_nix_string "path:$self");
@@ -41,7 +54,7 @@ fabriek_catalogue_eval() {
 	      ## The declaration as validated and expanded (ADR-053), when one was
 	      ## read; nothing otherwise.
 	      decl = $(if [ -n "${FABRIEK_CHECK_DECLARATION:-}" ]; then printf 'builtins.fromJSON %s' "$(fabriek_nix_string "$FABRIEK_CHECK_DECLARATION")"; else printf '{ }'; fi);
-	      cat = flake.lib.catalogue { inherit pkgs; extra = $extra; };
+	      cat = flake.lib.catalogue { inherit pkgs; extra = $extra; declared = $declared; };
 	      show = c: {
 	        inherit (c) order servers promptText;
 	        tools = map (t: t.pname or t.name) c.tools;
@@ -148,17 +161,19 @@ fabriek_catalogue_list() {
 		rev="$FABRIEK_CHECK_REV"
 	fi
 	listed="$(fabriek_catalogue_eval "$self" "$system" "$repo" "$rev" \
-		'{ specialists = builtins.mapAttrs (_: s: map (p: p.name) (s.extends or [ ])) cat.specialists;
-		   skills = builtins.mapAttrs (_: s: s.description) cat.skillsDescribed; }')" || return 1
+		'{ specialists = builtins.mapAttrs (_: s: { extends = map (p: p.name) (s.extends or [ ]); source = s.dir; }) cat.specialists;
+		   skills = builtins.mapAttrs (_: s: { inherit (s) description; source = s.dir or s.src; }) cat.skillsDescribed; }')" || return 1
 	if [ -n "${FABRIEK_JSON:-}" ]; then
 		printf '%s' "$listed" | jq -c .
 		return 0
 	fi
+	## An entry of the operator'"'"'s file says so; a directory'"'"'s is the directory.
 	printf '%s' "$listed" | jq -r '
+	  def from: if .source == "config.toml" then " (config.toml)" else "" end;
 	  "specialists:",
-	  (.specialists | to_entries[] | "  \(.key): \(if .value == [] then "extends nothing" else "extends " + (.value | join(", ")) end)"),
+	  (.specialists | to_entries[] | "  \(.key): \(if .value.extends == [] then "extends nothing" else "extends " + (.value.extends | join(", ")) end)\(.value | from)"),
 	  "skills:",
-	  (.skills | to_entries[] | "  \(.key): \(.value)")'
+	  (.skills | to_entries[] | "  \(.key): \(.value.description)\(.value | from)")'
 }
 
 ## fabriek_catalogue_show <self> <system> <name> [<repo>]
