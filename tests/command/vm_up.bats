@@ -314,6 +314,47 @@ TOML
 	[ ! -f "$FABRIEK_MACHINES/acme/pid" ]
 }
 
+# ADR-061 points 3, 4 and 6: the operator's prompts, skill files and
+# catalogue directories go to the machine through the lower store, so up
+# puts each in the host's store and roots it, and the credential names the
+# store paths; the credential itself is kept beside runtime.json, since a
+# declaration in the operator's file has no commit to be read back from.
+@test "up puts the operator's prompts, skills and catalogues in the store, roots them, and names them in the credential it keeps" {
+	mkdir -p "$TEST_TEMP_DIR/catalogue/specialists"
+	printf '# Strict\n' >"$TEST_TEMP_DIR/strict.md"
+	printf '# Profile\n' >"$TEST_TEMP_DIR/SKILL.md"
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[specialists.reviewer-strict]
+extends = ["reviewer"]
+prompt = "$TEST_TEMP_DIR/strict.md"
+
+[specialists.rust]
+prompt = "Inline text stays text."
+
+[skills.cargo-profile]
+skill = "$TEST_TEMP_DIR/SKILL.md"
+TOML
+	sed -i.bak "1i catalogues = [\"$TEST_TEMP_DIR/catalogue\"]" "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_success
+	local cred="$FABRIEK_MACHINES/acme/fabriek.toml"
+	run grep -E '^"prompt" = "/nix/store/[a-z0-9]{32}-strict.md"$' "$cred"
+	assert_success
+	run grep -E '^"prompt" = "Inline text stays text."$' "$cred"
+	assert_success
+	run grep -E '^"skill" = "/nix/store/[a-z0-9]{32}-SKILL.md"$' "$cred"
+	assert_success
+	run grep -E '^catalogues = \["/nix/store/[a-z0-9]{32}-catalogue"\]$' "$cred"
+	assert_success
+	run grep -cE -- '--add-root .*/roots/(specialist|skill|catalogue)-' "$TEST_TEMP_DIR/nix-store-calls"
+	assert_output 3
+	run bash -c "ls $FABRIEK_MACHINES/acme/fabriek.toml.* | wc -l"
+	assert_output 1
+	run bash -c "diff $FABRIEK_MACHINES/acme/fabriek.toml $FABRIEK_MACHINES/acme/fabriek.toml.*"
+	assert_success
+}
+
 # A build that fails prints a trace with the thrown message at its end,
 # which is the one line the operator can act on.
 @test "when the appliance's build fails, the thrown message is printed first and the trace after it" {
@@ -540,11 +581,34 @@ EOF
 	assert_line --index 1 "rev: abc"
 	assert_line --index 2 "  builder: /nix/store/aaaa-fabriek-role-builder"
 	assert_line --index 3 "  decider: /var/lib/fabriek/factory/pi-decider"
+	# And which file declared it (ADR-061 point 6): the repository's here.
+	assert_line --index 4 "declared in: $REPO/fabriek.toml"
 	run_fabriek -f acme show --json
 	assert_success
-	run jq -r '.image, .rev' <<<"$output"
+	run jq -r '.image, .rev, .declaration' <<<"$output"
 	assert_line --index 0 "$RUNNER"
 	assert_line --index 1 abc
+	assert_line --index 2 "$REPO/fabriek.toml"
+}
+
+@test "show -f on a factory declared in the operator's file prints the declaration the machine was given" {
+	git -C "$REPO" rm -q fabriek.toml
+	git -C "$REPO" -c commit.gpgsign=false commit -qm undeclare
+	cat >>"$FABRIEK_CONFIG" <<TOML
+
+[factories.acme.roles.builder]
+provides = ["build"]
+
+[[factories.acme.workflows.ship.stages]]
+needs = "build"
+TOML
+	run_fabriek up acme
+	assert_success
+	run_fabriek -f acme show
+	assert_success
+	assert_line --partial "declared in: $FABRIEK_MACHINES/acme/fabriek.toml."
+	assert_line --partial '[declaration."roles"."builder"]'
+	assert_line --partial '"provides" = ["build"]'
 }
 
 @test "show -f on a factory that is not running says the machine is the one to ask" {

@@ -35,7 +35,7 @@ teardown() {
 	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
 	assert_success
 	run jq -cS . <<<"$output"
-	assert_output '{"caps":{"cores":8,"egress":["api.anthropic.com"],"memory":"16G","recordQuota":"8G","tokens":1000000},"credentials":{"api.anthropic.com":"x-api-key"},"embedder":{"url":"http://127.0.0.1:8080"},"factory":{"hostSystem":"x86_64-linux","name":"acme"},"models":{"api.anthropic.com":"claude-opus-5"},"pin":{"rev":"3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0"},"repository":{"path":"/home/me/Src/acme","remote":"git+file:///home/me/Src/acme"}}'
+	assert_output '{"caps":{"cores":8,"egress":["api.anthropic.com"],"memory":"16G","recordQuota":"8G","tokens":1000000},"catalogues":[],"credentials":{"api.anthropic.com":"x-api-key"},"embedder":{"url":"http://127.0.0.1:8080"},"factory":{"hostSystem":"x86_64-linux","name":"acme"},"models":{"api.anthropic.com":"claude-opus-5"},"pin":{"rev":"3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0"},"repository":{"path":"/home/me/Src/acme","remote":"git+file:///home/me/Src/acme"},"skills":{},"specialists":{}}'
 	run grep -c "/run/secrets" "$TEST_TEMP_DIR/fabriek.toml"
 	assert_output 0
 }
@@ -61,4 +61,35 @@ teardown() {
 	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
 	run jq -r '.caps.memory' <<<"$output"
 	assert_output 16G
+}
+
+# ADR-061 point 6: a factory declared in the operator's file, and the
+# operator's specialists, skills and catalogue directories, travel to the
+# machine in the credential, as TOML the same reader takes back whole.
+@test "the credential carries the operator's declaration, specialists, skills and catalogues, read back as written" {
+	jq '.factories.acme += {
+	      "roles": { "backend": { "provides": ["build"], "specialists": ["rust"], "replicas": 2 } },
+	      "workflows": { "ship": { "stages": [ { "needs": "build", "done": "tests pass", "ready": ["acceptance"] }, { "needs": "review", "verdict": true } ],
+	                              "budget": { "runs": 200 }, "consults": { "backend": ["architect"] } } },
+	      "resources": { "memory": "8G", "cores": 4 },
+	      "decider": { "policy": "docs/policy.md" } }
+	    | .specialists = { "rust": { "extends": ["developer"], "tools": ["cargo"], "skills": ["cargo-profile"], "prompt": "/nix/store/aaaa-rust.md" } }
+	    | .skills = { "cargo-profile": { "tools": ["cargo"], "skill": "You profile.\nTwice.\n" } }
+	    | .catalogues = ["/nix/store/bbbb-catalogue"]' "$CONFIG" >"$CONFIG.3"
+	run fabriek_credential_toml "$CONFIG.3" acme "git+file:///home/me/Src/acme" abc123 x86_64-linux
+	assert_success
+	printf '%s\n' "$output" >"$TEST_TEMP_DIR/fabriek.toml"
+	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
+	assert_success
+	run jq -cS '{declaration, specialists, skills, catalogues}' <<<"$output"
+	assert_output "$(jq -cS '{declaration: (.factories.acme | del(.path) | . + {name: "acme"}), specialists, skills, catalogues}' "$CONFIG.3")"
+}
+
+@test "a factory declared in the repository puts no declaration table in the credential" {
+	run fabriek_credential_toml "$CONFIG" acme "git+file:///home/me/Src/acme" abc123 x86_64-linux
+	assert_success
+	printf '%s\n' "$output" >"$TEST_TEMP_DIR/fabriek.toml"
+	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
+	run jq -c '[.declaration, .specialists, .skills, .catalogues]' <<<"$output"
+	assert_output '[null,{},{},[]]'
 }

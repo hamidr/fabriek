@@ -265,9 +265,13 @@ machine_handover() {
   fabriek_declaration_resolve "$config" "$factory" "$path" "$rev" >"$declaration" || { rm -f "$declaration" "$local_file"; return 1; }
 
   fabriek_operator_config "$config" >"$dir/config.json.new" || { rm -f "$declaration" "$local_file"; return 1; }
+  machine_store_operator_files "$dir" "$dir/config.json.new" || { rm -f "$declaration" "$local_file" "$dir/config.json.new"; return 1; }
   fabriek_credential_toml "$dir/config.json.new" "$factory" "$remote" "$rev" "$(host_system)" >"$credential.new" || { rm -f "$declaration" "$local_file"; return 1; }
   rm -f "$dir/config.json.new"
   mv "$credential.new" "$credential"
+  ## Kept: a declaration in the operator's file has no commit to be read
+  ## back from, so what a machine was given is this file (ADR-061 point 6).
+  cp "$credential" "$credential.$(date +%Y%m%dT%H%M%S)"
 
   ## The machine's size is what the factory asked and the operator allows,
   ## clamped here from the declaration at the pin, which since ADR-058 is a
@@ -353,6 +357,42 @@ machine_start_shares() {
       ;;
     esac
   done <"$conf"
+}
+
+## The operator's prompts, skill files and catalogue directories, put in
+## this host's store and rooted under the machine's directory (ADR-061
+## points 4 and 6): the lower store is what carries them to the machine.
+## A prompt or skill given as text stays text. Rewrites the config JSON in
+## place with the store paths.
+machine_store_operator_files() {
+  local dir="$1" json="$2" kind name value stored
+  mkdir -p "$dir/roots"
+  local -a filters=()
+  while IFS=$'\t' read -r kind name value; do
+    [[ -n "$value" ]] || continue
+    case "$kind:$value" in
+    catalogue:*) ;;
+    *:/*) ;;
+    *) continue ;;
+    esac
+    stored="$("$NIX" store add-path --name "${value##*/}" "$value")" || {
+      log_err "could not add $value to the store"
+      return 1
+    }
+    nix-store --add-root "$dir/roots/$kind-$name" --indirect -r "$stored" >/dev/null 2>&1 || true
+    case "$kind" in
+    specialist) filters+=(".specialists[$(jq -n --arg n "$name" '$n')].prompt = $(jq -n --arg s "$stored" '$s')") ;;
+    skill) filters+=(".skills[$(jq -n --arg n "$name" '$n')].skill = $(jq -n --arg s "$stored" '$s')") ;;
+    catalogue) filters+=(".catalogues |= map(if . == $(jq -n --arg v "$value" '$v') then $(jq -n --arg s "$stored" '$s') else . end)") ;;
+    esac
+  done < <(jq -r '
+    ((.specialists // {}) | to_entries[] | select(.value.prompt) | "specialist\t\(.key)\t\(.value.prompt)"),
+    ((.skills // {}) | to_entries[] | select(.value.skill) | "skill\t\(.key)\t\(.value.skill)"),
+    ((.catalogues // []) | to_entries[] | "catalogue\t\(.key)\t\(.value)")' "$json")
+  [[ ${#filters[@]} -gt 0 ]] || return 0
+  local program
+  program="$(IFS='|'; printf '%s' "${filters[*]}")"
+  jq "$program" "$json" >"$json.tmp" && mv "$json.tmp" "$json"
 }
 
 ## The paths the machine uses of this host's store, rooted here so a garbage
@@ -638,11 +678,26 @@ cmd_show() {
     dir="$(fabriek_machine_dir "$factory")" || exit 1
     fabriek_machine_running "$factory" || { log_err "$factory is not running; its profiles are the machine's to say"; exit 1; }
     profiles="$(machine factory-profiles "$factory")" || exit 1
+    ## Which file declared it (ADR-061 point 6): the repository's at the
+    ## pin, or the credential up kept, printed whole since it has no commit
+    ## to be read back from.
+    local declared kept
+    kept="$(printf '%s\n' "$dir"/fabriek.toml.* | sort | tail -1)"
+    [[ -f "$kept" ]] || kept=""
+    if [[ -n "$kept" ]] && grep -q '^\[declaration\]$' "$kept"; then
+      declared="$kept"
+    else
+      declared="$(fabriek_operator_factory_path "$(fabriek_operator_config_path)" "$factory" 2>/dev/null)/fabriek.toml"
+    fi
     if [[ -n "$json" ]]; then
-      printf '%s' "$profiles" | jq -c --arg image "$(readlink "$dir/appliance" 2>/dev/null || true)" '. + {image: $image}'
+      printf '%s' "$profiles" | jq -c --arg image "$(readlink "$dir/appliance" 2>/dev/null || true)" --arg declared "$declared" '. + {image: $image, declaration: $declared}'
     else
       echo "image: $(readlink "$dir/appliance" 2>/dev/null || echo unknown)"
       printf '%s' "$profiles" | jq -r '"rev: \(.rev)", (.roles | to_entries[] | "  \(.key): \(.value)"), "  decider: \(.decider)"'
+      echo "declared in: $declared"
+      if [[ "$declared" == "$kept" ]]; then
+        sed -n '/^\[declaration\]$/,$p' "$kept"
+      fi
     fi
     return
   fi
