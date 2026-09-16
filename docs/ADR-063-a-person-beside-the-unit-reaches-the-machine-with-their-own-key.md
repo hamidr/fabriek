@@ -1,7 +1,7 @@
 ---
 id: ADR-063
 title: A person beside the unit reaches the machine with their own key, which the host names as an operator's
-status: implementing
+status: implemented
 date: 2026-09-16
 status_date: 2026-09-16
 summary: the host lists operator public keys, the machine accepts them, and a hand without the unit key uses its own
@@ -88,3 +88,17 @@ the unit's key when it is readable and no identity, with the person's
 known hosts file, when it is not; the module rendering the option. On
 the pc: `fabriek -f example console` as the operator, no `sudo`,
 after a `down` and `up` of the unit. Recorded here when run.
+
+Implemented 2026-09-16 (`808a38d`, the CLI half in the commit after it).
+On this host: `operator_config.bats` (a key read, a line that is not one
+refused), `machine.bats` (the unit's key when readable, the person's own
+and their known hosts when not), `vm_up.bats` (`authorized_keys` with the
+machine's key first, named in `runtime.json`), `host_module.bats` (the
+option rendered). On the pc, `services.fabriek.operatorKeys =
+config.users.users.hamid.openssh.authorizedKeys.keys`: after a restart of
+the unit, `fabriek -f example show`, `enter architect` and `watch` from
+the operator's own shell, no `sudo`, the machine's host key kept under
+`~/.local/state/fabriek/known_hosts/example`. The first try was refused
+by the machine's sshd by name, since the pc's own key was not in the
+host's fleet list; that is the refusal the record wanted, and the list
+got its key.
