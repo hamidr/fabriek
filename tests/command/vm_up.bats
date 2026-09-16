@@ -41,6 +41,9 @@ EOF
 case "\$1" in
 build) printf '%s\n' "\$*" >>"$NIX_CALLS"; [ "\$2" = --out-link ] && ln -sfn "$RUNNER" "\$3"; echo "$RUNNER" ;;
 path-info) exit 0 ;;
+# A git catalogue's prefetch (ADR-062): answered as nix would, with the
+# tree the test laid down under \$TEST_TEMP_DIR/fetched and its hash.
+flake) printf '%s\n' "\$*" >>"$NIX_CALLS"; printf '{"storePath":"%s","hash":"sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4="}\n' "$TEST_TEMP_DIR/fetched" ;;
 *) exec "$REAL_NIX" "\$@" ;;
 esac
 EOF
@@ -353,6 +356,55 @@ TOML
 	assert_output 1
 	run bash -c "diff $FABRIEK_MACHINES/acme/fabriek.toml $FABRIEK_MACHINES/acme/fabriek.toml.*"
 	assert_success
+}
+
+# ADR-062 points 2 and 5: a git catalogue is fetched on the host at up by
+# its rev, its tree's hash checked against the one the operator wrote,
+# rooted, and named in the credential as a table with the store path
+# beside the entry as written.
+@test "up prefetches a git catalogue, checks its hash, roots it, and writes the table with the store path into the credential" {
+	mkdir -p "$TEST_TEMP_DIR/fetched/catalogue/specialists"
+	sed -i.bak '1i catalogues = [ { git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", dir = "catalogue" } ]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_success
+	run grep -E '^flake prefetch --json github:acme/cat\?rev=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$' "$NIX_CALLS"
+	assert_success
+	run grep -E -- "--add-root .*/roots/catalogue-0 --indirect -r $TEST_TEMP_DIR/fetched" "$TEST_TEMP_DIR/nix-store-calls"
+	assert_success
+	# Read back as the machine reads it: the entry as written, the store
+	# path and the hash fetched beside it.
+	run nix eval --json --impure --expr "builtins.fromTOML (builtins.readFile $FABRIEK_MACHINES/acme/fabriek.toml)" --apply 'c: c.catalogues'
+	assert_success
+	run jq -cS . <<<"$output"
+	assert_output "[{\"dir\":\"catalogue\",\"git\":\"github:acme/cat\",\"narHash\":\"sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=\",\"path\":\"$TEST_TEMP_DIR/fetched/catalogue\",\"rev\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]"
+}
+
+@test "show -f names a git catalogue by its reference and rev, with the store path it became" {
+	mkdir -p "$TEST_TEMP_DIR/fetched" "$TEST_TEMP_DIR/mine"
+	sed -i.bak "1i catalogues = [ \"$TEST_TEMP_DIR/mine\", { git = \"github:acme/cat\", rev = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", narHash = \"sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=\" } ]" "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_success
+	run_fabriek -f acme show
+	assert_success
+	assert_line --regexp "catalogue: /nix/store/[a-z0-9]{32}-mine$"
+	assert_line --partial "catalogue: github:acme/cat at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ($TEST_TEMP_DIR/fetched)"
+}
+
+@test "a git catalogue whose fetched tree has another hash than the one written stops up naming both" {
+	mkdir -p "$TEST_TEMP_DIR/fetched"
+	sed -i.bak '1i catalogues = [ { git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" } ]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_failure
+	assert_output --partial "catalogue github:acme/cat at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: the tree fetched has hash sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=, not sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	[ ! -f "$FABRIEK_MACHINES/acme/pid" ]
+}
+
+@test "a git catalogue whose dir the tree lacks stops up naming the dir" {
+	mkdir -p "$TEST_TEMP_DIR/fetched"
+	sed -i.bak '1i catalogues = [ { git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", dir = "nowhere" } ]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_failure
+	assert_output --partial "catalogue github:acme/cat at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: the tree has no nowhere"
 }
 
 # A build that fails prints a trace with the thrown message at its end,

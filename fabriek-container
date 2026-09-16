@@ -529,7 +529,9 @@ cmd_factory_render() {
 	## the profile builds (ADR-061 points 3 and 4).
 	local declared_json catalogues_list
 	declared_json="$(jq -c '{specialists: (.specialists // {}), skills: (.skills // {})}' "$credential")"
-	catalogues_list="$(jq -r '(.catalogues // [])[]' "$credential")"
+	## A git catalogue is a table whose path is the store path the host
+	## fetched (ADR-062 point 5); nothing else of the table is read here.
+	catalogues_list="$(jq -r '(.catalogues // [])[] | if type == "string" then . else .path end' "$credential")"
 	local_file="$(mktemp)"
 	fabriek_render_local "$credential" >"$local_file"
 	spec="$(mktemp)"

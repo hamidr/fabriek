@@ -93,3 +93,17 @@ teardown() {
 	run jq -c '[.declaration, .specialists, .skills, .catalogues]' <<<"$output"
 	assert_output '[null,{},{},[]]'
 }
+
+# ADR-062 point 5: a git catalogue is a table in the credential, the store
+# path beside the entry as the operator wrote it, and the reader takes it
+# back whole beside a directory entry.
+@test "the credential carries a git catalogue as a table with its path, and a directory as a string" {
+	jq '.catalogues = ["/nix/store/bbbb-catalogue", {"path": "/nix/store/cccc-source/catalogue", "git": "github:acme/cat", "rev": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "narHash": "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", "dir": "catalogue"}]' "$CONFIG" >"$CONFIG.4"
+	run fabriek_credential_toml "$CONFIG.4" acme "git+file:///home/me/Src/acme" abc123 x86_64-linux
+	assert_success
+	printf '%s\n' "$output" >"$TEST_TEMP_DIR/fabriek.toml"
+	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
+	assert_success
+	run jq -cS '.catalogues' <<<"$output"
+	assert_output "$(jq -cS '.catalogues' "$CONFIG.4")"
+}

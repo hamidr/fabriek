@@ -368,6 +368,7 @@ machine_store_operator_files() {
   local dir="$1" json="$2" kind name value stored
   mkdir -p "$dir/roots"
   local -a filters=()
+  machine_fetch_git_catalogues "$dir" "$json" || return 1
   while IFS=$'\t' read -r kind name value; do
     [[ -n "$value" ]] || continue
     case "$kind:$value" in
@@ -388,7 +389,40 @@ machine_store_operator_files() {
   done < <(jq -r '
     ((.specialists // {}) | to_entries[] | select(.value.prompt) | "specialist\t\(.key)\t\(.value.prompt)"),
     ((.skills // {}) | to_entries[] | select(.value.skill) | "skill\t\(.key)\t\(.value.skill)"),
-    ((.catalogues // []) | to_entries[] | "catalogue\t\(.key)\t\(.value)")' "$json")
+    ((.catalogues // []) | to_entries[] | select(.value | type == "string") | "catalogue\t\(.key)\t\(.value)")' "$json")
+  [[ ${#filters[@]} -gt 0 ]] || return 0
+  local program
+  program="$(IFS='|'; printf '%s' "${filters[*]}")"
+  jq "$program" "$json" >"$json.tmp" && mv "$json.tmp" "$json"
+}
+
+## A git catalogue (ADR-062 point 2): fetched on this host by its rev,
+## its tree's hash checked against the one the operator wrote, the dir
+## found in it, rooted, and the entry rewritten with the store path beside
+## what the operator wrote. Rewrites the config JSON in place.
+machine_fetch_git_catalogues() {
+  local dir="$1" json="$2" index git rev want subdir answer stored got
+  local -a filters=()
+  while IFS=$'\t' read -r index git rev want subdir; do
+    [[ -n "$git" ]] || continue
+    answer="$("$NIX" flake prefetch --json "$git?rev=$rev")" || {
+      log_err "catalogue $git at $rev could not be fetched"
+      return 1
+    }
+    stored="$(jq -r .storePath <<<"$answer")"
+    got="$(jq -r .hash <<<"$answer")"
+    if [[ -n "$want" && "$want" != "$got" ]]; then
+      log_err "catalogue $git at $rev: the tree fetched has hash $got, not $want"
+      return 1
+    fi
+    if [[ -n "$subdir" && ! -d "$stored/$subdir" ]]; then
+      log_err "catalogue $git at $rev: the tree has no $subdir"
+      return 1
+    fi
+    nix-store --add-root "$dir/roots/catalogue-$index" --indirect -r "$stored" >/dev/null 2>&1 || true
+    filters+=(".catalogues[$index] += $(jq -cn --arg p "$stored${subdir:+/$subdir}" --arg h "$got" '{path: $p, narHash: $h}')")
+  done < <(jq -r '(.catalogues // []) | to_entries[] | select(.value | type == "object")
+    | "\(.key)\t\(.value.git)\t\(.value.rev)\t\(.value.narHash // "")\t\(.value.dir // "")"' "$json")
   [[ ${#filters[@]} -gt 0 ]] || return 0
   local program
   program="$(IFS='|'; printf '%s' "${filters[*]}")"
@@ -694,6 +728,12 @@ cmd_show() {
     else
       echo "image: $(readlink "$dir/appliance" 2>/dev/null || echo unknown)"
       printf '%s' "$profiles" | jq -r '"rev: \(.rev)", (.roles | to_entries[] | "  \(.key): \(.value)"), "  decider: \(.decider)"'
+      ## The catalogues the run was given (ADR-062 point 5): a git one by
+      ## its reference and rev, with the store path it became.
+      if [[ -n "$kept" ]]; then
+        nix eval --json --impure --expr "builtins.fromTOML (builtins.readFile $(fabriek_nix_string "$kept"))" 2>/dev/null |
+          jq -r '(.catalogues // [])[] | if type == "string" then "catalogue: \(.)" else "catalogue: \(.git) at \(.rev) (\(.path))" end'
+      fi
       echo "declared in: $declared"
       if [[ "$declared" == "$kept" ]]; then
         sed -n '/^\[declaration\]$/,$p' "$kept"

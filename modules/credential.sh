@@ -18,9 +18,15 @@
 fabriek_credential_toml() {
 	local config="$1" factory="$2" remote="$3" rev="$4" host_system="$5"
 	jq -r --arg factory "$factory" --arg remote "$remote" --arg rev "$rev" --arg host "$host_system" '
+	  ## An array of tables is scalar when it is inline: catalogues carries
+	  ## a git catalogue as one (ADR-062), so the whole list stays one line
+	  ## at the top, before any table.
 	  def scalar: type == "string" or type == "number" or type == "boolean"
-	    or (type == "array" and (map(type == "object") | any | not));
-	  def value: if type == "array" then "[" + (map(value) | join(", ")) + "]" else tojson end;
+	    or (type == "array" and ((map(type == "object") | any | not) or (map(type == "object" or type == "string") | all)));
+	  def value:
+	    if type == "array" then "[" + (map(value) | join(", ")) + "]"
+	    elif type == "object" then "{" + (to_entries | map("\(.key | tojson) = \(.value | value)") | join(", ")) + "}"
+	    else tojson end;
 	  def tables(prefix):
 	    . as $o
 	    | (prefix | if . == "" then "" else . + "." end) as $p
@@ -28,7 +34,7 @@ fabriek_credential_toml() {
 	        ($o | to_entries[] | select(.value | scalar) | "\(.key | tojson) = \(.value | value)"),
 	        (if prefix == "" then empty else "" end),
 	        ($o | to_entries[] | select(.value | type == "object") | .key as $k | .value | tables($p + ($k | tojson))),
-	        ($o | to_entries[] | select(.value | type == "array" and (map(type == "object") | any))
+	        ($o | to_entries[] | select(.value | (type == "array") and (scalar | not))
 	          | .key as $k | .value[] | "[[\($p)\($k | tojson)]]", (to_entries[] | "\(.key | tojson) = \(.value | value)"), "")
 	      ] | .[];
 	  def table(name; obj): "[\(name)]", (obj | to_entries[] | "\(.key | tojson) = \(.value | tojson)"), "";
