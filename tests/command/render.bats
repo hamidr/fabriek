@@ -222,7 +222,9 @@ teardown() {
 	# to the search path and nothing else; neither is a URI, so nothing of
 	# fabriek's own lock is fetched on the machine (measured 2026-09-16).
 	assert_line --index 0 --partial "-I $FABRIEK_SELF -I $FABRIEK_NIXPKGS "
-	assert_line --index 0 --partial "self = $FABRIEK_SELF; nixpkgs = $FABRIEK_NIXPKGS;"
+	# As strings, not path literals: a path literal interpolated in
+	# profile.nix would copy fabriek into the machine's store.
+	assert_line --index 0 --partial "self = \"$FABRIEK_SELF\"; nixpkgs = \"$FABRIEK_NIXPKGS\";"
 	refute_line --index 0 --partial "getFlake"
 	assert_line --index 0 --partial "rev = \"$REV\""
 	assert_line --index 0 --partial 'role = "builder"'
@@ -318,7 +320,7 @@ TOML
 	run cat "$CALLS/nix-build"
 	assert_line --index 0 --partial 'role = "builder"'
 	assert_line --index 0 --partial 'declared = builtins.fromJSON "{\"specialists\":{\"strict\":{\"extends\":[\"reviewer\"],\"prompt\":\"/nix/store/pppp-strict.md\",\"tools\":[\"semgrep\"]}},\"skills\":{\"profile\":{\"skill\":\"text\"}}}"'
-	assert_line --index 0 --partial 'catalogues = [ /nix/store/cccc-catalogue ]'
+	assert_line --index 0 --partial 'catalogues = [ "/nix/store/cccc-catalogue" ]'
 	assert_line --index 0 --partial "-I /nix/store/cccc-catalogue -I /nix/store/pppp-strict.md "
 }
 

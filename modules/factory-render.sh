@@ -238,7 +238,7 @@ fabriek_profile_build() {
 	if [ -n "$catalogues" ] && [ -f "$catalogues" ]; then
 		while IFS= read -r path; do
 			[ -n "$path" ] || continue
-			extra="$extra $path"
+			extra="$extra $(fabriek_nix_string "$path")"
 			include+=(-I "$path")
 		done <"$catalogues"
 	fi
@@ -246,10 +246,14 @@ fabriek_profile_build() {
 		[ -n "$path" ] || continue
 		include+=(-I "$path")
 	done < <(printf '%s' "$declared_json" | jq -r '(.specialists[]?.prompt // empty), (.skills[]?.skill // empty) | select(startswith("/"))')
-	## One line, so a record of the call is one line too.
+	## One line, so a record of the call is one line too. Every path is a
+	## string: a path literal is copied into the store on interpolation,
+	## and profile.nix interpolates fabriek's; the copy is a second fabriek
+	## in the upper layer, made by reading the lower one file by file
+	## (measured 2026-09-16: a copy with an empty catalogue.nix on the pc).
 	local expr
 	expr="import $self/modules/profile.nix {"
-	expr="$expr self = $self; nixpkgs = $nixpkgs;"
+	expr="$expr self = $(fabriek_nix_string "$self"); nixpkgs = $(fabriek_nix_string "$nixpkgs");"
 	expr="$expr clone = $(fabriek_nix_string "$clone"); rev = $(fabriek_nix_string "$rev");"
 	expr="$expr system = $(fabriek_nix_string "$system"); role = $(fabriek_nix_string "$role");"
 	expr="$expr specialists = builtins.fromJSON $(fabriek_nix_string "$specialists");"
