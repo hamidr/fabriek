@@ -193,7 +193,10 @@ fabriek_render_local() {
 ## fabriek_profile_allowed_uris <clone> <rev>
 fabriek_profile_allowed_uris() {
 	local clone="$1" rev="$2" lock
-	printf '%s\n' "git+file://$clone"
+	## Twice: getFlake asks for the clone by its reference, fetchGit (the
+	## catalogue's tree, profile.nix) with the rev and exportIgnore as a
+	## query, which no prefix admits.
+	printf '%s\n' "git+file://$clone" "git+file://$clone?exportIgnore=1&rev=$rev"
 	## nix asks for a locked input by its reference with the narHash as a
 	## query, and an allowed prefix admits a subdirectory but not a query,
 	## so the entry is spelled as nix will ask for it: the hash encoded as

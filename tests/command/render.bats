@@ -217,7 +217,7 @@ teardown() {
 	assert_success
 	run cat "$CALLS/nix-build"
 	assert_line --index 0 --partial '--restrict-eval'
-	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme "
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme git+file://$STATE/factories/acme?exportIgnore=1&rev=$REV "
 	# fabriek and its nixpkgs are read by path, which restricted mode grants
 	# to the search path and nothing else; neither is a URI, so nothing of
 	# fabriek's own lock is fetched on the machine (measured 2026-09-16).
@@ -279,7 +279,7 @@ JSON
 	run_fabriek_container factory-render
 	assert_success
 	run cat "$CALLS/nix-build"
-	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AA/A%2BA%3D "
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme git+file://$STATE/factories/acme?exportIgnore=1&rev=$(git -C "$REPO" rev-parse HEAD) github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AA/A%2BA%3D "
 }
 
 @test "a declaration the schema refuses stops render naming the key, before anything is written" {

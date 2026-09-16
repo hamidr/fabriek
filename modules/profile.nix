@@ -56,9 +56,11 @@ let
   ## evaluating the attribute, and a refused fetch of the flake's input
   ## then reads as a devShell the repository does not define (measured
   ## 2026-09-16).
+  ## readDir and not pathExists: pathExists answers false to a fetch
+  ## restricted mode refused, and the refusal must be the error.
   shells =
     if
-      builtins.pathExists "${source}/flake.nix" && project ? devShells && project.devShells ? ${system}
+      (builtins.readDir source) ? "flake.nix" && project ? devShells && project.devShells ? ${system}
     then
       project.devShells.${system}
     else
