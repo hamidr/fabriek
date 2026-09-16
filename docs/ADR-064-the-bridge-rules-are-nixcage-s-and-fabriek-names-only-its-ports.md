@@ -121,5 +121,5 @@ address from the sender's namespace moves no count; the daemon substitutes
 and never fetches. The 429 at the hard limit passed in a run with a
 ceiling of 300 tokens and is gated at the example's twenty million. A
 ceiling this proof can reach is also one the decider's first turn exceeds
-(6273 tokens observed), so the two Thens are proved in two runs, never
-one. Recorded in nixcage ADR-015 with the same run.
+(6273 tokens observed), so the two Thens were proved in two runs, never
+one, until ADR-065. Recorded in nixcage ADR-015 with the same run.
