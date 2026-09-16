@@ -50,6 +50,7 @@ def schema:
   , credential: ["header", "file"]
   , specialist: ["extends", "tools", "skills", "prompt"]
   , skill: ["tools", "skill"]
+  , catalogue: ["git", "rev", "narHash", "dir"]
   };
 def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") | any)
   then ["\($what) must be a list of names"] else [] end;
@@ -83,7 +84,36 @@ def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") |
          (if ($v.skill? | type) != "string" or ($v.skill | length) == 0
           then ["skill \($n): names no SKILL.md, by path or as text"] else [] end)
        ] | cat) | cat),
-    (if ($c.catalogues? // null) != null then names($c.catalogues; "catalogues") else [] end),
+    ## A catalogue is a directory, or a git repository at a rev (ADR-062):
+    ## a flake reference with no query, no fragment and nobody before the
+    ## host, a full commit hash, the tree's hash where a forge serves a
+    ## tarball nix checks against nothing, and a dir inside the tree.
+    ((if ($c.catalogues | type) == "array" then $c.catalogues else [] end)
+     | to_entries | map(
+       .key as $i | .value as $v |
+       if ($v | type) == "string" then []
+       elif ($v | type) != "object" then ["catalogue \($i): is neither a directory nor a git table"]
+       else
+         [ unknown($v; schema.catalogue; "catalogue \($i)"),
+           (if ($v.git? | type) != "string" or ($v.git | length) == 0
+            then ["catalogue \($i): names no git repository"]
+            elif ($v.git | test("[?#]"))
+            then ["catalogue \($i): git carries a query or a fragment; rev is the one pin"]
+            elif ($v.git | test("^[a-z+]+://[^/]*@"))
+            then ["catalogue \($i): git carries a user before the host; a forge's access is the host's git and ssh configuration, never this file"]
+            else [] end),
+           (if ($v.rev? | type) != "string" or ($v.rev | test("^[0-9a-f]{40}$") | not)
+            then ["catalogue \($i): rev must be forty hex digits"] else [] end),
+           (if ($v.narHash? // null) != null and (($v.narHash | type) != "string" or ($v.narHash | test("^sha256-[A-Za-z0-9+/]+=*$") | not))
+            then ["catalogue \($i): narHash must be sha256- and base64, as nix prints it"]
+            elif ($v.narHash? // null) == null and (($v.git? // "") | test("^(github|gitlab|sourcehut):"))
+            then ["catalogue \($i): a forge reference is pinned by narHash too; nix checks a forge's tarball against nothing"]
+            else [] end),
+           (if ($v.dir? // null) != null and (($v.dir | type) != "string" or ($v.dir | test("^/")) or ($v.dir | split("/") | index("..") != null))
+            then ["catalogue \($i): dir must be a path inside the tree"] else [] end)
+         ] | cat
+       end) | cat),
+    (if ($c.catalogues? // null) != null and ($c.catalogues | type) != "array" then ["catalogues must be a list"] else [] end),
     ((if ($c.credentials | type) == "object" then $c.credentials else {} end)
      | to_entries | map(
        .key as $e | .value as $v |
@@ -173,7 +203,7 @@ fabriek_operator_config() {
 			echo "fabriek: catalogue $value does not exist" >&2
 			failed=1
 		}
-	done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[]')
+	done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[] | strings')
 
 	## A credential is keyed by the endpoint it opens and carried in a named
 	## header, and both reach somewhere that would otherwise have to escape
@@ -295,11 +325,12 @@ fabriek_operator_skills() {
 	printf '%s' "$json" | jq '.skills // {}'
 }
 
-## One directory per line.
+## One directory per line; a git catalogue (ADR-062) as its table, one
+## line of JSON.
 fabriek_operator_catalogues() {
 	local json
 	json="$(fabriek_operator_config "${1:-}")" || return 1
-	printf '%s' "$json" | jq -r '(.catalogues // [])[]'
+	printf '%s' "$json" | jq -rc '(.catalogues // [])[] | if type == "string" then . else tojson end'
 }
 
 ## The factory registered here for a repository, by its resolved path, or

@@ -478,3 +478,44 @@ TOML
 	assert_failure
 	assert_output --partial "Bad Name"
 }
+
+# ADR-062: a catalogues entry may be a git repository at a rev, pinned by
+# its tree's hash on a forge reference, beside a directory entry.
+@test "a git catalogue entry is read with its rev, hash and dir, beside a directory entry" {
+	cat >"$CONFIG" <<TOML
+catalogues = [
+  "$TEST_TEMP_DIR",
+  { git = "github:acme/fabriek-catalogue", rev = "3f2a1c0e3f2a1c0e3f2a1c0e3f2a1c0e3f2a1c0e", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", dir = "catalogue" },
+  { git = "git+https://forge.example/cat.git", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+]
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run fabriek_operator_config "$CONFIG"
+	assert_success
+	run jq -c '.catalogues | map(if type == "string" then "dir" else .git end)' <<<"$output"
+	assert_output '["dir","github:acme/fabriek-catalogue","git+https://forge.example/cat.git"]'
+}
+
+@test "a git catalogue entry is refused by name for what a pin cannot be" {
+	local cases=(
+		'{ git = "github:acme/cat", rev = "abc" }|rev must be forty hex digits'
+		'{ git = "github:acme/cat" }|rev must be forty hex digits'
+		'{ git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }|a forge reference is pinned by narHash too'
+		'{ git = "github:acme/cat?ref=main", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=" }|git carries a query or a fragment'
+		'{ git = "git+ssh://token@forge.example/cat.git", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }|git carries a user before the host'
+		'{ git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "md5-x" }|narHash must be sha256- and base64'
+		'{ git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", dir = "/abs" }|dir must be a path inside the tree'
+		'{ git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", dir = "../up" }|dir must be a path inside the tree'
+		'{ git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=", branch = "main" }|unknown key branch'
+		'{ rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }|names no git repository'
+	)
+	local case
+	for case in "${cases[@]}"; do
+		printf 'catalogues = [ %s ]\n\n[factories.acme]\npath = "/home/me/Src/acme"\n' "${case%%|*}" >"$CONFIG"
+		run fabriek_operator_config "$CONFIG"
+		assert_failure
+		assert_output --partial "catalogue 0: ${case##*|}"
+	done
+}
