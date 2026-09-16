@@ -538,3 +538,25 @@ TOML
 	run jq -r '.specialists.strict.prompt' <<<"$output"
 	assert_output "$prompt"
 }
+
+# The operator's file on a NixOS host is under /etc, which nobody writes
+# beside; a scratch file the reader needs goes where scratch files go
+# (measured 2026-09-16: "config.toml.err: Permission denied" for a hand).
+@test "the config is read from a directory nobody may write beside it" {
+	mkdir -p "$TEST_TEMP_DIR/ro"
+	cat >"$TEST_TEMP_DIR/ro/config.toml" <<'TOML'
+[factories.acme]
+path = "/home/me/Src/acme"
+
+[factories.acme.roles.builder]
+provides = ["build"]
+
+[[factories.acme.workflows.ship.stages]]
+needs = "build"
+TOML
+	chmod 555 "$TEST_TEMP_DIR/ro"
+	run fabriek_operator_config "$TEST_TEMP_DIR/ro/config.toml"
+	chmod 755 "$TEST_TEMP_DIR/ro"
+	assert_success
+	refute_output --partial "Permission denied"
+}

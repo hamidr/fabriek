@@ -167,13 +167,15 @@ fabriek_operator_config() {
 	## A factory declared whole here is held to the declaration's own
 	## schema (ADR-061 point 1), so a role's mistake is named as the
 	## repository's would be.
+	local err
+	err="$(mktemp)"
 	while IFS= read -r factory; do
 		[ -n "$factory" ] || continue
-		fabriek_operator_declaration_of "$json" "$factory" >/dev/null 2>"$file.err" && continue
-		sed "s/^fabriek: /fabriek: factory $factory: /" "$file.err" >&2
+		fabriek_operator_declaration_of "$json" "$factory" >/dev/null 2>"$err" && continue
+		sed "s/^fabriek: /fabriek: factory $factory: /" "$err" >&2
 		failed=1
 	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | to_entries[] | select(.value | has("roles") or has("workflows") or has("resources") or has("decider") or has("catalogue")) | .key')
-	rm -f "$file.err"
+	rm -f "$err"
 
 	## The operator's specialists and skills (ADR-061 point 3): names in
 	## the alphabet a catalogue directory would be, and a prompt, a skill

@@ -168,11 +168,13 @@ fabriek_machine_pid() {
 	cat "$dir/pid"
 }
 
+## Asked of the process table and not with a signal: on a NixOS host the
+## machine is the unit's, root's, and a hand is not root (ADR-048).
 fabriek_machine_running() {
 	local pid
 	pid="$(fabriek_machine_pid "$1" 2>/dev/null)" || return 1
 	[ -n "$pid" ] || return 1
-	kill -0 "$pid" 2>/dev/null
+	ps -p "$pid" >/dev/null 2>&1
 }
 
 ## Reaching a machine fabriek built. Its own key, its own port, and a known

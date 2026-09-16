@@ -189,3 +189,19 @@ teardown() {
 	FABRIEK_MACHINES="$MACHINES" run fabriek_machine_root
 	assert_output "$MACHINES"
 }
+
+# A hand on a NixOS host reads the unit's state (ADR-048): the machine is
+# root's process, and a person is not root. Whether it runs is a fact of
+# the process table, not of whether this uid may signal it (measured
+# 2026-09-16: `fabriek ps` said stopped to the operator while the unit's
+# machine ran).
+@test "a machine another user started is seen running" {
+	local dir
+	dir="$(fabriek_machine_ensure acme)"
+	echo 1 >"$dir/pid"
+	run fabriek_machine_running acme
+	assert_success
+	echo 4194304 >"$dir/pid"
+	run fabriek_machine_running acme
+	assert_failure
+}
