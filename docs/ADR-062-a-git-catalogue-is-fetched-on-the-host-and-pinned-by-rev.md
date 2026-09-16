@@ -55,14 +55,31 @@ URL. `rev` is a full commit hash and is required: there is no `ref`, no
 branch, no lock file, and no `--update` for a catalogue. Submodules are
 not fetched; a catalogue vendors what it needs. `dir` is optional, a path
 inside the tree with ADR-042's layout, absent meaning the root.
+`narHash` is the pin's second half: the tree's hash as nix prints it,
+`sha256-...`, required for a forge reference (`github:`, `gitlab:`) and
+optional for a `git+*` one. A forge serves a tarball for a rev and nix
+checks nothing of it against the commit, so on a forge reference the rev
+alone is the forge's word; `narHash` is what makes the tree the one the
+operator reviewed, and it is what a `flake.lock` carries for the same
+reason. A `git+*` reference is fetched by git, which checks the commit
+is `rev`, so `narHash` there only says which tree of that commit
+(`export-ignore` and the like). `check` prints the hash it fetched, so
+an operator copies it into the file once.
 `modules/operator-config.sh` refuses any other key by name, a `git` with a
-`?` or a `#`, a `rev` that is not forty hex digits, and a `dir` that is
-absolute or leaves the tree. `services.fabriek.catalogues` gains nothing:
-a flake input is the same thing with the lock as its pin.
+`?`, a `#` or a user or a token before the host (`user@`, `token@`: a
+credential in the file would reach the kept copy and the machine, and
+ADR-025 keeps every credential off both; the host's own git and ssh
+configuration is where a private forge's access lives), a `rev` that is
+not forty hex digits, a `narHash` that is not `sha256-` and base64, and a
+`dir` that is absolute or leaves the tree. `services.fabriek.catalogues`
+gains nothing: a flake input is the same thing with the lock as its pin
+and its hash.
 
 **2. The host fetches, at `up` and at `check`, and nothing else does.**
 `nix flake prefetch --json "<git>?rev=<rev>"` puts the tree in the host's
-store and answers with its store path; `dir` is joined to it. From there
+store and answers with its store path and its hash; a `narHash` given is
+compared with the answer and a mismatch is refused naming both; `dir` is
+joined to the path. From there
 the entry is a directory entry: `up` roots the path under the factory's
 machine directory (ADR-057 point 5a, ADR-061 point 6); render composes it
 as `extra` in `modules/catalogue.nix`, granted to the evaluator on the
@@ -74,8 +91,17 @@ host collection between `check` and `up` drops it and `up` fetches it
 again, to the same path.
 
 **3. A git catalogue builds from what the machine's daemon could build
-before.** Its `default.nix` is evaluated and built by the daemon under
-ADR-057 point 6, and this record widens none of it. At evaluation,
+before, and is read on the host as the repository's own is.** Its
+`default.nix` is evaluated and built by the daemon under ADR-057 point 6,
+and this record widens none of that. On the host, `check`, `ls` and
+`show` evaluate it too (ADR-061 point 7), as they evaluate a repository's
+own catalogue today: impure, as the operator's user, on the operator's
+machine. That is a third party's Nix read by the operator's own nix
+because the operator named it, the same as any flake input they take;
+this record narrows it by one step: `fabriek_catalogue_eval` runs
+restricted, with fabriek, its nixpkgs and the catalogue paths on the
+search path, so a catalogue's evaluation on the host reads those and no
+other path of the operator's. At evaluation,
 `--restrict-eval` with `allowed-uris` naming the clone and the worked
 repository's locked inputs: `builtins.fetchurl`, `builtins.fetchGit` or a
 flake input the catalogue reaches for is refused by nix, and the role
@@ -95,8 +121,9 @@ name declared twice across the sources, as today. `fabriek show
 <specialist>` names the catalogue's `git` and `rev` as its source.
 
 **5. A run's record names the rev.** The credential's `catalogues` entry
-for a git catalogue is a table, `{ path, git, rev, dir }`, the store path
-beside the entry as the operator wrote it; a directory entry stays the
+for a git catalogue is a table, `{ path, git, rev, narHash, dir }`, the
+store path and the hash fetched beside the entry as the operator wrote
+it; a directory entry stays the
 string it is. The machine reads `path` of a table and a string as it is,
 and nothing else of the table. The copy `up` keeps beside `runtime.json`
 is that credential (ADR-061 point 6), so `fabriek show -f` prints which
@@ -127,14 +154,16 @@ path is content-addressed by the tree, so the same entry fetched on two
 hosts is the same path, and a rev already in the store is not fetched
 again. The same rev through two references need not be: `github:` is the
 forge's tarball with `export-ignore` applied, `git+https://` the tree as
-git holds it, so an operator who wants two hosts to agree writes the same
-`git` on both.
+git holds it, which is why `narHash` names the tree and not the commit,
+and why an operator who wants two hosts to agree writes the same `git`
+and the same `narHash` on both.
 
 ADR-060 point 3's "not a URI to fetch" is narrowed to the machine.
 `modules/operator-config.sh` grows the table form and its refusals;
-`fabriek`'s `machine_store_operator_files` grows the prefetch before the
-add; `modules/credential.sh` writes the table and the machine's reader of
-`catalogues` takes `path` of one; `modules/catalogue.nix`,
+`fabriek`'s `machine_store_operator_files` grows the prefetch and the
+hash check before the add; `modules/credential.sh` writes the table and
+the machine's reader of `catalogues` takes `path` of one;
+`modules/check.sh` runs its evaluation restricted; `modules/catalogue.nix`,
 `modules/host.nix` and `seam.bats` are untouched.
 
 ## Verification
@@ -146,11 +175,15 @@ docmeta-check docs && docmeta-tracker --check docs
 ```
 
 Scenarios, written first: a table entry accepted and a directory entry
-beside it; `rev` missing, short, or not hex refused by name; `dir`
-absolute refused; a `git` with a query or a fragment refused; `up`
-prefetching the rev (the `nix` stub answering `flake prefetch --json`
-with a store path), rooting it, and writing the table into the credential
-with the store path beside `git`, `rev` and `dir`; the machine's reader
+beside it; `rev` missing, short, or not hex refused by name; a forge
+reference without `narHash` refused, and a `narHash` that is not one;
+`dir` absolute refused; a `git` with a query, a fragment or a user before
+the host refused; `up` prefetching the rev (the `nix` stub answering
+`flake prefetch --json` with a store path and a hash), refusing a hash
+that differs naming both, rooting the path, and writing the table into
+the credential with the store path and the hash beside `git`, `rev` and
+`dir`; `check` evaluating restricted, a catalogue reading a path outside
+the search path refused; the machine's reader
 taking `path` of a table and a string as it is;
 `check` naming a fetch that failed with nix's line; a tree without the
 layout refused; `show -f` printing `git` and `rev`; `catalogue.bats`
