@@ -5,6 +5,7 @@
 ## (ADR-033 point 4).
 {
   config,
+  lib,
   pkgs,
   ...
 }:
@@ -33,6 +34,11 @@
       ## a reboot with new credentials, and the lifecycle model
       ## (models/vm-lifecycle.qnt) found the executor starting on it.
       unitConfig.ConditionPathExists = "/run/fabriek/prepared";
+      ## Everything the machine program is told through the environment
+      ## (where prepare rendered the factory, the floor, the bridge); a unit
+      ## sees no login shell's variables, and the sessions this starts run
+      ## that program.
+      environment = lib.filterAttrs (n: _: lib.hasPrefix "FABRIEK_" n) config.environment.variables;
       path = [
         pkgs.git
         pkgs.fabriek-container

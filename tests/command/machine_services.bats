@@ -311,7 +311,16 @@ JSON
 
 # The lifecycle model (models/vm-lifecycle.qnt) found the mark on the pool:
 # a reboot with new credentials came up prepared for the old ones.
-@test "the executor waits for a mark prepare writes per boot, under /run" {
+@test "the executor waits for a mark prepare writes per boot, under /run, and reads what prepare rendered" {
 	run machine_eval 'c.systemd.services.fabriek-executor.unitConfig.ConditionPathExists'
 	assert_output '"/run/fabriek/prepared"'
+	# A unit sees no login shell's variables: told where the factory is
+	# itself, or it opens /etc/fabriek and restarts forever (measured
+	# 2026-09-16).
+	run machine_eval 'c.systemd.services.fabriek-executor.environment.FABRIEK_ETC'
+	assert_output '"/var/lib/fabriek/factory"'
+	# And everything else the machine program reads from its environment,
+	# since the sessions the executor starts run it.
+	run machine_eval 'with c.systemd.services.fabriek-executor.environment; [ (FABRIEK_FLOOR == c.environment.variables.FABRIEK_FLOOR) (FABRIEK_BRIDGE == c.environment.variables.FABRIEK_BRIDGE) ]'
+	assert_output '[true,true]'
 }
