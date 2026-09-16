@@ -173,7 +173,7 @@ if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ] && [ "$concurrency" -ge 1 ] 2>/dev/null &&
 	done
 	## The issues the executor opened for them, newest first off the board.
 	sleep 15
-	forge="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null | tr -d '\r' | sed -n 's/.*"forgejo":"\([^"]*\)".*/\1/p')"
+	forge="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null | tr -d '\r' | sed -n 's/.*"forgejo":"\([^"]*\)".*/\1/p')"
 	mapfile -t issues < <(sshm "curl -s -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" 'http://$forge/api/v1/repos/operator/$F/issues?state=open&limit=50'" 2>/dev/null | tr -d '\r' |
 		jq -r --arg t "Add a docstring to parse_line" '.[] | select(.title | startswith($t)) | .number' | head -n $((concurrency + 1)))
 	check "the executor opened one issue per goal" "$((concurrency + 1))" "${#issues[@]}"

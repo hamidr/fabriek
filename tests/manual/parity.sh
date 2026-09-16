@@ -34,7 +34,7 @@ wait_ssh || {
 	exit 1
 }
 
-plan="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null)"
+plan="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null)"
 forge="http://$(jq -r .forgejo <<<"$plan")/api/v1"
 proxy="$(jq -r .proxy <<<"$plan")"
 # shellcheck disable=SC2016  # the token expands on the machine, not here

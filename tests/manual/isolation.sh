@@ -40,7 +40,11 @@ if [ -z "$a" ] || [ -z "$b" ]; then
 	bash fabriek down "$F"
 	exit 1
 fi
-bridge="fabriek-$F"
+## One machine runs one factory, so the bridge carries no factory's name
+## (ADR-057); the machine says what it is called.
+# shellcheck disable=SC2016  # expands on the machine
+bridge="$(sshm 'printf %s "$FABRIEK_BRIDGE"' 2>/dev/null | tr -d '\r')"
+bridge="${bridge:-fabriek0}"
 
 ## The executor keeps one session per role, and a cage is one veth and one
 ## address on the bridge under the role's name. A hand session joins the
@@ -72,7 +76,7 @@ addr_b="$(addr_of "$b")"
 check "role $a holds one global address" yes "$([ -n "$addr_a" ] && echo yes || echo no)"
 check "role $b holds a different address" yes "$([ -n "$addr_b" ] && [ "$addr_a" != "$addr_b" ] && echo yes || echo no)"
 
-proxy="$(sshm cat /etc/fabriek/bridge.json 2>/dev/null | jq -r .proxy)"
+proxy="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null | jq -r .proxy)"
 check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ] && echo yes || echo no)"
 ## The proxy's location for a model endpoint is the endpoint's name (ADR-037
 ## point 3); a request to the provider lands there and leaves with the
