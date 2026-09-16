@@ -458,14 +458,12 @@ render_files() {
 	fabriek_render_decider_dir "$FABRIEK_FLOOR" "$models" "$FABRIEK_ETC/pi-decider"
 }
 
-## The bridge's set, from the plan: flushed and filled, so a role that left
-## the declaration loses its port. The record's bound, asked of the storage
-## primitive again with the clamped number (ADR-036).
+## The record's bound, asked of the storage primitive again with the
+## clamped number (ADR-036). The bridge's rules are nixcage's (ADR-064):
+## a cage's port is pinned to its address where its veth is made, so the
+## plan feeds no ruleset here.
 render_machine() {
-	local spec="$1" elements quota
-	elements="$(fabriek_render_cage_elements "$FABRIEK_ETC/bridge.json")" || die "could not name the cages' veths"
-	nft flush set bridge fabriek-cages cages
-	nft add element bridge fabriek-cages cages "{ $elements }" || die "could not fill the bridge's cages set"
+	local spec="$1" quota
 	quota="$(jq -r '.recordQuota // empty' "$spec")"
 	if [ -n "$quota" ]; then
 		nixcage-container storage ensure "$STATE_DIR/forgejo" "$(id -u forgejo)" "${quota}M" >/dev/null ||

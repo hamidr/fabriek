@@ -7,7 +7,7 @@
 # the machine's daemon and composes its pi directory, and writes
 # profiles.json. Then the services that include any of it are reloaded.
 #
-# nix build, nft, systemctl and nixcage-container are stubbed; nix eval is
+# nix build, systemctl and nixcage-container are stubbed; nix eval is
 # the real one, since the TOML reader and the declaration's schema are what
 # is under test too.
 
@@ -123,17 +123,16 @@ if [ "\$1" = build ]; then
 fi
 exec "$REAL_NIX" "\$@"
 EOF
-	for tool in nft systemctl; do
-		cat >"$STUB_DIR/$tool" <<EOF
+	cat >"$STUB_DIR/systemctl" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$CALLS/$tool"
+printf '%s\n' "\$*" >>"$CALLS/systemctl"
 EOF
-	done
+	## No nft: the bridge's rules are nixcage's (ADR-064), so a prepare that
+	## reached for it would fail here on a command that does not exist.
 	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$CALLS/nixcage-container"
 case "\$1" in
-veth) echo "nc-\$2" ;;
 storage) echo "$STATE/forgejo" ;;
 esac
 EOF
@@ -166,14 +165,14 @@ teardown() {
 	assert_output --partial "api.openai.com"
 }
 
-@test "the bridge plan is written and the cages set filled from it" {
+@test "the bridge plan is written for the executor and the session composer, and feeds no ruleset" {
 	run_fabriek_container factory-render
 	assert_success
 	run jq -c '[.bridge, .cages]' "$ETC/bridge.json"
 	assert_output '["fabriek0",{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"}]'
-	run cat "$CALLS/nft"
-	assert_line --index 0 'flush set bridge fabriek-cages cages'
-	assert_line --index 1 'add element bridge fabriek-cages cages { "nc-builder" . 10.77.0.10, "nc-decider" . 10.77.0.2, "nc-reviewer" . 10.77.0.11 }'
+	[ ! -e "$CALLS/nft" ]
+	run grep veth "$CALLS/nixcage-container"
+	assert_failure
 }
 
 @test "the proxy's ceiling and locations, the endpoints and the model are written, and nginx reloaded after the headers" {

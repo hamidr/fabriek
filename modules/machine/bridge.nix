@@ -5,20 +5,15 @@
 ## this bridge and no other interface, so "no route off the machine" is a
 ## fact about what a cage has rather than a rule about what it may do.
 ##
-## Two rules are load-bearing and are the bridge's, not egress's. The first
-## drops a packet whose source is not the address its port was given, because
-## spend is attributed by address and without it a cage bills a peer. The
-## second drops cage to cage. Both are in the bridge family, because traffic
-## between two ports of one bridge never reaches the inet hooks.
+## What crosses between two ports of this bridge is nixcage's (nixcage
+## ADR-015, ADR-064): a cage's port is pinned to its address and isolated
+## where its veth is made, in a table nixcage keeps at runtime, so a frame
+## whose source is not its port's address is dropped before it is seen and
+## cage to cage never crosses. The rules used to be declared here, keyed on
+## the name nixcage gives a veth; a second copy would drift, and a reload of
+## this ruleset recreated it empty.
 ##
-## The veth's host end is named by nixcage from a hash of the cage's name
-## (nixcage ADR-013). Which cages there are is the factory's, and the factory
-## arrives at boot (ADR-057), so the set below is declared empty here and
-## filled by factory-prepare from the plan it renders (modules/
-## factory-render.sh), with nft add element; the same plan is written for
-## the executor to read, so the two cannot disagree.
-##
-## The machine's own firewall is the third party here: it drops a new
+## The machine's own firewall is what is the factory's here: it drops a new
 ## connection on an interface it was not told about, so the bridge is named
 ## to it with exactly the three ports a cage may reach.
 {
@@ -79,36 +74,5 @@ in
       cfg.valkeyPort
       cfg.egressPort
     ];
-
-    networking.nftables.tables.fabriek-cages = {
-      family = "bridge";
-      content = ''
-        ## Filled by factory-prepare: nft add element bridge fabriek-cages
-        ## cages { "nc-..." . 10.77.0.10, ... }, from the rendered plan.
-        set cages {
-          type ifname . ipv4_addr
-        }
-
-        chain prerouting {
-          type filter hook prerouting priority -300; policy accept;
-
-          ## Rule 1: a cage speaks only as itself. Anything else on a cage's
-          ## port is dropped before it is seen, IPv6 and ARP included, so an
-          ## address cannot be claimed by the party it would bill.
-          iifname "nc-*" ether type ip6 drop
-          iifname "nc-*" ether type arp iifname . arp saddr ip != @cages drop
-          iifname "nc-*" ether type ip iifname . ip saddr != @cages drop
-        }
-
-        chain forward {
-          type filter hook forward priority 0; policy accept;
-
-          ## Rule 2: a cage reaches the machine and never a peer. Findings go
-          ## over the bus and work through the executor (ADR-033), so there
-          ## is nothing for two cages to say to each other directly.
-          iifname "nc-*" oifname "nc-*" drop
-        }
-      '';
-    };
   };
 }

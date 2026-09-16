@@ -142,8 +142,7 @@ per role `roles/<role>/profile` (a store path the machine's own daemon
 built from the repository at the pin with `modules/profile.nix`, under
 `--restrict-eval` and the URIs it may reach) and `roles/<role>/pi`
 (composed from the floor, `modules/factory-render.sh`); then
-`profiles.json`. It fills the bridge's `cages` set with `nft`, tightens
-the record's bound, and reloads the proxy. Then `up` gives the machine
+`profiles.json`. It tightens the record's bound and reloads the proxy. Then `up` gives the machine
 the credential for each endpoint the rendered factory reaches, runs
 `factory-prepare`, and roots on the host the profile paths the host
 holds. A bad declaration stops render with its own message, printed by
@@ -151,12 +150,13 @@ holds. A bad declaration stops render with its own message, printed by
 
 The machine (`modules/machine/default.nix` and `modules/machine/`):
 
-- `bridge.nix`: `fabriek0` at 10.77.0.1/24, configured without carrier;
-  the plan (decider at .2, roles at .10 onward in name order) is
-  rendered by prepare, and the `cages` set is declared empty and filled
-  from it. A bridge-family nftables table drops a packet whose source is
-  not its port's address, drops IPv6 and ARP claims, and drops cage to
-  cage (ADR-037).
+- `bridge.nix`: `fabriek0` at 10.77.0.1/24, configured without carrier,
+  and the three ports a cage may reach on it; the plan (decider at .2,
+  roles at .10 onward in name order) is rendered by prepare for the
+  executor and the session composer. That a cage sends only as its
+  address and reaches no peer is nixcage's promise, kept where the veth
+  is made (nixcage ADR-015, ADR-064); nothing here declares a rule about
+  a cage's port.
 - `board.nix`: Forgejo on the bridge, on a dataset with a default bound
   render tightens to `recordQuota`, its tmpfiles rules re-run after the
   mount; a `forgejo` wrapper for the machine program (ADR-036).
@@ -341,7 +341,7 @@ real over the shipped catalogue and one each scenario writes: the flattening,
 every refusal, and what a built role carries (`bin/`, `APPEND_SYSTEM.md`,
 `skills/`, `lsp.json`, `tests.json`). `machine_services.bats` evaluates
 `lib.appliance` for this host and exercises the runtime args script;
-`render.bats` drives `factory-render` with `nix build`, `nft`,
+`render.bats` drives `factory-render` with `nix build`,
 `systemctl` and `nixcage-container` stubbed and the real nix for the
 TOML reader; `factory_render.bats` and `credential.bats` drive the
 renderers and the credential writer.

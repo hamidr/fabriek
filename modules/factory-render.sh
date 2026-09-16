@@ -36,25 +36,6 @@ fabriek_render_bridge_plan() {
 	      valkey: "\($net).1:\($valkey)" }' "$declaration"
 }
 
-## The elements of the bridge's cages set: the veth nixcage will name for
-## the cage (nixcage ADR-013) beside the address the plan gives it, in the
-## form nft takes. Asked of nixcage rather than computed, because the name
-## is nixcage's function.
-##
-## fabriek_render_cage_elements <plan.json>
-fabriek_render_cage_elements() {
-	local plan="$1" name address veth parts=()
-	while IFS=$'\t' read -r name address; do
-		veth="$(nixcage-container veth "$name")" || return 1
-		parts+=("\"$veth\" . $address")
-	done < <(jq -r '.cages | to_entries[] | "\(.key)\t\(.value)"' "$plan")
-	local joined="" part
-	for part in "${parts[@]}"; do
-		joined="${joined:+$joined, }$part"
-	done
-	printf '%s\n' "$joined"
-}
-
 ## The proxy's configuration for one factory: the token ceiling and a
 ## location per allowed endpoint, each counting what passes and refusing at
 ## the ceiling. Included by the vhost the image carries. Zero is no ceiling.

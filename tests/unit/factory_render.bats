@@ -1,11 +1,9 @@
 #!/usr/bin/env bats
 # What prepare renders from the declaration at boot (ADR-057 point 4): the
-# bridge plan and the set elements the bridge's rules key on, the proxy's
-# per-endpoint locations and ceiling, the model pi starts on and the
-# models.json that points it at the proxy, and one pi directory per role.
-# The build rendered every one of these into the image before; the same
-# text now comes from these functions, driven here with nixcage-container
-# stubbed for the veth's name.
+# bridge plan, the proxy's per-endpoint locations and ceiling, the model pi
+# starts on and the models.json that points it at the proxy, and one pi
+# directory per role. The build rendered every one of these into the image
+# before; the same text now comes from these functions.
 
 load ../test_helper/common
 
@@ -15,12 +13,6 @@ setup() {
 	source "$FABRIEK_ROOT/modules/names.sh"
 	# shellcheck source=../../modules/factory-render.sh
 	source "$FABRIEK_ROOT/modules/factory-render.sh"
-	mkdir -p "$TEST_TEMP_DIR/bin"
-	# nixcage names a veth from a hash of the cage's name; the stub makes
-	# the name legible so the assertion reads.
-	printf '#!/usr/bin/env bash\n[ "$1" = veth ] && echo "nc-$2"\n' >"$TEST_TEMP_DIR/bin/nixcage-container"
-	chmod +x "$TEST_TEMP_DIR/bin/nixcage-container"
-	export PATH="$TEST_TEMP_DIR/bin:$PATH"
 	DECL="$TEST_TEMP_DIR/declaration.json"
 	cat >"$DECL" <<'JSON'
 { "name": "acme",
@@ -40,11 +32,13 @@ teardown() {
 	assert_output '["fabriek0","10.77.0.1",24,{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"},"10.77.0.1:8118","10.77.0.1:3000","10.77.0.1:6379"]'
 }
 
-@test "the cages set is one element per cage, the veth nixcage names beside the address" {
-	fabriek_render_bridge_plan "$DECL" fabriek0 8118 3000 6379 >"$TEST_TEMP_DIR/plan.json"
-	run fabriek_render_cage_elements "$TEST_TEMP_DIR/plan.json"
-	assert_success
-	assert_output '"nc-builder" . 10.77.0.10, "nc-decider" . 10.77.0.2, "nc-reviewer" . 10.77.0.11'
+@test "nothing here names a cage's veth: the bridge's rules are nixcage's, keyed on nothing rendered here" {
+	# ADR-064: the set the plan used to fill is gone with the verb that named
+	# its elements, so a change to nixcage's hash cannot leave a rule here
+	# matching nothing.
+	run grep -c 'nixcage-container veth\|fabriek_render_cage_elements' "$FABRIEK_ROOT/modules/factory-render.sh" "$FABRIEK_ROOT/fabriek-container"
+	refute_output --partial ':1'
+	refute_output --partial ':2'
 }
 
 @test "the proxy gets the ceiling and one location per allowed endpoint, counting and refusing at the ceiling" {

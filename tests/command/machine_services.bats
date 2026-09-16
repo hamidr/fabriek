@@ -173,17 +173,20 @@ JSON
 	assert_output --partial 'no runtime.json'
 }
 
-@test "the bridge is one constant name at .1, its cages set empty for prepare to fill, and its two rules stand" {
+# The bridge's own rules, attribution and cage-to-cage, are nixcage's now
+# (nixcage ADR-015, ADR-064): a table declared here would be a second copy
+# that drifts, and one a reload of this ruleset recreated empty.
+@test "the bridge is one constant name at .1, usable before its first cage, and this machine declares no cages table" {
 	run machine_eval 'c.networking.interfaces.fabriek0.ipv4.addresses'
 	assert_output '[{"address":"10.77.0.1","prefixLength":24}]'
-	run machine_text 'c.networking.nftables.tables.fabriek-cages.content'
-	assert_success
-	assert_output --partial 'set cages {'
-	refute_output --partial 'elements'
-	assert_output --partial 'iifname "nc-*" ether type ip iifname . ip saddr != @cages drop'
-	assert_output --partial 'iifname "nc-*" oifname "nc-*" drop'
-	run machine_eval 'c.networking.nftables.tables.fabriek-cages.family'
-	assert_output '"bridge"'
+	run machine_eval 'c.systemd.network.networks."40-fabriek0".networkConfig.ConfigureWithoutCarrier'
+	assert_output 'true'
+	run machine_eval 'c.boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind"'
+	assert_output '1'
+	run machine_eval 'builtins.attrNames c.networking.nftables.tables'
+	refute_output --partial 'fabriek-cages'
+	run machine_text 'c.networking.nftables.tables.fabriek-egress.content'
+	refute_output --partial 'nc-*'
 	# What the machine program renders the plan with, the same numbers the
 	# services bind.
 	run machine_eval 'with c.environment.variables; [FABRIEK_BRIDGE FABRIEK_BRIDGE_HOST FABRIEK_PROXY_PORT FABRIEK_FORGEJO_PORT FABRIEK_VALKEY_PORT]'

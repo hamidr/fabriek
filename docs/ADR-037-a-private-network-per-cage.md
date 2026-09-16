@@ -33,7 +33,9 @@ access.
 **2. Two bridge rules are load-bearing.** The host side drops any packet
 whose source is not that cage's assigned address, because spend attribution
 is by address and without this a cage can bill a peer. The bridge permits
-cage to service and drops cage to cage.
+cage to service and drops cage to cage. (Amended 2026-09-16 by ADR-064:
+both rules are nixcage's, applied where the veth is made, nixcage ADR-015;
+the factory declares none of its own and relies on the promise.)
 
 **3. The proxy holds the model credential and injects it at egress,** as
 ADR-025 point 1 had it, and counts input and output tokens per source
@@ -50,7 +52,9 @@ it does: the ceiling bounds a runaway and keeps no account.
 and a lock bump (ADR-018): an `enter` option naming the bridge and the
 cage's address, and an option suppressing the nix daemon socket bind. A
 third is a removal: `--subject` leaves the line with ADR-028. All three show
-up in `tests/command/seam.bats` as a diff.
+up in `tests/command/seam.bats` as a diff. (Amended 2026-09-16 by ADR-064:
+the veth name nixcage's ADR-013 told the caller, for the rules to key on,
+is withdrawn with the rules; the session line is unchanged.)
 
 ## Consequences
 

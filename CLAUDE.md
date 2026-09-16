@@ -41,7 +41,6 @@ key and port it allocated for that factory (ADR-019).
 | `nixcage-container storage ensure <path> <uid> [quota]` | A role's worktree and the record's dataset, owned and bounded |
 | `nixcage-container status <name>`, `stop <name>` | Whether a role's cage runs and its scope's cgroup (the probes' key); `stop -k` |
 | `nixcage-container exec <name> [-- cmd]` | A person entering a role whose actor is running, inside its cage |
-| `nixcage.lib.vethHostName` | The name the bridge's rules key on (nixcage ADR-013) |
 
 When something is needed that these cannot express, **the interface changes in
 nixcage first**: two commits in two repositories and a lock bump. Reaching
