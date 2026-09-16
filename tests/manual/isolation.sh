@@ -40,6 +40,11 @@ if [ -z "$a" ] || [ -z "$b" ]; then
 	bash fabriek down "$F"
 	exit 1
 fi
+wait_cages "$a" "$b" || {
+	echo "the actors' cages for $a and $b never came up"
+	bash fabriek down "$F"
+	exit 1
+}
 ## One machine runs one factory, so the bridge carries no factory's name
 ## (ADR-057); the machine says what it is called.
 # shellcheck disable=SC2016  # expands on the machine

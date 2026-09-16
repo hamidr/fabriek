@@ -25,8 +25,11 @@ sshm() {
 
 ## What the factory is, as the machine rendered it (ADR-057): the clamped
 ## declaration under .declaration, with the two fields the older spec.json
-## carried beside it. Fetched once per run; the proofs that predate
-## ADR-057 read it where the host's spec.json was.
+## carried beside it. Fetched once per run, and a run starts without the
+## last run's copy: a ceiling changed between two runs was read stale
+## (seen 2026-09-16). The proofs that predate ADR-057 read it where the
+## host's spec.json was.
+rm -f "$D/spec.json"
 spec_json() {
 	if [ ! -s "$D/spec.json" ]; then
 		sshm cat /var/lib/fabriek/factory/declaration.json 2>/dev/null |
@@ -41,6 +44,25 @@ wait_ssh() {
 	local _i
 	for _i in $(seq 1 "${WAIT_SSH:-180}"); do
 		sshm true 2>/dev/null && return 0
+		sleep 1
+	done
+	return 1
+}
+
+## Waits up to WAIT_CAGES seconds (default 120) for the executor to hold a
+## cage for each role named. up returns before the sessions are started, and
+## a hand session entered in that window meets the actor's cage being made
+## under the same name (seen 2026-09-16: one role with no address).
+cages_present() {
+	local role
+	for role in "$@"; do
+		sshm "pgrep -f -- '--machine=$role( |\$)' >/dev/null" 2>/dev/null || return 1
+	done
+}
+wait_cages() {
+	local _i
+	for _i in $(seq 1 "${WAIT_CAGES:-120}"); do
+		cages_present "$@" && return 0
 		sleep 1
 	done
 	return 1
