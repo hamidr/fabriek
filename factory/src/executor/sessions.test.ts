@@ -26,4 +26,57 @@ describe("role sessions", () => {
     assert.deepEqual(readFileSync(argv, "utf8").trim().split("\n"), ["role-enter", "--signing-key", "builder", "acme", "builder"]);
     await sessions.stop("builder");
   });
+
+  /** A program that records each start and exits at once. */
+  function exiting(dir: string) {
+    const starts = join(dir, "starts");
+    return { starts, command: ["sh", "-c", `echo start >>"${starts}"`, "session"] };
+  }
+  const startsIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").length : 0);
+
+  it("given a session that exits and a restart that is allowed, the session is started again", async () => {
+    const { starts, command } = exiting(mkdtempSync(join(tmpdir(), "sessions-")));
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 10, mayRestart: async () => true });
+    await sessions.start("decider");
+    for (let i = 0; i < 50 && startsIn(starts) < 2; i++) await settle(20);
+    await sessions.stop("decider");
+    assert.ok(startsIn(starts) >= 2);
+    assert.deepEqual([...sessions.held()], []);
+  });
+
+  it("given a session that exits and a restart that is refused, the session is held and not started again", async () => {
+    const { starts, command } = exiting(mkdtempSync(join(tmpdir(), "sessions-")));
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 10, mayRestart: async () => false });
+    await sessions.start("decider");
+    for (let i = 0; i < 50 && !sessions.held().has("decider"); i++) await settle(20);
+    await settle(100);
+    assert.equal(startsIn(starts), 1);
+    assert.deepEqual([...sessions.held()], ["decider"]);
+    await sessions.stop("decider");
+  });
+
+  it("given a held session, start begins it again and it is held no longer", async () => {
+    const { starts, command } = exiting(mkdtempSync(join(tmpdir(), "sessions-")));
+    let allowed = false;
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 10, mayRestart: async () => allowed });
+    await sessions.start("decider");
+    for (let i = 0; i < 50 && !sessions.held().has("decider"); i++) await settle(20);
+    allowed = true;
+    await sessions.start("decider");
+    assert.deepEqual([...sessions.held()], []);
+    for (let i = 0; i < 50 && startsIn(starts) < 2; i++) await settle(20);
+    await sessions.stop("decider");
+    assert.ok(startsIn(starts) >= 2);
+  });
+
+  it("given a stopped session, its exit asks nothing and holds nothing", async () => {
+    const { command } = exiting(mkdtempSync(join(tmpdir(), "sessions-")));
+    let asked = 0;
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 10, mayRestart: async () => { asked++; return false; } });
+    await sessions.start("decider");
+    await sessions.stop("decider");
+    await settle(200);
+    assert.equal(asked, 0);
+    assert.deepEqual([...sessions.held()], []);
+  });
 });

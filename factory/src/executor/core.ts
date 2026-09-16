@@ -289,6 +289,17 @@ export class Executor {
     return this.routingOn;
   }
 
+  /**
+   * The hard limit: at it the proxy refuses every request, so a decider
+   * session started here could not think. The reading that decides
+   * whether the executor starts one.
+   */
+  async atCeiling(): Promise<boolean> {
+    const ceiling = this.o.declaration.resources.tokens;
+    if (!ceiling) return false;
+    return (await this.o.spend.total()) >= ceiling;
+  }
+
   /** Read outcomes off the board and move what is checkable (ADR-034 point 4). */
   async checkOutcomes(): Promise<void> {
     for (const i of await this.o.board.open()) {

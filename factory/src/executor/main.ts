@@ -72,7 +72,21 @@ async function main(): Promise<void> {
       return client.xrange(stream, from, to);
     },
   };
-  const sessions = new RoleSessions({ factory, log, command: sessionCommand(process.env) });
+  const sessions = new RoleSessions({
+    factory,
+    log,
+    command: sessionCommand(process.env),
+    // At the ceiling the proxy refuses every request, so a decider started
+    // there could not think; it is held until the count is below it again,
+    // which today means the proxy restarted with the machine. Roles are
+    // restarted as ever: an idle actor spends nothing.
+    async mayRestart(role) {
+      if (role !== "decider" || !(await executor.atCeiling())) return true;
+      log("the ceiling is reached; the decider is held");
+      await publish("decider_held", { ceiling: declaration.resources.tokens });
+      return false;
+    },
+  });
   const git = new CloneGit({
     clone: `${STATE}/factories/${factory}`,
     forgeUrl: `http://${plan.forgejo}/${repository}.git`,
@@ -150,6 +164,11 @@ async function main(): Promise<void> {
         lastOutcomes = Date.now();
         await publish("board", await executor.snapshot());
         await publish("spend", spendByRole(await spend.counts(), plan.cages));
+        if (sessions.held().has("decider") && !(await executor.atCeiling())) {
+          log("the count is below the ceiling; the decider is started again");
+          await publish("decider_resumed", {});
+          await sessions.start("decider");
+        }
       }
     } catch (err) {
       log(`loop: ${String(err)}`);

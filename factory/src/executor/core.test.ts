@@ -426,6 +426,34 @@ describe("the executor", () => {
     assert.equal(x.routing(), false);
   });
 
+  it("at the ceiling the executor says so", async () => {
+    const { x, f } = await executor();
+    f.setTotal(1000);
+    assert.equal(await x.atCeiling(), true);
+  });
+
+  it("between the soft limit and the ceiling, assign is refused and the ceiling is not reached", async () => {
+    const { x, f } = await executor();
+    f.setTotal(950);
+    assert.equal(await x.atCeiling(), false);
+    const r = await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    assert.equal(r.ok, false);
+  });
+
+  it("below the soft limit the ceiling is not reached", async () => {
+    const { x, f } = await executor();
+    f.setTotal(10);
+    assert.equal(await x.atCeiling(), false);
+  });
+
+  it("with no ceiling declared, the ceiling is never reached", async () => {
+    const f = fakes();
+    const unbounded = readDeclaration(JSON.stringify({ ...JSON.parse(JSON.stringify(declaration)), resources: { taskAttempts: 2 } }));
+    const x = new Executor({ declaration: unbounded, workflow: "ship", ...f, reconcileTimeoutMs: 10 });
+    f.setTotal(1000000);
+    assert.equal(await x.atCeiling(), false);
+  });
+
   it("mirror pushes main and the record together", async () => {
     const { x, f } = await executor();
     await x.mirror();

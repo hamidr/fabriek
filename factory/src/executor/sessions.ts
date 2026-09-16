@@ -10,6 +10,12 @@ export interface SessionsOptions {
   /** argv prefix; the machine program by default. Tests substitute a script. */
   command?: string[];
   restartDelayMs?: number;
+  /**
+   * Asked on a session's exit whether the next process is started. A no
+   * holds the session: it stays wanted, is not restarted, and a later
+   * start begins it again. Absent, every exit is restarted.
+   */
+  mayRestart?: (role: string) => Promise<boolean>;
   log?: (line: string) => void;
 }
 
@@ -27,11 +33,13 @@ export function sessionCommand(env: Record<string, string | undefined>): string[
 export class RoleSessions implements Sessions {
   private readonly children = new Map<string, ChildProcess>();
   private readonly wanted = new Set<string>();
+  private readonly holding = new Set<string>();
 
   constructor(private readonly o: SessionsOptions) {}
 
   async start(role: string): Promise<void> {
     this.wanted.add(role);
+    this.holding.delete(role);
     this.spawnOnce(role);
   }
 
@@ -46,12 +54,23 @@ export class RoleSessions implements Sessions {
     child.on("exit", (code) => {
       this.children.delete(role);
       this.o.log?.(`session ${role} exited with ${code}`);
-      if (this.wanted.has(role)) setTimeout(() => this.spawnOnce(role), this.o.restartDelayMs ?? 2000);
+      if (!this.wanted.has(role)) return;
+      void (this.o.mayRestart?.(role) ?? Promise.resolve(true)).then((again) => {
+        if (!this.wanted.has(role)) return;
+        if (again) setTimeout(() => this.spawnOnce(role), this.o.restartDelayMs ?? 2000);
+        else this.holding.add(role);
+      });
     });
+  }
+
+  /** The sessions wanted but not restarted at their last exit. */
+  held(): Set<string> {
+    return new Set(this.holding);
   }
 
   async stop(role: string): Promise<void> {
     this.wanted.delete(role);
+    this.holding.delete(role);
     this.children.get(role)?.kill("SIGTERM");
   }
 
