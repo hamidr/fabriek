@@ -137,6 +137,10 @@ teardown() {
 	[ ! -e "$STATE/prepared" ]
 	run cat "$FORGE/systemctl-calls"
 	assert_output --partial "restart fabriek-executor"
+	# The probes exit clean before a declaration and are restarted on
+	# failure only, so without this a fresh boot has no probes (measured
+	# 2026-09-16: "no factory prepared yet", then silence).
+	assert_output --partial "restart fabriek-probes"
 	# the mark is the last thing written: after the decider's chown
 	[ "$(tail -1 "$FORGE/chown-calls")" = "60192 $STATE/bus/decider $STATE/forge/decider-token" ]
 }

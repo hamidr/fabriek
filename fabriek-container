@@ -659,6 +659,9 @@ cmd_factory_prepare() {
 	mkdir -p "$(fabriek_run_dir)"
 	: >"$(fabriek_run_dir)/prepared.new" && mv "$(fabriek_run_dir)/prepared.new" "$(fabriek_run_dir)/prepared"
 	systemctl restart fabriek-executor.service
+	## The probes read the declaration to name a uid's role and exit clean
+	## without one, which is not a failure their unit restarts on.
+	systemctl restart fabriek-probes.service
 	echo "$factory: prepared"
 }
 
