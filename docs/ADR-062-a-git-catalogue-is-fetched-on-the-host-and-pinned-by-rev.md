@@ -1,7 +1,7 @@
 ---
 id: ADR-062
 title: A git catalogue is fetched on the host at up and check, pinned by rev, and carried as a store path
-status: proposed
+status: implemented
 date: 2026-09-16
 status_date: 2026-09-16
 summary: a catalogue may be a git repository at a rev; the host fetches it, the machine reads a store path as before
@@ -191,3 +191,28 @@ composing a git catalogue from a `git+file://` tree at a rev for real, a
 specialist of it on a role's PATH. On a machine: `tests/manual/specialist.sh`
 with the example's backend role naming a specialist from a git catalogue.
 Recorded here when run.
+
+Implemented 2026-09-16, in three `[ADR-062]` commits: the schema, `up`
+and the credential, the host side. On this host: `operator_config.bats`
+(the table read, each refusal by name), `credential.bats` (the table
+inline in `catalogues`, read back), `vm_up.bats` (prefetch, the hash
+compared, the dir found, the root, the table with its path in the
+credential, `show -f` naming the reference and rev), `check.bats` (a
+role composed from a `git+file://` tree at a rev, `show` naming the
+source, a rev nothing serves refused), `catalogue.bats` (a specialist from
+a fetched tree built for real onto a role's PATH). `fabriek_catalogue_eval`
+runs `--restrict-eval` now, fabriek, its nixpkgs, the repository's tree
+and every catalogue path on the search path, and imports `catalogue.nix`
+and nixpkgs by path rather than through `getFlake`. On the appliance on a
+NixOS host: the proof's `plain` factory naming a specialist from a
+`git+file://` catalogue at a rev, `dir = "catalogue"`, no hash; `check`
+composed it and `show greeter` named its source; `up` fetched it, wrote
+the hash into the credential and rendered in 1:01; the cage answered
+`cowsay` on its PATH and the prompt's marker in `APPEND_SYSTEM.md`;
+`show -f plain` printed `catalogue: git+file:///... at e75511a7 (<store
+path>)`.
+
+One thing found on the way, twice: a tab-separated field list read by
+`read` folds an empty field away, so an entry with a dir and no hash had
+its dir read as its hash; both readers split on a character no path
+carries.
