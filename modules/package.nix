@@ -97,6 +97,9 @@ let
               ## is absent. A unit on a NixOS host has no PATH but this one
               ## (measured 2026-09-16: "awk: command not found" from the
               ## pc's unit).
+              ## bash by name: the share daemons' wrappers are run as text
+              ## under a bash the runner's directory does not name.
+              bash
               gawk
               gnused
               gnugrep
