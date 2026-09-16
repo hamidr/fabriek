@@ -148,7 +148,9 @@ TOML
 
 @test "the config lives where the operator's own config lives" {
 	unset FABRIEK_CONFIG
-	XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" run fabriek_operator_config_path
+	# On a host that renders /etc/fabriek/config.toml the host's would win
+	# over an absent personal file; this asks where the personal one is.
+	FABRIEK_HOST_CONFIG="$TEST_TEMP_DIR/no-host-config" XDG_CONFIG_HOME="$TEST_TEMP_DIR/xdg" run fabriek_operator_config_path
 	assert_success
 	assert_output "$TEST_TEMP_DIR/xdg/fabriek/config.toml"
 }
@@ -518,4 +520,21 @@ TOML
 		assert_failure
 		assert_output --partial "catalogue 0: ${case##*|}"
 	done
+}
+
+# A NixOS host's /etc/fabriek/config.toml is a symlink into the store, and
+# the file names store paths (a prompt, a catalogue): nix's readFile
+# refuses a store file that refers to a store path, so the reader hands
+# nix the bytes and not the path (found 2026-09-16 on the first rebuild).
+@test "the config is read when it lives in the store and names store paths" {
+	printf '# strict\n' >"$TEST_TEMP_DIR/strict.md"
+	local prompt stored
+	prompt="$(nix store add-file "$TEST_TEMP_DIR/strict.md")"
+	# Made as the module makes it: a store file whose references include
+	# the prompt, which is what readFile turns into string context.
+	stored="$(nix eval --raw --impure --expr "builtins.toFile \"config.toml\" \"[factories.acme]\\npath = \\\"/home/me/Src/acme\\\"\\n\\n[specialists.strict]\\nprompt = \\\"\${builtins.storePath $prompt}\\\"\\n\"")"
+	run fabriek_operator_config "$stored"
+	assert_success
+	run jq -r '.specialists.strict.prompt' <<<"$output"
+	assert_output "$prompt"
 }

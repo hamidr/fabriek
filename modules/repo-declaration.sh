@@ -308,8 +308,12 @@ fabriek_declaration_rev() {
 ## fabriek_toml_json <file>
 fabriek_toml_json() {
 	local file="$1"
+	## The context is dropped: a file the host rendered into the store
+	## (/etc/fabriek/config.toml on NixOS) refers to the store paths it
+	## names, readFile carries them as context, and fromTOML refuses a
+	## string with one. The bytes are data; nothing here builds from them.
 	nix eval --json --impure --expr \
-		"builtins.fromTOML (builtins.readFile $(fabriek_nix_string "$file"))"
+		"builtins.fromTOML (builtins.unsafeDiscardStringContext (builtins.readFile $(fabriek_nix_string "$file")))"
 }
 
 ## The declaration a repository has committed: fabriek.toml at its root,
