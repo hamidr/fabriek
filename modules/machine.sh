@@ -180,17 +180,29 @@ fabriek_machine_running() {
 ## Reaching a machine fabriek built. Its own key, its own port, and a known
 ## hosts file of its own: a factory that changes identity is a factory to look
 ## at, and it must not be able to look like another one.
+##
+## A hand that cannot read the machine's key, a person beside the unit on
+## a NixOS host (ADR-063 point 3), reaches with their own keys and agent,
+## and keeps the machine's host key under their own state: the unit's
+## file is root's too.
 fabriek_machine_ssh_args() {
 	local factory="$1" dir key port
 	dir="$(fabriek_machine_dir "$factory")" || return 1
 	key="$(fabriek_machine_key "$factory")" || return 1
 	port="$(fabriek_machine_port "$factory")" || return 1
+	if [ -r "$key" ]; then
+		printf '%s\n' \
+			-i "$key" \
+			-o "UserKnownHostsFile=$dir/known_hosts" \
+			-o "IdentitiesOnly=yes"
+	else
+		local own="${XDG_STATE_HOME:-$HOME/.local/state}/fabriek/known_hosts"
+		mkdir -p "$own"
+		printf '%s\n' -o "UserKnownHostsFile=$own/$factory"
+	fi
 	printf '%s\n' \
-		-i "$key" \
 		-p "$port" \
-		-o "UserKnownHostsFile=$dir/known_hosts" \
 		-o "StrictHostKeyChecking=accept-new" \
-		-o "IdentitiesOnly=yes" \
 		-o "ConnectTimeout=5" \
 		-o "BatchMode=yes"
 }

@@ -119,7 +119,7 @@ let
               ## The TUI (ADR-039 point 3), which factory console execs.
               (import ../factory { inherit pkgs; }).package
             ]
-            ++ pkgs.lib.optional pkgs.stdenv.isLinux pkgs.util-linux
+            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.util-linux
           )
         }
     '';

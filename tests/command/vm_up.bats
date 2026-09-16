@@ -266,7 +266,7 @@ ro-store"
 	run_fabriek up acme
 	assert_success
 	run jq -cS '[.mem, .cpus, .sshPort, .diskSize, .credentials]' "$FABRIEK_MACHINES/acme/runtime.json"
-	assert_output "[4096,2,$(cat "$FABRIEK_MACHINES/acme/port"),65536,{\"fabriek.authorized_keys\":\"id_ed25519.pub\",\"fabriek.toml\":\"fabriek.toml\"}]"
+	assert_output "[4096,2,$(cat "$FABRIEK_MACHINES/acme/port"),65536,{\"fabriek.authorized_keys\":\"authorized_keys\",\"fabriek.toml\":\"fabriek.toml\"}]"
 	[ -f "$FABRIEK_MACHINES/acme/store.img" ]
 	[ -f "$FABRIEK_MACHINES/acme/pool.img" ]
 }
@@ -414,6 +414,19 @@ TOML
 	run_fabriek up acme
 	assert_failure
 	assert_output --partial "catalogue github:acme/cat at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: the tree has no nowhere"
+}
+
+# ADR-063 point 2: the machine accepts the operators' keys beside its own,
+# from one authorized_keys file up writes and hands over as the credential.
+@test "up hands the machine an authorized_keys of its own key and every operator key, in that order" {
+	sed -i.bak '1i operatorKeys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_success
+	run jq -r '.credentials["fabriek.authorized_keys"]' "$FABRIEK_MACHINES/acme/runtime.json"
+	assert_output authorized_keys
+	run cat "$FABRIEK_MACHINES/acme/authorized_keys"
+	assert_line --index 0 "$(cat "$FABRIEK_MACHINES/acme/id_ed25519.pub")"
+	assert_line --index 1 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"
 }
 
 # A build that fails prints a trace with the thrown message at its end,

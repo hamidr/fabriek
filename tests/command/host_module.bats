@@ -28,7 +28,7 @@ host_eval() {
 	          { services.fabriek = { enable = true; $1 }; }
 	        ];
 	      }).config;
-	  in $2" 2> >(grep -v -e 'Nix search path entry' >&2)
+	  in $2" 2> >(grep -v -e 'Nix search path entry' -e 'evaluation warning' >&2)
 }
 
 @test "the module renders the operator's config as the TOML the CLI reads, at /etc/fabriek/config.toml" {
@@ -125,4 +125,22 @@ host_eval() {
 	assert_success
 	run jq -r '.roles | keys | join(",")' <<<"$output"
 	assert_output "backend-1,backend-2,reviewer"
+}
+
+# ADR-063 point 1: the host's operators, by their public keys, as the CLI
+# reads them.
+@test "the module renders the operators' keys" {
+	run host_eval 'factories.acme.path = "/srv/acme"; operatorKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc" ];' \
+		'c.environment.etc."fabriek/config.toml".text'
+	assert_success
+	local text
+	text="$(jq -r . <<<"$output")"
+	source "$FABRIEK_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
+	source "$FABRIEK_ROOT/modules/operator-config.sh"
+	printf '%s\n' "$text" >"$TEST_TEMP_DIR/config.toml"
+	run fabriek_operator_keys "$TEST_TEMP_DIR/config.toml"
+	assert_output "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"
 }

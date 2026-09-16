@@ -205,3 +205,24 @@ teardown() {
 	run fabriek_machine_running acme
 	assert_failure
 }
+
+# ADR-063 point 3: a hand that cannot read the unit's key reaches with its
+# own, and keeps the machine's host key under its own state.
+@test "the ssh arguments name the machine's key when it is readable, and the person's own when it is not" {
+	local dir
+	dir="$(fabriek_machine_ensure acme)"
+	run fabriek_machine_ssh_args acme
+	assert_success
+	assert_line "-i"
+	assert_line "$dir/id_ed25519"
+	assert_line "UserKnownHostsFile=$dir/known_hosts"
+	assert_line "IdentitiesOnly=yes"
+	chmod 000 "$dir/id_ed25519"
+	XDG_STATE_HOME="$TEST_TEMP_DIR/state" run fabriek_machine_ssh_args acme
+	chmod 600 "$dir/id_ed25519"
+	assert_success
+	refute_line "-i"
+	refute_line "IdentitiesOnly=yes"
+	assert_line "UserKnownHostsFile=$TEST_TEMP_DIR/state/fabriek/known_hosts/acme"
+	assert_line "StrictHostKeyChecking=accept-new"
+}

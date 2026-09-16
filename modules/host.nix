@@ -73,6 +73,7 @@ let
         factories = lib.mapAttrs (_: factoryTable) cfg.factories;
         credentials = lib.mapAttrs (_: c: { inherit (c) header file; }) cfg.credentials;
         catalogues = cfg.catalogues;
+        operatorKeys = cfg.operatorKeys;
       }
       // lib.optionalAttrs (cfg.models != { }) { inherit (cfg) models; }
       // lib.optionalAttrs (cfg.specialists != { }) {
@@ -264,6 +265,12 @@ in
       type = lib.types.listOf lib.types.path;
       default = [ ];
       description = "Catalogue directories of the operator's own, with fabriek's layout.";
+    };
+    operatorKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression "config.users.users.me.openssh.authorizedKeys.keys";
+      description = "Public keys of the people who work the factories here; the machine admits them beside the unit's own (ADR-063).";
     };
   };
 

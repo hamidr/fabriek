@@ -45,7 +45,7 @@ fabriek_operator_config_program() {
 ## own schema checks once the entry is one. Specialists and skills are
 ## ADR-042's keys spelled in TOML, less lsp, which a bare name cannot say.
 def schema:
-  { top: ["caps", "factories", "credentials", "models", "specialists", "skills", "catalogues"]
+  { top: ["caps", "factories", "credentials", "models", "specialists", "skills", "catalogues", "operatorKeys"]
   , factory: ["path", "roles", "workflows", "resources", "decider", "catalogue"]
   , credential: ["header", "file"]
   , specialist: ["extends", "tools", "skills", "prompt"]
@@ -114,6 +114,13 @@ def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") |
          ] | cat
        end) | cat),
     (if ($c.catalogues? // null) != null and ($c.catalogues | type) != "array" then ["catalogues must be a list"] else [] end),
+    ## An operator's public key (ADR-063): one authorized_keys line, a key
+    ## type, its base64 and an optional comment, nothing else on the line.
+    ((if ($c.operatorKeys | type) == "array" then $c.operatorKeys else [] end)
+     | to_entries | map(
+       if (.value | type) != "string" or (.value | test("^(ssh-(ed25519|rsa|dss)|ecdsa-sha2-nistp[0-9]+|sk-[a-z0-9-]+@openssh\\.com) [A-Za-z0-9+/]+=*( [^\\n\\r]*)?$") | not)
+       then ["operator key \(.key): is not a public key line"] else [] end) | cat),
+    (if ($c.operatorKeys? // null) != null and ($c.operatorKeys | type) != "array" then ["operatorKeys must be a list"] else [] end),
     ((if ($c.credentials | type) == "object" then $c.credentials else {} end)
      | to_entries | map(
        .key as $e | .value as $v |
@@ -416,4 +423,12 @@ fabriek_catalogue_fetch() {
 		return 1
 	fi
 	printf '%s\t%s\n' "$stored${subdir:+/$subdir}" "$got"
+}
+
+## The operators' public keys (ADR-063 point 1), one line each; none is
+## none.
+fabriek_operator_keys() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq -r '(.operatorKeys // [])[]'
 }
