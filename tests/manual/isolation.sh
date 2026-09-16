@@ -51,12 +51,20 @@ bridge="${bridge:-fabriek0}"
 ## running cage's network (nixcage ADR-011 point 5), so this proof asks its
 ## questions beside the actors rather than in their place.
 
-## The address a role's cage was given, read from inside the cage, which is
-## the only place the answer is not a guess.
-## Asked as JSON, because ip colours a terminal and a cage's stdio is one;
-## filtered to an address, so that a cage without ip answers nothing rather
-## than the first word of an error.
-addr_of() { in_cage "$1" ip -j -4 addr show scope global | tr -d '\r' | jq -r '.[].addr_info[] | select(.scope == "global") | .local' 2>/dev/null | grep -oE '^[0-9.]+$' | head -1; }
+## The address a role's cage was given, read from inside the cage through
+## the kernel's own table: a cage carries no ip, and /proc/net/fib_trie
+## lists a namespace's local addresses as /32 entries under LOCAL.
+addr_of() { in_cage "$1" cat /proc/net/fib_trie | tr -d '\r' | awk '/\/32 host LOCAL/ {print a} {a=$2}' | grep -v '^127\.' | sort -u | head -1; }
+## One HTTP request from inside a cage over bash's /dev/tcp, since a cage
+## carries no curl: prints the status code, or nothing when nothing
+## answered. The body is read to its end, or the proxy's filter never sees
+## the usage it counts (resp=0 in its log). On one line: nixcage-container exec keeps an argument's first
+## line only (seen 2026-09-16). http <role> <host:port> <method> <path> [body]
+# shellcheck disable=SC2016  # expands in the cage
+http() {
+	local role="$1" hostport="$2" method="$3" path="$4" body="${5:-}"
+	in_cage "$role" bash -c 'exec 3<>"/dev/tcp/${1%%:*}/${1##*:}" || exit 1; printf "%s %s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s" "$2" "$3" "$1" "${#4}" "$4" >&3; r=$(cat <&3); printf %s "$r" | head -1 | cut -d" " -f2' _ "$hostport" "$method" "$path" "$body" 2>/dev/null | tr -d '\r'
+}
 ## The interfaces a cage has, from the kernel and not from a tool. Read from
 ## /proc/net/dev, which is the namespace's own; /sys/class/net in a session
 ## that joined a namespace by path is the host's sysfs and lists the host's.
@@ -83,7 +91,14 @@ check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ]
 ## credential the operator holds.
 endpoint="$(jq -r '.egress[0] // empty' "$(spec_json)")"
 check "the spec allows one endpoint the proxy can be asked for" yes "$([ -n "$endpoint" ] && echo yes || echo no)"
-messages="http://$proxy/$endpoint/v1/messages"
+## The provider's own path and shape, and the model the operator named for
+## it, so a request that reaches it is answered and counted.
+model="$(sed -n "/^\[models\]/,/^\[/ s/^\"$endpoint\" = \"\(.*\)\"/\1/p" "$D/fabriek.toml" | head -1)"
+case "$endpoint" in
+api.anthropic.com) messages_path="/$endpoint/v1/messages" ;;
+*) messages_path="/$endpoint/v1/chat/completions" ;;
+esac
+messages="http://$proxy$messages_path"
 
 scenario "A cage has no route off the machine"
 given "role $a inside its cage"
@@ -101,16 +116,15 @@ check "the connection fails" refused \
 	"$(in_cage "$a" bash -c "exec 3<>/dev/tcp/$addr_b/22" >/dev/null 2>&1 && echo connected || echo refused)"
 when "$a opens a connection to the proxy"
 check "the proxy answers" answered \
-	"$(in_cage "$a" curl -s -o /dev/null -w '%{http_code}' "http://$proxy/status" 2>/dev/null | grep -q '^[0-9]' && echo answered || echo silent)"
+	"$(http "$a" "$proxy" GET /status | grep -q '^[0-9]' && echo answered || echo silent)"
 
 ## One request to the endpoint, answering the status the endpoint gave.
 ## Spend is counted from the endpoint's answer, so an endpoint that refuses
 ## the credential (401) leaves nothing to count, and the two Thens that need
 ## a count are gated on it rather than failed.
 ask_model() {
-	in_cage "$1" curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
-		-d '{"model":"probe","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
-		"$messages" 2>/dev/null | tr -d '\r'
+	http "$1" "$proxy" POST "$messages_path" \
+		"{\"model\":\"${model:-probe}\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
 }
 
 scenario "Spend is attributed to the sender and to nobody else"
@@ -143,15 +157,21 @@ ceiling="$(jq -r '.tokenCeiling // empty' "$(spec_json)")"
 given "a token ceiling of ${ceiling:-none} in the spec"
 check "a ceiling is declared" yes "$([ -n "$ceiling" ] && echo yes || echo no)"
 when "$a sends requests until the proxy refuses"
-code=""
-for _ in $(seq 1 50); do
-	code="$(ask_model "$a")"
-	case "$code" in 429 | 401) break ;; esac
-done
-if [ "$code" = 401 ]; then
-	gated "the proxy answers 429 at the hard limit" "the endpoint refused the credential, so no spend reaches the ceiling; needs a real one"
+## Fifty requests of one token each spend a few thousand; a ceiling above
+## that is one this proof cannot reach and says so.
+if [ "${ceiling:-0}" -gt 5000 ]; then
+	gated "the proxy answers 429 at the hard limit" "the ceiling is $ceiling tokens; declare one under 5000 for this factory to reach it here"
 else
-	check "the proxy answers 429 at the hard limit" 429 "$code"
+	code=""
+	for _ in $(seq 1 50); do
+		code="$(ask_model "$a")"
+		case "$code" in 429 | 401) break ;; esac
+	done
+	if [ "$code" = 401 ]; then
+		gated "the proxy answers 429 at the hard limit" "the endpoint refused the credential, so no spend reaches the ceiling; needs a real one"
+	else
+		check "the proxy answers 429 at the hard limit" 429 "$code"
+	fi
 fi
 
 scenario "The machine's daemon substitutes and never fetches (ADR-025 point 5, ADR-057 point 6)"
