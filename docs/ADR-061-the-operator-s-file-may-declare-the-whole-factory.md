@@ -41,7 +41,13 @@ factory may carry `roles`, `workflows`, `resources`, `decider` and
 `catalogue`, with the schema `modules/schema.sh` already checks, key for
 key: `[factories.knot.roles.backend]`, `[[factories.knot.workflows.ship.stages]]`,
 `[factories.knot.resources]`. `decider.policy` and `catalogue` are still
-paths inside the repository, read at the commit. `services.fabriek.factories.<name>`
+paths inside the repository, read at the commit; both are optional as they
+are today, `policy` absent meaning the machine's rules alone (ADR-034
+point 5). A repository that declares nothing may still carry a
+catalogue directory the operator's declaration names, and its
+`default.nix` is evaluated by the machine's daemon as ADR-057 point 6
+has it: at the rev the operator moved to with `--update`, restricted,
+and by no other route. `services.fabriek.factories.<name>`
 gains the same as options, rendered into the file with nothing the file
 cannot say. One schema, one reader (`modules/operator-config.sh` for the
 file, `modules/repo-declaration.sh` for the repository's), one clamp.
@@ -54,17 +60,26 @@ carries `fabriek.toml` is refused, naming both places, before anything
 is written or booted. A factory with neither is refused as it is today.
 No merge, no precedence, no override: the person who wants the
 operator's declaration to win deletes the repository's, and the reverse.
+An operator whose specialists should reach a repository that declares
+its own roles uses the top-level `[specialists]`, `[skills]` and
+`catalogues`, which are the operator's and belong to no factory; the
+per-factory `catalogue` is the repository's own and counts as
+declaration.
 
 **3. The operator's file carries specialists and skills.**
-`[specialists.<name>]` with `extends`, `tools`, `skills`, `prompt`,
-`lsp`; `[skills.<name>]` with `tools` and `skill`. `prompt` and `skill`
-are a path to a file (a Markdown prompt, a `SKILL.md`) or the text
-itself. `tools` and `lsp` are nixpkgs attribute names, resolved against
-the machine's nixpkgs at render, which is what a catalogue's
-`default.nix` does with `pkgs`. The keys are ADR-042's schema, spelled in
-TOML; the reader refuses any other by name. `services.fabriek.specialists`
-and `.skills` are the same as options, a `prompt` or `skill` given as a
-path becoming a store path in the file.
+`[specialists.<name>]` with `extends`, `tools`, `skills` and `prompt`;
+`[skills.<name>]` with `tools` and `skill`. `prompt` and `skill` are a
+path to a file (a Markdown prompt, a `SKILL.md`) or the text itself.
+`tools` are nixpkgs attribute names, resolved against the machine's
+nixpkgs at render, which is what a catalogue's `default.nix` does with
+`pkgs`. No `lsp` here: a language server is pi-lsp's own object (ADR-043:
+`id`, `include`, `rootMarkers`, `bin` inside a package,
+`languageIdByExtension`), which a bare attribute name cannot say, so a
+specialist that brings one is a catalogue directory (point 4), where
+that shape already lives once. The keys are ADR-042's schema less that
+one, spelled in TOML; the reader refuses any other by name.
+`services.fabriek.specialists` and `.skills` are the same as options, a
+`prompt` or `skill` given as a path becoming a store path in the file.
 
 **4. What is not a nixpkgs attribute is a catalogue directory.** A tool
 built from a derivation of the operator's own, a specialist that needs
@@ -92,6 +107,15 @@ specialists into the same `compose` the catalogues use, from the
 credential's tables, and grants the paths to the evaluator on the search
 path (ADR-057 point 6). The appliance is unchanged: one image for every
 host (ADR-057 point 1), and a change to any of this is `down` and `up`.
+
+A declaration in the operator's file has no commit and no pin: an edit
+and an `up` change the factory with nothing to say what ran before.
+ADR-020 point 3a's reason, read from a commit and never a working tree,
+is kept by other means: `up` keeps the credential it wrote, the whole
+declaration included, under the factory's machine directory as
+`fabriek.toml.<time>` beside `runtime.json`, and `fabriek show -f`
+prints the declaration the running machine was given. A run's identity
+(ADR-057 point 7) is the image, that file and `profiles.json`.
 
 **7. `check`, `ls` and `show` read the operator's file too.** `fabriek
 check <factory>` resolves the declaration from wherever it is, refuses
@@ -136,7 +160,10 @@ Nothing a cage sees widens: a cage sees its profile's closure (nixcage
 ADR-014), and the profile carries the specialists' tools. A prompt in the
 operator's file is a prompt on the operator's own machine.
 
-`modules/schema.sh` is shared by both readers today and stays one.
+`modules/schema.sh` is shared by both readers today and stays one, and
+the closed schema (ADR-020 point 2) holds for the file as for the
+repository: nothing here reaches a package, a service, a bind or a
+kernel option of the machine, only what a role's profile is made of.
 `modules/operator-config.sh` grows the three tables and the refusals;
 `modules/catalogue.nix` takes TOML-declared specialists as a fourth
 source, the same attrset shape it builds from a directory. ADR-058's
@@ -156,7 +183,9 @@ docmeta-check docs && docmeta-tracker --check docs
 
 Scenarios, written first: the operator's file declaring a factory whole
 and `up` writing it into the credential; a factory declared in both
-places refused at `check` and at `up` naming both; each refusal of
+places refused at `check` and at `up` naming both; `up` keeping the
+credential it wrote beside `runtime.json` and `show -f` printing the
+declaration the machine runs; each refusal of
 point 8 as one line naming what was missing and what was offered; a TOML specialist
 composed with a shipped parent and its tool on a role's PATH
 (`catalogue.bats`, built for real); a TOML specialist named like a shipped
