@@ -147,8 +147,53 @@ file = "/home/me/.secrets/deepseek"   # holds the whole header value: "Bearer sk
 path = "/home/me/Src/acme"
 ```
 
-On NixOS the same file is declared instead of kept, and a factory can be
-brought up at boot (ADR-048):
+The same file may declare a factory whole, for a repository that carries
+no `fabriek.toml`, and specialists and skills of your own that any
+factory here may name (ADR-061). A factory declared in both places is
+refused naming both files; nothing merges.
+
+```toml
+# A specialist of your own: tools by nixpkgs attribute, a parent from the
+# shipped catalogue, a prompt as a path or as text. A language server is
+# a catalogue directory (catalogues = [...]), not a name.
+[specialists.rust]
+extends = ["developer"]
+tools = ["cargo", "rustc", "clippy"]
+skills = ["cargo-profile"]
+prompt = "/home/me/.config/fabriek/prompts/rust.md"
+
+[skills.cargo-profile]
+tools = ["cargo"]
+skill = "/home/me/.config/fabriek/skills/cargo-profile/SKILL.md"
+
+# A factory declared here, whole: the repository at path has no fabriek.toml.
+[factories.knot]
+path = "/home/me/Src/knot"
+
+[factories.knot.roles.backend]
+provides = ["build"]
+specialists = ["rust"]
+
+[factories.knot.roles.reviewer]
+provides = ["review"]
+specialists = ["reviewer"]
+
+[[factories.knot.workflows.ship.stages]]
+needs = "build"
+done = "cargo test passes and the change is reviewable"
+
+[[factories.knot.workflows.ship.stages]]
+needs = "review"
+verdict = true
+
+[factories.knot.resources]
+memory = "8G"
+cores = 4
+egress = ["api.anthropic.com"]
+```
+
+On NixOS the same file is declared instead of kept, key for key, and a
+factory can be brought up at boot (ADR-048):
 
 ```nix
 services.fabriek = {
@@ -156,8 +201,26 @@ services.fabriek = {
   caps = { memory = "16G"; cores = 8; egress = [ "api.anthropic.com" ]; };
   credentials."api.anthropic.com" = { header = "x-api-key"; file = "/run/secrets/anthropic"; };
   factories.acme = { path = "/srv/acme"; autoStart = true; };
+  specialists.rust = { extends = [ "developer" ]; tools = [ "cargo" "rustc" "clippy" ]; prompt = ./prompts/rust.md; };
+  factories.knot = {
+    path = "/srv/knot";
+    roles.backend = { provides = [ "build" ]; specialists = [ "rust" ]; };
+    roles.reviewer = { provides = [ "review" ]; specialists = [ "reviewer" ]; };
+    workflows.ship.stages = [
+      { needs = "build"; done = "cargo test passes and the change is reviewable"; }
+      { needs = "review"; verdict = true; }
+    ];
+    resources = { memory = "8G"; cores = 4; egress = [ "api.anthropic.com" ]; };
+  };
 };
 ```
+
+A path given for a prompt, a skill or a catalogue becomes a store path in
+the rendered file, and `fabriek up` puts every such path in the store and
+roots it, since the machine reads them through the host's store
+(ADR-057). `fabriek show -f knot` prints the declaration the running
+machine was given, which for a factory declared here is the credential
+`up` kept beside `runtime.json`.
 
 The module renders `/etc/fabriek/config.toml`, which the CLI reads when no
 personal file exists, and `fabriek-acme.service` runs `fabriek up acme` at

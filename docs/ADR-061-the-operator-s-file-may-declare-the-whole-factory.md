@@ -195,3 +195,26 @@ against the schema's keys so the two cannot drift. On a machine:
 `tests/manual/specialist.sh` against a factory declared in the operator's
 file with one specialist of its own, the cage answering for its tool and
 its heading in `APPEND_SYSTEM.md`. Recorded here when run.
+
+Implemented 2026-09-16, in six `[ADR-061]` commits from the schema
+(`dd5d1ba`) to the host module. On this host: `operator_config.bats`,
+`credential.bats`, `check.bats`, `vm_up.bats`, `render.bats`,
+`catalogue.bats` (the TOML specialist built for real, a tool nixpkgs lacks
+refused by name, a shipped name refused), `catalogue_cli.bats` and
+`host_module.bats` (a whole factory, specialists, skills and catalogues
+rendered and read back by the CLI's own reader, a path as a store path).
+On the appliance on a NixOS host, a factory `plain` declared whole in the
+proof's `cfg.toml` on a repository with no `fabriek.toml`, its one role
+naming a TOML specialist that extends `reviewer` with `tools = ["hello"]`
+and a prompt file: `fabriek check` composed it and said where it was
+declared; `fabriek up plain` rendered and prepared in 47s; the cage
+answered `hello` on its PATH, `## reviewer-strict` after `## reviewer` in
+`APPEND_SYSTEM.md` with the prompt's text under it; `fabriek show -f
+plain` printed the kept credential's `[declaration]`. Point 2's refusal
+held at `check` and at `up` for the example, which carries `fabriek.toml`,
+once a `roles` table was added to its entry.
+
+Two things found on the way and fixed in the same commits: a
+declaration allowing no endpoint stopped render at the model table
+(`read` on nothing under `set -e`), and the host module rendered a
+boolean as `1`.
