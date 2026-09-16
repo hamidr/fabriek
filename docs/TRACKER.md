@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 008
 
-**Next ADR number:** 061
+**Next ADR number:** 062
 
 ## PRDs
 
@@ -86,3 +86,4 @@ document, then regenerate.
 | [ADR-058](ADR-058-the-declaration-is-a-toml-file-at-the-repository-root.md) | The declaration is fabriek.toml at the repository root, and no expression of the repository's is evaluated to read it | implemented | -- | ADR-020, ADR-042, ADR-057 | fabriek.toml replaces fabriek.nix and the flake's fabriek output; read from the commit with git show and fromTOML |  |
 | [ADR-059](ADR-059-a-role-starts-from-the-forge-s-main.md) | A role's branch starts from the forge's main, and moves when its work has been merged | proposed | -- | ADR-010, ADR-032, ADR-036, ADR-054, ADR-057 | worktrees are cut from the clone's first HEAD and never move; cut and re-cut them from the forge's main instead |  |
 | [ADR-060](ADR-060-an-operator-s-catalogue-beside-fabriek-s-and-the-repository-s.md) | An operator's catalogue reaches the machine as store paths beside fabriek's and the repository's | proposed | -- | ADR-020, ADR-042, ADR-048, ADR-057, ADR-058 | operator catalogue directories reach the machine through the lower store; roles stay in the repository |  |
+| [ADR-061](ADR-061-the-operator-s-file-may-declare-the-whole-factory.md) | The operator's file may declare the whole factory, specialists and skills included, and a factory declared twice is refused | proposed | -- | ADR-020, ADR-042, ADR-048, ADR-057, ADR-058 | the operator file carries roles, workflows, specialists and skills; one declaration per factory, never in both places |  |

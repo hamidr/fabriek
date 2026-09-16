@@ -7,7 +7,7 @@ status_date: 2026-09-16
 summary: operator catalogue directories reach the machine through the lower store; roles stay in the repository
 depends_on: [ADR-020, ADR-042, ADR-048, ADR-057, ADR-058]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-061]
 ---
 
 ## Context
