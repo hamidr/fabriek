@@ -1,6 +1,6 @@
 # Architecture, as built
 
-What fabriek is on `main` as of 2026-09-14, read from the code rather than
+What fabriek is on `main` as of 2026-09-16, read from the code rather than
 from the decisions. Where an ADR's status and the code disagree, this file
 says what the code does and names the ADR. The decisions are ADR-033
 through ADR-044 and PRD-006; `docs/roadmap.md` says what of them is built
@@ -16,7 +16,7 @@ A factory is one git repository worked by a set of declared roles at the same
 time, each in a cage of its own, on a machine of its own. A role is a worker:
 a permanent uid, a permanent home and dataset, a signing key, a forge
 account with an issue-scoped token, a bus user (ADR-010, ADR-009, ADR-036,
-ADR-033). The repository declares its own factory (ADR-020, ADR-040), the
+ADR-033). The repository declares its own factory (ADR-020, ADR-058), the
 operator keeps one file saying what a factory may cost on this host, and
 fabriek builds one virtual machine per factory to run it in (ADR-019).
 
@@ -107,56 +107,88 @@ other host keeps the file by hand.
 
 ## The machine
 
-`fabriek up <factory>` writes a flake under the machine's directory whose
-inputs are this fabriek and the worked repository, pinned by rev in a lock
-that `--update` moves, plus `local.json` with the port, the key, both
-systems, the operator's ceilings and which header carries which endpoint's
-credential (`machine_flake` in `fabriek`). `lib.factory`
-(`modules/factory.nix`) validates and clamps the declaration inside a
-derivation by the same shell modules the CLI uses (`modules/machine-spec.sh`),
-composes each role's specialists from the catalogues into one derivation
-(`modules/catalogue.nix`, ADR-042) and realises it with the role's devShell
-inputs into a profile, bakes the decider's policy file, and hands the spec
-to `modules/vm.nix`. A bad declaration fails
-the build with its own message; what the clamp changed rides in the spec and
-is printed by `up`.
+One image for every factory (ADR-057): `lib.appliance`
+(`modules/appliance.nix`, `nix build .#machine`) builds the runner for
+this host around a machine of the host's architecture on Linux, with
+nothing of a factory, an operator or a host in it. `fabriek up <factory>`
+writes under the machine's directory the credential `fabriek.toml`
+(`modules/credential.sh`: the operator's `config.toml` projected for the
+factory, plus `[pin]` at the repository's HEAD, moved only by `-u`),
+`runtime.json` (memory and cores from the declaration at the pin clamped
+against the caps, the ssh port, the two credential files), and the two
+disks once; builds or fetches the appliance rooted at `appliance`; on a
+Linux host starts virtiofsd for the host's store; starts `microvm-run` in
+that directory. The runner's `extraArgsScript`, a script of the host's
+packages in the image, turns `runtime.json` into `-m`, `-smp`, a
+user-mode NIC with the port forwarded, and one `-fw_cfg` credential per
+file, so the machine finds `fabriek.toml` and `fabriek.authorized_keys`
+under `/run/credentials/@system/`.
+
+The host's `/nix/store` and its db are shared read-only into the machine
+at `/nix/.ro-host` as the lower layer of the machine's store, the
+machine's own builds land in the overlay on `store.img`, and
+`nix.settings.store` is the `local-overlay://` store over both, so a host
+path counts as valid to the daemon and to nixcage's closure query alike.
+
+Once the machine answers, `up` has it render the factory
+(`fabriek-container factory-render`): read the credential with the one
+TOML reader, clone the repository and fetch the pin (ADR-032), read
+`fabriek.toml` at that commit (ADR-058), clamp it (`machine-spec.sh`),
+and write under `/var/lib/fabriek/factory/` (`FABRIEK_ETC`) what the
+services include and the machine program reads: `declaration.json`,
+`rev`, `notes.json`, `bridge.json`, `proxy/endpoints.conf`,
+`endpoints.json`, `model.json`, `decider-policy.md`, `pi-decider/`, and
+per role `roles/<role>/profile` (a store path the machine's own daemon
+built from the repository at the pin with `modules/profile.nix`, under
+`--restrict-eval` and the URIs it may reach) and `roles/<role>/pi`
+(composed from the floor, `modules/factory-render.sh`); then
+`profiles.json`. It fills the bridge's `cages` set with `nft`, tightens
+the record's bound, and reloads the proxy. Then `up` gives the machine
+the credential for each endpoint the rendered factory reaches, runs
+`factory-prepare`, and roots on the host the profile paths the host
+holds. A bad declaration stops render with its own message, printed by
+`up`; what the clamp changed is printed too.
 
 The machine (`modules/machine/default.nix` and `modules/machine/`):
 
-- `bridge.nix`: `fabriek-<factory>` at 10.77.0.1/24, configured without
-  carrier; the decider at .2, roles at .10 onward in declaration order;
-  `/etc/fabriek/bridge.json` is the plan. A bridge-family nftables table
-  drops a packet whose source is not its port's address, drops IPv6 and ARP
-  claims, and drops cage to cage (ADR-037).
-- `board.nix`: Forgejo on the bridge, on a dataset bounded by `recordQuota`,
-  its tmpfiles rules re-run after the mount; a `forgejo` wrapper for the
-  machine program (ADR-036).
+- `bridge.nix`: `fabriek0` at 10.77.0.1/24, configured without carrier;
+  the plan (decider at .2, roles at .10 onward in name order) is
+  rendered by prepare, and the `cages` set is declared empty and filled
+  from it. A bridge-family nftables table drops a packet whose source is
+  not its port's address, drops IPv6 and ARP claims, and drops cage to
+  cage (ADR-037).
+- `board.nix`: Forgejo on the bridge, on a dataset with a default bound
+  render tightens to `recordQuota`, its tmpfiles rules re-run after the
+  mount; a `forgejo` wrapper for the machine program (ADR-036).
 - `bus.nix`: Valkey on the bridge, no persistence; `fabriek-bus-acl`
   runs `fabriek-container bus-acl`, whose rules (`modules/bus.sh`) make
   default-deny users from password files under the state directory, read
-  and write patterns kept apart per role (ADR-033).
-- `proxy.nix`: nginx with njs on the bridge, injecting the credential per
-  allowed host, counting tokens per source address in memory, answering
-  `/status`, refusing with 429 at `tokenCeiling` (ADR-037).
+  and write patterns kept apart per role (ADR-033); before render there
+  is no declaration and it applies nothing.
+- `proxy.nix`: nginx with njs on the bridge, including the ceiling and
+  the per-endpoint locations render wrote, injecting the credential per
+  endpoint from the headers in `endpoints.json`, counting tokens per
+  source address in memory, answering `/status`, refusing with 429 at the
+  ceiling (ADR-037).
 - `probes.nix`: bpftrace exec, exit and connect events, through
   `fabriek-container probes-publish` (`modules/probes.sh`), which names
   the role each uid belongs to by the uid primitive, to a capped `probes`
   stream, written as a user that can write nothing else (ADR-038).
-- `floor.nix`: pi on every cage; one pi directory per role under
-  `/etc/fabriek/roles/<role>/pi`, a store path carrying the loop, the
-  `pi-lsp` and `pi-codegraph` extensions, a `models.json` pointing pi at
-  the proxy, and from the role's profile the `APPEND_SYSTEM.md`, `skills/`
-  and `lsp.json` of its specialists; the decider's loop under
-  `/etc/fabriek/pi-decider`, one store path the same way (ADR-030,
-  ADR-035, ADR-042, ADR-043, ADR-049). A session names its profile and
-  its pi directory as store roots, so the cage sees their closure and
-  nothing else of the store (nixcage ADR-014).
-- `executor.nix`: the `fabriek-executor` unit, as root, restarted always.
+- `floor.nix`: pi on every cage, and the floor, one store path
+  (`FABRIEK_FLOOR`) with the loop's, `pi-lsp`'s and `pi-codegraph`'s
+  index files, the decider's loop and the role guidance (ADR-030,
+  ADR-035, ADR-042, ADR-043, ADR-049, ADR-054). A session names its
+  profile and the floor as store roots, so the cage sees their closure
+  and nothing else of the store (nixcage ADR-014).
+- `executor.nix`: the `fabriek-executor` unit, as root, restarted always,
+  waiting on `/run/fabriek/prepared`, which prepare writes last and per
+  boot (`models/vm-lifecycle.qnt` found the mark on the pool outliving
+  its credentials).
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
-root and the proxy may leave. The clamped declaration is at
-`/etc/fabriek/declaration.json`; the machine program reads it there and
-evaluates nothing.
+root and the proxy may leave. The machine program reads the rendered
+files and evaluates nothing of the repository's but a role's devShell and
+the catalogue, at the pin, restricted.
 
 ## Prepare
 
@@ -307,8 +339,12 @@ FABRIEK_PROOF_DIR=... tests/manual/specialist.sh   # needs a machine
 `tests/command/catalogue.bats` evaluates and builds `lib.catalogue` for
 real over the shipped catalogue and one each scenario writes: the flattening,
 every refusal, and what a built role carries (`bin/`, `APPEND_SYSTEM.md`,
-`skills/`, `lsp.json`, `tests.json`). `factory_flake.bats` and
-`machine_services.bats` evaluate `lib.factory` on fixture repositories.
+`skills/`, `lsp.json`, `tests.json`). `machine_services.bats` evaluates
+`lib.appliance` for this host and exercises the runtime args script;
+`render.bats` drives `factory-render` with `nix build`, `nft`,
+`systemctl` and `nixcage-container` stubbed and the real nix for the
+TOML reader; `factory_render.bats` and `credential.bats` drive the
+renderers and the credential writer.
 
 `tests/system/journey.sh` runs the factory as a system with no cage and no
 model: Valkey and a forge on localhost, `factory-prepare` and `bus-acl` on

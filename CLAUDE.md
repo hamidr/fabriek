@@ -20,9 +20,10 @@ the TUI). ADR-018 is that decision; ADR-033 through ADR-040 and PRD-006 are
 the design; `docs/architecture.md` is what is built; `docs/roadmap.md` is
 what is left; `docs/TRACKER.md` indexes the rest.
 
-A factory is declared in the repository it works (ADR-020) and built into its
-machine's image from a per-factory lock (ADR-040). The operator keeps one
-plain file saying what a factory may cost here. Nothing a cage does is
+A factory is declared in the repository it works (ADR-020, ADR-058, as
+`fabriek.toml`) and handed to one appliance image at boot as a credential
+(ADR-057); the machine renders it and builds each role's toolchain itself.
+The operator keeps one plain file saying what a factory may cost here. Nothing a cage does is
 trusted: the executor validates every verb, the proxy counts the spend, and a
 cage has no route off the machine (ADR-037).
 
@@ -97,7 +98,11 @@ A change to what a role session is shows up there as a diff.
   is at most sixty-four characters; `decider` is reserved.
   `factory/src/names.ts` mirrors it: a change to the alphabet lands in both.
 - `modules/*.sh`: what the two programs source by store path.
-  `machine-spec.sh` composes a machine's spec inside the build;
+  `machine-spec.sh` clamps a declaration against the caps, on the host to
+  size the machine and on the machine at render; `factory-render.sh`
+  renders the plan, the proxy, the models and the pi directories from the
+  declaration and builds a profile per role; `credential.sh` writes the
+  credential a machine boots with;
   `machine-plan.sh` reads the plan and the profiles the build put on the
   machine and composes the actor's part of a session; `forge.sh` and
   `bus.sh` prepare the forge and the bus once and confirm them after;
@@ -114,14 +119,15 @@ A change to what a role session is shows up there as a diff.
   host (ADR-048): the operator's `config.toml` rendered to `/etc`, read by
   the CLI when no personal file exists, and a unit per factory with
   `autoStart`.
-- `modules/factory.nix`: `lib.factory`, one factory's machine from the
-  repository it works and the facts only the host knows (ADR-040). Validation
-  and the clamp run inside a derivation by the same shell modules.
-  `modules/catalogue.nix`: `lib.catalogue`, the specialists and skills of
-  every catalogue and `compose` for one role (ADR-042).
+- `modules/appliance.nix`: `lib.appliance`, the one machine every factory
+  runs in, per guest and host system (ADR-057); `nix build .#machine`.
+  `modules/profile.nix`: one role's profile, built by the machine's daemon
+  at render from the repository at the pin. `modules/catalogue.nix`:
+  `lib.catalogue`, the specialists and skills of every catalogue and
+  `compose` for one role (ADR-042).
 - `modules/vm.nix`, `modules/machine/default.nix`, `modules/machine/*.nix`: the machine
-  (ADR-019): nixcage's host module inside it, a ZFS pool named after the
-  factory, and one module per service: `bridge.nix` (the private network and
+  (ADR-019): nixcage's host module inside it, a ZFS pool, the host's store
+  as the lower layer of its own, and one module per service: `bridge.nix` (the private network and
   its two rules), `board.nix` (Forgejo), `bus.nix` (Valkey and its ACL),
   `proxy.nix` (the counting proxy), `probes.nix`, `floor.nix` (pi and the
   loops), `executor.nix`. `machine/spend.js` is the proxy's njs token
@@ -175,8 +181,9 @@ by its compiled path under `factory/dist`.
 drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `nix` and `ssh`, `seam.bats` stubs `nixcage-container`, `prepare.bats` stubs
 the forge, `operator.bats`, `bus_acl.bats` and `probes.bats` stub `valkey-cli`;
-`factory_flake.bats` and `machine_services.bats` evaluate `lib.factory` for
-real, `host_module.bats` evaluates `nixosModules.host` for real, and
+`render.bats` stubs `nix build`, `nft` and `systemctl` around the real
+TOML reader; `machine_services.bats` evaluates `lib.appliance` for real,
+`host_module.bats` evaluates `nixosModules.host` for real, and
 `catalogue.bats` evaluates and builds `lib.catalogue` for real.
 The package's tests
 drive each core against fakes of its interfaces and each adapter against a

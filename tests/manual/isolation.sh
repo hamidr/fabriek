@@ -150,5 +150,14 @@ else
 	check "the proxy answers 429 at the hard limit" 429 "$code"
 fi
 
+scenario "The machine's daemon substitutes and never fetches (ADR-025 point 5, ADR-057 point 6)"
+when "the machine is asked for a path the cache has, and for a derivation that fetches"
+check "a host path is valid to the machine's store, through the overlay" "yes" \
+	"$(sshm "nix-store --query --requisites /run/current-system | head -1 | grep -q /nix/store && echo yes")"
+check "a fixed-output derivation does not build here" "refused" \
+	"$(sshm 'nix build --no-link --impure --expr "builtins.fetchurl { url = \"https://example.com/\"; sha256 = \"0000000000000000000000000000000000000000000000000000\"; }" >/dev/null 2>&1 && echo built || echo refused')"
+check "a second render substituted nothing" 0 \
+	"$(sshm 'fabriek-container factory-render 2>&1 | grep -c "copying path"')"
+
 bash fabriek down "$F"
 exit "$fail"

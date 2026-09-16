@@ -1,9 +1,9 @@
 ---
 id: ADR-057
 title: The machine is built once as an appliance, and a factory arrives as TOML at start
-status: proposed
+status: implemented
 date: 2026-09-15
-status_date: 2026-09-15
+status_date: 2026-09-16
 summary: one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles
 depends_on: [ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042]
 supersedes: [ADR-040, ADR-041]
@@ -264,9 +264,9 @@ is good before paying for a boot.
 
 An operator's host runs Nix once, to build or fetch the appliance, and
 against the worked repository only for `check`. A factory on a second host
-is the same image and a different file. `services.fabriek` (ADR-048)
-renders the four credentials per factory instead of a flake, and its
-unit starts the runner with them.
+is the same image and a different file. `services.fabriek` (ADR-048) is
+unchanged: its unit runs `fabriek up`, which writes the credential and
+starts the runner, so a NixOS host declares nothing new.
 
 The first `up` of a factory is slower than a boot: the toolchain is
 substituted on the machine over the user-mode NIC rather than on the
@@ -351,3 +351,28 @@ against the last ADR-040 build's, and the time of `ls -R` over a
 thousand-path closure on `/nix/.ro-store` per share protocol, are
 recorded beside the result in `docs/roadmap.md`; the claim is only that
 it is once, and that 9p is bearable where virtiofs is absent.
+
+## Verification
+
+Implemented 2026-09-16, in nine commits from `a01189d` (the lifecycle
+model) to the record. On this host: `models/vm-lifecycle.qnt` green
+(`quint run --invariant=allInvariants --max-steps=60 --max-samples=5000`)
+with every witness reached; `machine_services.bats` (16) evaluates
+`lib.appliance` and runs the runtime args script; `factory_render.bats`
+(9) and `credential.bats` (3) drive the renderers and the credential
+writer; `render.bats` (11) drives `factory-render` end to end with `nix
+build`, `nft`, `systemctl` and `nixcage-container` stubbed and the real
+TOML reader; `vm_up.bats` (23) drives `up`, `-u`, `show -f` and the
+order on the wire; `prepare.bats` and `seam.bats` follow the mark under
+`/run` and the floor as a root; `bus_acl.bats` the verb before a
+declaration. `lib.factory`, `modules/factory.nix`, the per-factory flake
+and `factory_flake.bats` are gone.
+
+Not run, and said so: the measurement plan above needs a machine
+(roadmap 6.9). Two things in it are claims this host cannot check:
+`local-overlay-store` over a shared db on nix 2.34.8 (the fallback is
+named in point 1a), and qemu taking the last `-m` and `-smp`. One thing
+the appliance's build found on the way: the linux builder on this host
+has a corrupted store and cannot build `pi-lsp` today, so the floor is
+asserted by its build command's text here and built where the appliance
+is.

@@ -289,6 +289,17 @@ One package, built through the flake, tests in its own runner.
 - 6.7 `resources.concurrency`. Done 2026-09-15 (ADR-055): the ceiling on
   tasks in flight, held by the executor, told to the decider, and the
   divisor for every cage; absent means the role count.
+- 6.9 ADR-057's measurement plan on a machine: the runtime line takes
+  effect (`MemTotal`, `nproc`, both credentials under
+  `/run/credentials/@system`), a second `up` copies no path, a fresh
+  factory on a Linux host copies no path the host holds, nixcage's
+  closure query answers for a host path through the overlay store, and
+  `ls -R` over a thousand-path closure per share protocol is timed.
+  `tests/manual/isolation.sh` gained the daemon's two probes. Everything
+  else of ADR-057 is asserted on this host by `machine_services.bats`,
+  `render.bats`, `vm_up.bats`, `factory_render.bats` and
+  `credential.bats`. Not run as of 2026-09-16: no Linux host here, and
+  `local-overlay-store` over a shared db is unproven.
 - 6.8 `tests/manual/host-autostart.sh` passes on a NixOS host (ADR-048):
   the unit active after boot, `fabriek ps` by hand seeing its machine, and
   both agreeing across a stop and a start. Everything else of ADR-048 is

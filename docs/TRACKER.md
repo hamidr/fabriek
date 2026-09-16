@@ -4,7 +4,7 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-15
+**Generated:** 2026-09-16
 
 **Next PRD number:** 008
 
@@ -82,5 +82,5 @@ document, then regenerate.
 | [ADR-054](ADR-054-a-role-is-told-about-the-cage-in-its-system-prompt.md) | A role is told about the cage in its system prompt, and reads the repository's guidance from its worktree | implemented | -- | ADR-030, ADR-035, ADR-042, ADR-050 | role-guidance.md is the front of every role's APPEND_SYSTEM.md; the actor reads docs/factory-guidance.md into the brief |  |
 | [ADR-055](ADR-055-concurrency-is-the-ceiling-on-tasks-in-flight.md) | concurrency is the ceiling on tasks in flight, held by the executor and used to size every cage | implemented | -- | ADR-019, ADR-020, ADR-034, ADR-053 | assign is refused past resources.concurrency; a cage is sized by it; absent, it is the role count |  |
 | [ADR-056](ADR-056-a-factory-keeps-its-lessons.md) | A factory keeps its lessons, and a session's failure meets what failed before | proposed | -- | ADR-035, ADR-037, ADR-038, ADR-044, ADR-048, ADR-050, ADR-051 | an uncaged lessons service on the machine records failures and observed fixes; a failed call is answered with them |  |
-| [ADR-057](ADR-057-the-machine-is-an-appliance-and-a-factory-arrives-as-toml.md) | The machine is built once as an appliance, and a factory arrives as TOML at start | proposed | -- | ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042 | one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles |  |
+| [ADR-057](ADR-057-the-machine-is-an-appliance-and-a-factory-arrives-as-toml.md) | The machine is built once as an appliance, and a factory arrives as TOML at start | implemented | -- | ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042 | one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles |  |
 | [ADR-058](ADR-058-the-declaration-is-a-toml-file-at-the-repository-root.md) | The declaration is fabriek.toml at the repository root, and no expression of the repository's is evaluated to read it | implemented | -- | ADR-020, ADR-042, ADR-057 | fabriek.toml replaces fabriek.nix and the flake's fabriek output; read from the commit with git show and fromTOML |  |
