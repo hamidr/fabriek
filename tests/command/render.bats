@@ -269,7 +269,7 @@ teardown() {
     "parts": { "locked": { "type": "github", "owner": "hercules-ci", "repo": "flake-parts",
       "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993", "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=" } },
     "pkgs": { "locked": { "type": "git", "url": "https://example.invalid/pkgs.git",
-      "rev": "aaaa", "narHash": "sha256-AAAA=" } },
+      "rev": "aaaa", "narHash": "sha256-AA/A+A=" } },
     "root": { "inputs": { "parts": "parts", "pkgs": "pkgs" } } },
   "root": "root", "version": 7 }
 JSON
@@ -279,7 +279,7 @@ JSON
 	run_fabriek_container factory-render
 	assert_success
 	run cat "$CALLS/nix-build"
-	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AAAA%3D "
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AA/A%2BA%3D "
 }
 
 @test "a declaration the schema refuses stops render naming the key, before anything is written" {

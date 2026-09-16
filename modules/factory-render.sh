@@ -196,7 +196,9 @@ fabriek_profile_allowed_uris() {
 	printf '%s\n' "git+file://$clone"
 	## nix asks for a locked input by its reference with the narHash as a
 	## query, and an allowed prefix admits a subdirectory but not a query,
-	## so the entry is spelled as nix will ask for it.
+	## so the entry is spelled as nix will ask for it: the hash encoded as
+	## nix encodes a query value, which keeps : @ / ? beyond the unreserved
+	## set and encodes + and =.
 	if lock="$(git -C "$clone" show "$rev:flake.lock" 2>/dev/null)"; then
 		printf '%s' "$lock" | jq -r '
 		  .nodes | to_entries[] | .value.locked // empty
@@ -205,7 +207,7 @@ fabriek_profile_allowed_uris() {
 		     elif .type == "git" then .url
 		     elif .type == "tarball" then .url
 		     else empty end) as $ref
-		  | if .narHash then "\($ref)\(if ($ref | contains("?")) then "&" else "?" end)narHash=\(.narHash | @uri)" else $ref end' | sort -u
+		  | if .narHash then "\($ref)\(if ($ref | contains("?")) then "&" else "?" end)narHash=\(.narHash | @uri | gsub("%2F"; "/") | gsub("%3A"; ":") | gsub("%40"; "@") | gsub("%3F"; "?"))" else $ref end' | sort -u
 	fi
 }
 

@@ -52,14 +52,27 @@ let
   ## repository has one (ADR-016); a repository with no flake, or no
   ## default, is a role with its specialists alone. A named shell the flake
   ## lacks is a refusal naming the role.
+  ## Asked with hasAttr and not with `or`: `or` also swallows an error in
+  ## evaluating the attribute, and a refused fetch of the flake's input
+  ## then reads as a devShell the repository does not define (measured
+  ## 2026-09-16).
   shells =
-    if builtins.pathExists "${source}/flake.nix" then project.devShells.${system} or { } else { };
+    if
+      builtins.pathExists "${source}/flake.nix" && project ? devShells && project.devShells ? ${system}
+    then
+      project.devShells.${system}
+    else
+      { };
   devShell =
     if shell != null then
-      shells.${shell}
-        or (throw "role ${role} names devShell ${shell}, which the repository does not define for ${system}")
+      if shells ? ${shell} then
+        shells.${shell}
+      else
+        throw "role ${role} names devShell ${shell}, which the repository does not define for ${system}"
+    else if shells ? default then
+      shells.default
     else
-      shells.default or null;
+      null;
   inputs =
     if devShell == null then
       [ ]
