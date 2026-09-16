@@ -8,7 +8,7 @@ document, then regenerate.
 
 **Next PRD number:** 008
 
-**Next ADR number:** 059
+**Next ADR number:** 060
 
 ## PRDs
 
@@ -84,3 +84,4 @@ document, then regenerate.
 | [ADR-056](ADR-056-a-factory-keeps-its-lessons.md) | A factory keeps its lessons, and a session's failure meets what failed before | proposed | -- | ADR-035, ADR-037, ADR-038, ADR-044, ADR-048, ADR-050, ADR-051 | an uncaged lessons service on the machine records failures and observed fixes; a failed call is answered with them |  |
 | [ADR-057](ADR-057-the-machine-is-an-appliance-and-a-factory-arrives-as-toml.md) | The machine is built once as an appliance, and a factory arrives as TOML at start | implemented | -- | ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042 | one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles |  |
 | [ADR-058](ADR-058-the-declaration-is-a-toml-file-at-the-repository-root.md) | The declaration is fabriek.toml at the repository root, and no expression of the repository's is evaluated to read it | implemented | -- | ADR-020, ADR-042, ADR-057 | fabriek.toml replaces fabriek.nix and the flake's fabriek output; read from the commit with git show and fromTOML |  |
+| [ADR-059](ADR-059-a-role-starts-from-the-forge-s-main.md) | A role's branch starts from the forge's main, and moves when its work has been merged | proposed | -- | ADR-010, ADR-032, ADR-036, ADR-054, ADR-057 | worktrees are cut from the clone's first HEAD and never move; cut and re-cut them from the forge's main instead |  |
