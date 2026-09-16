@@ -224,7 +224,10 @@ fabriek_profile_build() {
 	expr="$expr system = $(fabriek_nix_string "$system"); role = $(fabriek_nix_string "$role");"
 	expr="$expr specialists = builtins.fromJSON $(fabriek_nix_string "$specialists");"
 	expr="$expr shell = $shell; catalogue = $catalogue; }"
+	## The URIs let getFlake fetch the clone and fabriek; importing
+	## profile.nix out of fabriek by path is a file access, which restricted
+	## mode grants to the search path and to nothing else.
 	nix build --no-link --print-out-paths --impure \
-		--restrict-eval --allowed-uris "${uris% }" \
+		--restrict-eval --allowed-uris "${uris% }" -I "$self" \
 		--expr "$expr"
 }

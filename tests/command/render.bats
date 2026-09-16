@@ -218,6 +218,10 @@ teardown() {
 	run cat "$CALLS/nix-build"
 	assert_line --index 0 --partial '--restrict-eval'
 	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme path:$FABRIEK_SELF"
+	# An allowed URI lets getFlake fetch fabriek; importing profile.nix out
+	# of it by path is a file access, which restricted mode grants to the
+	# search path and nothing else (measured 2026-09-16).
+	assert_line --index 0 --partial "-I $FABRIEK_SELF "
 	assert_line --index 0 --partial "rev = \"$REV\""
 	assert_line --index 0 --partial 'role = "builder"'
 	assert_line --index 0 --partial 'shell = "backend"'
