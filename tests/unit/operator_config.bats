@@ -344,3 +344,137 @@ TOML
 	run fabriek_operator_config_path
 	assert_output "$own"
 }
+
+# ADR-061: the operator's file may declare a factory whole, in fabriek.toml's
+# own words, and specialists and skills of the operator's own.
+@test "a factory declared whole in the operator's file is read as a declaration, named after the factory" {
+	cat >"$CONFIG" <<'TOML'
+[caps]
+memory = "16G"
+
+[factories.knot]
+path = "/home/me/Src/knot"
+
+[factories.knot.roles.backend]
+provides = ["build"]
+specialists = ["developer"]
+
+[[factories.knot.workflows.ship.stages]]
+needs = "build"
+done = "tests pass"
+
+[factories.knot.resources]
+memory = "8G"
+TOML
+	run fabriek_operator_declaration "$CONFIG" knot
+	assert_success
+	run jq -c '{name, roles: (.roles | keys), stages: [.workflows.ship.stages[].needs], memory: .resources.memory}' <<<"$output"
+	assert_output '{"name":"knot","roles":["backend"],"stages":["build"],"memory":"8G"}'
+}
+
+@test "a factory with only a path declares nothing here, which is said as absence and not as a fault" {
+	run fabriek_operator_declaration "$CONFIG" acme
+	assert_failure 2
+	assert_output ""
+}
+
+@test "a factory declared whole is held to the declaration's own schema, by name" {
+	cat >"$CONFIG" <<'TOML'
+[factories.knot]
+path = "/home/me/Src/knot"
+
+[factories.knot.roles.backend]
+provides = ["build"]
+colour = "blue"
+TOML
+	run fabriek_operator_declaration "$CONFIG" knot
+	assert_failure 1
+	assert_output --partial "factory knot: role backend: unknown key colour"
+}
+
+@test "the operator's specialists and skills are read, a prompt or a skill file by path or as text" {
+	printf '# Strict\n' >"$TEST_TEMP_DIR/strict.md"
+	cat >"$CONFIG" <<TOML
+catalogues = ["$TEST_TEMP_DIR"]
+
+[factories.acme]
+path = "/home/me/Src/acme"
+
+[specialists.reviewer-strict]
+extends = ["reviewer"]
+tools = ["semgrep"]
+skills = ["taint-review"]
+prompt = "$TEST_TEMP_DIR/strict.md"
+
+[specialists.rust]
+extends = ["developer"]
+tools = ["cargo"]
+prompt = """
+You write Rust.
+"""
+
+[skills.taint-review]
+tools = ["semgrep"]
+skill = "$TEST_TEMP_DIR/strict.md"
+TOML
+	local specialists
+	specialists="$(fabriek_operator_specialists "$CONFIG")"
+	run jq -c '."reviewer-strict" | {extends, tools, skills, prompt}' <<<"$specialists"
+	assert_output "{\"extends\":[\"reviewer\"],\"tools\":[\"semgrep\"],\"skills\":[\"taint-review\"],\"prompt\":\"$TEST_TEMP_DIR/strict.md\"}"
+	run jq -r '.rust.prompt' <<<"$specialists"
+	assert_output "You write Rust."
+	run fabriek_operator_skills "$CONFIG"
+	assert_success
+	run jq -r '."taint-review".tools[0]' <<<"$output"
+	assert_output semgrep
+	run fabriek_operator_catalogues "$CONFIG"
+	assert_output "$TEST_TEMP_DIR"
+}
+
+@test "a specialist's key nothing knows, lsp among them, is refused by name" {
+	cat >"$CONFIG" <<'TOML'
+[factories.acme]
+path = "/home/me/Src/acme"
+
+[specialists.rust]
+tools = ["cargo"]
+lsp = ["rust-analyzer"]
+prompt = "text"
+TOML
+	run fabriek_operator_config "$CONFIG"
+	assert_failure
+	assert_output --partial "specialist rust: unknown key lsp"
+}
+
+@test "a prompt, a skill file or a catalogue that is a path nothing is at is refused by name" {
+	cat >"$CONFIG" <<'TOML'
+catalogues = ["/nowhere/catalogue"]
+
+[factories.acme]
+path = "/home/me/Src/acme"
+
+[specialists.rust]
+prompt = "/nowhere/rust.md"
+
+[skills.cargo-profile]
+skill = "/nowhere/SKILL.md"
+TOML
+	run fabriek_operator_config "$CONFIG"
+	assert_failure
+	assert_output --partial "specialist rust: /nowhere/rust.md does not exist"
+	assert_output --partial "skill cargo-profile: /nowhere/SKILL.md does not exist"
+	assert_output --partial "catalogue /nowhere/catalogue does not exist"
+}
+
+@test "a specialist or a skill whose name is not a usable name is refused" {
+	cat >"$CONFIG" <<'TOML'
+[factories.acme]
+path = "/home/me/Src/acme"
+
+[specialists."Bad Name"]
+prompt = "text"
+TOML
+	run fabriek_operator_config "$CONFIG"
+	assert_failure
+	assert_output --partial "Bad Name"
+}

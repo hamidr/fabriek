@@ -40,11 +40,19 @@ fabriek_operator_config_path() {
 fabriek_operator_config_program() {
 	printf 'def capFields: %s;\n' "$(fabriek_resource_field_names_json)"
 	cat <<'JQ'
+## A factory's entry is its path, and may be the whole declaration in
+## fabriek.toml's own words (ADR-061 point 1), which the declaration's
+## own schema checks once the entry is one. Specialists and skills are
+## ADR-042's keys spelled in TOML, less lsp, which a bare name cannot say.
 def schema:
-  { top: ["caps", "factories", "credentials", "models"]
-  , factory: ["path"]
+  { top: ["caps", "factories", "credentials", "models", "specialists", "skills", "catalogues"]
+  , factory: ["path", "roles", "workflows", "resources", "decider", "catalogue"]
   , credential: ["header", "file"]
+  , specialist: ["extends", "tools", "skills", "prompt"]
+  , skill: ["tools", "skill"]
   };
+def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") | any)
+  then ["\($what) must be a list of names"] else [] end;
 
 . as $c
 | [
@@ -57,6 +65,25 @@ def schema:
          (if ($v.path? | type) != "string" or ($v.path | length) == 0
           then ["factory \($f): is registered here with no path"] else [] end)
        ] | cat) | cat),
+    ((if ($c.specialists | type) == "object" then $c.specialists else {} end)
+     | to_entries | map(
+       .key as $n | .value as $v |
+       [ unknown($v; schema.specialist; "specialist \($n)"),
+         (if $v.extends? then names($v.extends; "specialist \($n): extends") else [] end),
+         (if $v.tools? then names($v.tools; "specialist \($n): tools") else [] end),
+         (if $v.skills? then names($v.skills; "specialist \($n): skills") else [] end),
+         (if ($v.prompt? // null) != null and ($v.prompt | type) != "string"
+          then ["specialist \($n): prompt must be a path or text"] else [] end)
+       ] | cat) | cat),
+    ((if ($c.skills | type) == "object" then $c.skills else {} end)
+     | to_entries | map(
+       .key as $n | .value as $v |
+       [ unknown($v; schema.skill; "skill \($n)"),
+         (if $v.tools? then names($v.tools; "skill \($n): tools") else [] end),
+         (if ($v.skill? | type) != "string" or ($v.skill | length) == 0
+          then ["skill \($n): names no SKILL.md, by path or as text"] else [] end)
+       ] | cat) | cat),
+    (if ($c.catalogues? // null) != null then names($c.catalogues; "catalogues") else [] end),
     ((if ($c.credentials | type) == "object" then $c.credentials else {} end)
      | to_entries | map(
        .key as $e | .value as $v |
@@ -106,6 +133,47 @@ fabriek_operator_config() {
 		echo "fabriek: $file registers $factory, which is not a usable factory name" >&2
 		failed=1
 	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | keys[]?')
+
+	## A factory declared whole here is held to the declaration's own
+	## schema (ADR-061 point 1), so a role's mistake is named as the
+	## repository's would be.
+	while IFS= read -r factory; do
+		[ -n "$factory" ] || continue
+		fabriek_operator_declaration_of "$json" "$factory" >/dev/null 2>"$file.err" && continue
+		sed "s/^fabriek: /fabriek: factory $factory: /" "$file.err" >&2
+		failed=1
+	done < <(printf '%s' "$json" | jq -r '(.factories // {}) | to_entries[] | select(.value | has("roles") or has("workflows") or has("resources") or has("decider") or has("catalogue")) | .key')
+	rm -f "$file.err"
+
+	## The operator's specialists and skills (ADR-061 point 3): names in
+	## the alphabet a catalogue directory would be, and a prompt, a skill
+	## file or a catalogue given as a path at a path that is there. A value
+	## that starts with / is a path; anything else is the text itself.
+	local name value
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		fabriek_name_ok "$name" && continue
+		echo "fabriek: $file declares a specialist or skill named $name, which is not a usable name" >&2
+		failed=1
+	done < <(printf '%s' "$json" | jq -r '((.specialists // {}) | keys[]?), ((.skills // {}) | keys[]?)')
+	while IFS=$'\t' read -r name value; do
+		[ -n "$value" ] || continue
+		case "$value" in
+		/*) [ -f "$value" ] || {
+			echo "fabriek: $name: $value does not exist" >&2
+			failed=1
+		} ;;
+		esac
+	done < <(printf '%s' "$json" | jq -r '
+	  ((.specialists // {}) | to_entries[] | select(.value.prompt) | "specialist \(.key)\t\(.value.prompt)"),
+	  ((.skills // {}) | to_entries[] | select(.value.skill) | "skill \(.key)\t\(.value.skill)")')
+	while IFS= read -r value; do
+		[ -n "$value" ] || continue
+		[ -d "$value" ] || {
+			echo "fabriek: catalogue $value does not exist" >&2
+			failed=1
+		}
+	done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[]')
 
 	## A credential is keyed by the endpoint it opens and carried in a named
 	## header, and both reach somewhere that would otherwise have to escape
@@ -190,4 +258,46 @@ fabriek_operator_models() {
 	local json
 	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq '.models // {}'
+}
+
+## A factory's declaration from the operator's file (ADR-061 point 1): the
+## entry less what is the register's (path, autoStart), named after the
+## factory, validated as the repository's would be. Prints the expanded
+## declaration; returns 2, printing nothing, when the entry is a path and
+## no more, which is a factory declared elsewhere and not a fault.
+##
+## fabriek_operator_declaration_of <config.json> <factory>
+fabriek_operator_declaration_of() {
+	local json="$1" factory="$2" entry
+	entry="$(printf '%s' "$json" | jq -c --arg f "$factory" '.factories[$f] // {} | del(.path, .autoStart)')"
+	[ "$entry" != "{}" ] || return 2
+	printf '%s' "$entry" | jq --arg f "$factory" '. + {name: $f}' | fabriek_declaration_validate
+}
+
+## fabriek_operator_declaration <config.toml> <factory>: the same, from the file.
+fabriek_operator_declaration() {
+	local json
+	json="$(fabriek_operator_config "$1")" || return 1
+	fabriek_operator_declaration_of "$json" "$2"
+}
+
+## The operator's own specialists, skills and catalogue directories
+## (ADR-061 points 3 and 4). None is none.
+fabriek_operator_specialists() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq '.specialists // {}'
+}
+
+fabriek_operator_skills() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq '.skills // {}'
+}
+
+## One directory per line.
+fabriek_operator_catalogues() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq -r '(.catalogues // [])[]'
 }
