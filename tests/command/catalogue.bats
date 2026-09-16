@@ -34,11 +34,15 @@ skill() {
 ## One attribute of lib.catalogue over the shipped catalogue and the
 ## scenario's, as JSON. The channel warning is noise on every impure
 ## evaluation and is dropped.
+## The operator's TOML-declared specialists and skills (ADR-061 point 3),
+## as the credential's JSON, handed to the catalogue as `declared`.
+DECLARED='{ specialists = { }; skills = { }; }'
+
 catalogue_eval() {
 	nix eval --json --impure --expr "
 	  let flake = builtins.getFlake \"path:$FABRIEK_ROOT\";
 	      pkgs = flake.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
-	      cat = flake.lib.catalogue { inherit pkgs; extra = [ $EXTRA ]; };
+	      cat = flake.lib.catalogue { inherit pkgs; extra = [ $EXTRA ]; declared = $DECLARED; };
 	  in $1" \
 		2> >(grep -v -e 'Nix search path entry' >&2)
 }
@@ -48,7 +52,7 @@ catalogue_build() {
 	nix build --no-link --print-out-paths --impure --expr "
 	  let flake = builtins.getFlake \"path:$FABRIEK_ROOT\";
 	      pkgs = flake.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
-	      cat = flake.lib.catalogue { inherit pkgs; extra = [ $EXTRA ]; };
+	      cat = flake.lib.catalogue { inherit pkgs; extra = [ $EXTRA ]; declared = $DECLARED; };
 	  in $1" \
 		2> >(grep -v -e 'Nix search path entry' >&2)
 }
@@ -223,4 +227,49 @@ description: the first' ''
 	run catalogue_eval 'cat.skillsDescribed.tdd.description'
 	assert_success
 	assert_output --partial "failing test first"
+}
+
+# ADR-061 point 3: a specialist or a skill declared in the operator's file,
+# tools by nixpkgs attribute, a prompt or a SKILL.md by path or as text,
+# composes like one from a directory and is refused like one.
+@test "a specialist declared in TOML composes with a shipped parent, its tools on PATH and its prompt under its heading" {
+	printf -- '---\nname: profile\ndescription: profiles it\n---\n\n# Profile\n' >"$TEST_TEMP_DIR/SKILL.md"
+	DECLARED="builtins.fromJSON ''{
+	  \"specialists\": { \"strict\": { \"extends\": [\"reviewer\"], \"tools\": [\"hello\"], \"skills\": [\"profile\"], \"prompt\": \"Be strict.\" } },
+	  \"skills\": { \"profile\": { \"tools\": [\"cowsay\"], \"skill\": \"$TEST_TEMP_DIR/SKILL.md\" } } }''"
+	run catalogue_eval '(cat.compose { role = "reviewer"; specialists = [ "strict" ]; }).order'
+	assert_success
+	assert_output '["committer","reviewer","strict"]'
+	run catalogue_build 'cat.compose { role = "reviewer"; specialists = [ "strict" ]; }'
+	assert_success
+	out="$output"
+	[ -x "$out/bin/hello" ]
+	[ -x "$out/bin/cowsay" ]
+	run grep -A2 '^## strict$' "$out/share/fabriek/specialist/APPEND_SYSTEM.md"
+	assert_line --index 1 "Be strict."
+	[ -f "$out/share/fabriek/specialist/skills/profile/SKILL.md" ]
+	run catalogue_eval 'cat.skillsDescribed.profile.description'
+	assert_output '"profiles it"'
+}
+
+@test "a TOML specialist naming a tool nixpkgs lacks, a parent or a skill nothing has, is refused by name" {
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"tools\": [\"no-such-package-xyz\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
+	assert_failure
+	assert_output --partial "specialist x: tool no-such-package-xyz is not a package of nixpkgs"
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"extends\": [\"nobody\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
+	assert_failure
+	assert_output --partial "specialist x extends nobody, which no catalogue declares"
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"skills\": [\"nothing\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
+	assert_failure
+	assert_output --partial "specialist x names skill nothing, which no catalogue declares"
+}
+
+@test "a TOML specialist named like a shipped or a directory one is refused, never shadowed" {
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"developer\": { \"prompt\": \"p\" } }, \"skills\": {} }''"
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "specialist developer is declared twice"
 }

@@ -16,10 +16,64 @@
   pkgs,
   ## Catalogue directories beside the shipped one.
   extra ? [ ],
+  ## The operator's specialists and skills declared in TOML (ADR-061 point
+  ## 3), as the credential's JSON: tools by nixpkgs attribute, a prompt or
+  ## a SKILL.md by path or as text.
+  declared ? {
+    specialists = { };
+    skills = { };
+  },
 }:
 let
   lib = pkgs.lib;
   catalogues = [ "${self}/catalogue" ] ++ extra;
+
+  ## What a TOML entry becomes: the node a directory's default.nix would
+  ## have returned. A tool is looked up by name and refused with the
+  ## nearest attribute nixpkgs has; text becomes a file in the store.
+  package =
+    kind: name: attr:
+    pkgs.${attr} or (throw "${kind} ${name}: tool ${attr} is not a package of nixpkgs");
+  fileOf = filename: value: if lib.hasPrefix "/" value then value else builtins.toFile filename value;
+  declaredSkills = lib.mapAttrs (
+    name: entry:
+    let
+      file = fileOf "SKILL.md" entry.skill;
+    in
+    {
+      inherit name file;
+      dir = "config.toml";
+      tools = map (package "skill" name) (entry.tools or [ ]);
+      ## Copied into a directory of its own, as a skill's is, so the build
+      ## finds SKILL.md where every skill has it.
+      src = pkgs.runCommand "fabriek-skill-${name}" { } ''
+        mkdir $out
+        cp ${
+          builtins.path {
+            path = file;
+            name = "SKILL.md";
+          }
+        } $out/SKILL.md
+      '';
+    }
+  ) (declared.skills or { });
+  declaredSpecialists =
+    c:
+    lib.mapAttrs (
+      name: entry:
+      {
+        inherit name;
+        dir = "config.toml";
+        extends = map (
+          p: c.specialists.${p} or (throw "specialist ${name} extends ${p}, which no catalogue declares")
+        ) (entry.extends or [ ]);
+        tools = map (package "specialist" name) (entry.tools or [ ]);
+        skills = map (
+          k: c.skills.${k} or (throw "specialist ${name} names skill ${k}, which no catalogue declares")
+        ) (entry.skills or [ ]);
+      }
+      // lib.optionalAttrs (entry ? prompt) { prompt = fileOf "PROMPT.md" entry.prompt; }
+    ) (declared.specialists or { });
 
   ## The keys an entry may carry. Anything else is a misspelling or a
   ## feature that does not exist, and both are refused by name.
@@ -83,13 +137,23 @@ let
     ) (entriesOf kind);
 
   ## Fixed so that a specialist extends another by value, and a skill is
-  ## named by value from a specialist.
+  ## named by value from a specialist. The TOML-declared entries join by
+  ## the same rule as a second directory: a name twice is refused.
+  once =
+    kind: dirs: toml:
+    let
+      twice = lib.intersectLists (lib.attrNames dirs) (lib.attrNames toml);
+    in
+    if twice != [ ] then
+      throw "${singular kind} ${lib.head twice} is declared twice: ${dirs.${lib.head twice}.dir} and config.toml"
+    else
+      dirs // toml;
   catalogue = lib.fix (c: {
-    skills = load "skills" { inherit pkgs; };
-    specialists = load "specialists" {
+    skills = once "skills" (load "skills" { inherit pkgs; }) declaredSkills;
+    specialists = once "specialists" (load "specialists" {
       inherit pkgs;
       inherit (c) skills specialists;
-    };
+    }) (declaredSpecialists c);
   });
 
   ## The description a skill's frontmatter carries, which is what pi shows
@@ -99,7 +163,7 @@ let
   describe =
     skill:
     let
-      lines = lib.splitString "\n" (builtins.readFile "${skill.src}/SKILL.md");
+      lines = lib.splitString "\n" (builtins.readFile (skill.file or "${skill.src}/SKILL.md"));
       described = lib.filter (l: lib.hasPrefix "description:" l) lines;
     in
     skill
@@ -215,9 +279,11 @@ let
         command = testsOf "command";
       };
     in
-    ## Forced here so that a name no catalogue has fails on any touch of
-    ## the derivation, and not only when something reads the list.
-    builtins.seq order builtins.seq servers.list pkgs.runCommand "fabriek-specialist-${role}"
+    ## Forced here so that a name no catalogue has, or a tool nixpkgs
+    ## lacks, fails on any touch of the derivation, and not only when
+    ## something reads the list.
+    builtins.seq order builtins.seq servers.list builtins.seq toolLines pkgs.runCommand
+      "fabriek-specialist-${role}"
       {
         inherit
           prompt
