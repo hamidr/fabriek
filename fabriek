@@ -283,10 +283,16 @@ machine_handover() {
     >"$dir/runtime.json.new" || return 1
   mv "$dir/runtime.json.new" "$dir/runtime.json"
 
+  ## The machine's host key lives on its pool, so a pool made anew is a
+  ## new host at the same port, and what the old one answered with would
+  ## refuse it as changed.
   local image
   for image in store.img pool.img; do
-    [[ -e "$dir/$image" ]] || truncate -s "$(jq -r .diskSize "$dir/runtime.json")M" "$dir/$image" || return 1
+    [[ -e "$dir/$image" ]] && continue
+    truncate -s "$(jq -r .diskSize "$dir/runtime.json")M" "$dir/$image" || return 1
+    [[ "$image" == pool.img ]] && rm -f "$dir/known_hosts"
   done
+  return 0
 }
 
 ## The appliance, the one machine every factory runs in, built or fetched

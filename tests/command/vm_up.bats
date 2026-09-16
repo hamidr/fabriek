@@ -212,6 +212,31 @@ ro-store"
 	assert_failure
 }
 
+# The machine's host key lives on its pool, so a pool made anew is a new
+# host at the same port, and the known_hosts of the old one refuses it as
+# changed (measured 2026-09-16: a fresh factory never answered).
+@test "a pool made anew forgets the host key the old pool answered with" {
+	run_fabriek up acme
+	assert_success
+	echo "[localhost]:$(cat "$FABRIEK_MACHINES/acme/port") ssh-ed25519 AAAAold" >"$FABRIEK_MACHINES/acme/known_hosts"
+	run_fabriek down acme
+	rm "$FABRIEK_MACHINES/acme/pool.img"
+	run_fabriek up acme
+	assert_success
+	[ ! -s "$FABRIEK_MACHINES/acme/known_hosts" ]
+}
+
+@test "a pool kept across a restart keeps its host key" {
+	run_fabriek up acme
+	assert_success
+	echo "[localhost]:$(cat "$FABRIEK_MACHINES/acme/port") ssh-ed25519 AAAAkept" >"$FABRIEK_MACHINES/acme/known_hosts"
+	run_fabriek down acme
+	run_fabriek up acme
+	assert_success
+	run cat "$FABRIEK_MACHINES/acme/known_hosts"
+	assert_output --partial AAAAkept
+}
+
 # What fabriek hands the machine (ADR-057 points 2 and 3): the credential,
 # the operator's config projected for this factory plus the pin; and
 # runtime.json, the facts the runner's script puts on qemu's command line.
