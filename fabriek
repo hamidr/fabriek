@@ -401,28 +401,19 @@ machine_store_operator_files() {
 ## found in it, rooted, and the entry rewritten with the store path beside
 ## what the operator wrote. Rewrites the config JSON in place.
 machine_fetch_git_catalogues() {
-  local dir="$1" json="$2" index git rev want subdir answer stored got
+  local dir="$1" json="$2" index git rev want subdir stored got
   local -a filters=()
-  while IFS=$'\t' read -r index git rev want subdir; do
+  ## Fields split on a character no path carries: read on a tab folds
+  ## an empty narHash away and shifts the dir into its place.
+  while IFS=$'\x1f' read -r index git rev want subdir; do
     [[ -n "$git" ]] || continue
-    answer="$("$NIX" flake prefetch --json "$git?rev=$rev")" || {
-      log_err "catalogue $git at $rev could not be fetched"
-      return 1
-    }
-    stored="$(jq -r .storePath <<<"$answer")"
-    got="$(jq -r .hash <<<"$answer")"
-    if [[ -n "$want" && "$want" != "$got" ]]; then
-      log_err "catalogue $git at $rev: the tree fetched has hash $got, not $want"
-      return 1
-    fi
-    if [[ -n "$subdir" && ! -d "$stored/$subdir" ]]; then
-      log_err "catalogue $git at $rev: the tree has no $subdir"
-      return 1
-    fi
-    nix-store --add-root "$dir/roots/catalogue-$index" --indirect -r "$stored" >/dev/null 2>&1 || true
-    filters+=(".catalogues[$index] += $(jq -cn --arg p "$stored${subdir:+/$subdir}" --arg h "$got" '{path: $p, narHash: $h}')")
+    IFS=$'\t' read -r stored got < <(FABRIEK_NIX="$NIX" fabriek_catalogue_fetch "$git" "$rev" "$want" "$subdir") || true
+    [[ -n "$stored" ]] || return 1
+    ## Rooted at the tree, which is the store path; the dir is inside it.
+    nix-store --add-root "$dir/roots/catalogue-$index" --indirect -r "${stored%%/"$subdir"}" >/dev/null 2>&1 || true
+    filters+=(".catalogues[$index] += $(jq -cn --arg p "$stored" --arg h "$got" '{path: $p, narHash: $h}')")
   done < <(jq -r '(.catalogues // []) | to_entries[] | select(.value | type == "object")
-    | "\(.key)\t\(.value.git)\t\(.value.rev)\t\(.value.narHash // "")\t\(.value.dir // "")"' "$json")
+    | [(.key | tostring), .value.git, .value.rev, (.value.narHash // ""), (.value.dir // "")] | join("\u001f")' "$json")
   [[ ${#filters[@]} -gt 0 ]] || return 0
   local program
   program="$(IFS='|'; printf '%s' "${filters[*]}")"

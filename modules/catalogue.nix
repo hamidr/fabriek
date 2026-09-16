@@ -303,6 +303,9 @@ let
         ## host and a listing read these and build nothing.
         passthru = {
           order = map (node: node.name) order;
+          ## Where the last specialist named came from: its directory, or
+          ## config.toml; what show prints as the source.
+          source = (lib.last order).dir;
           tools = lib.concatMap toolsOf order;
           skillsDescribed = map describe skills;
           servers = map (s: s.id) servers.list;

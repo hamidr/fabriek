@@ -193,3 +193,40 @@ TOML
 	assert_failure
 	assert_output --partial "acme is declared twice: in $FABRIEK_CONFIG and in $REPO/fabriek.toml"
 }
+
+# ADR-062: a git catalogue named in the operator's file is fetched on the
+# host at check by its rev, and its specialist composes into a role; a
+# rev nothing serves is refused with nix's own line.
+@test "check composes a role from a git catalogue at a rev, and says which catalogue at which rev" {
+	local cat="$TEST_TEMP_DIR/cat"
+	mkdir -p "$cat/catalogue/specialists/strict"
+	git init -q -b main "$cat"
+	git -C "$cat" config user.name c
+	git -C "$cat" config user.email c@invalid
+	printf 'Be strict.\n' >"$cat/catalogue/specialists/strict/PROMPT.md"
+	printf '{ specialists, ... }: { extends = [ specialists.reviewer ]; prompt = ./PROMPT.md; }\n' >"$cat/catalogue/specialists/strict/default.nix"
+	git -C "$cat" add -A
+	git -C "$cat" -c commit.gpgsign=false commit -qm strict
+	local rev
+	rev="$(git -C "$cat" rev-parse HEAD)"
+	declare_roles '[roles.reviewer]
+provides = ["build"]
+specialists = ["strict"]' ''
+	printf 'catalogues = [ { git = "git+file://%s", rev = "%s", dir = "catalogue" } ]\n\n[factories.acme]\npath = "%s"\n' "$cat" "$rev" "$REPO" >"$FABRIEK_CONFIG"
+	check
+	assert_success
+	assert_line --partial "reviewer: committer, reviewer, strict"
+	run bash "$FABRIEK_ROOT/fabriek" show strict
+	assert_success
+	assert_line --partial "source: git+file://$cat at $rev"
+	assert_output --partial "Be strict."
+}
+
+@test "a git catalogue at a rev nothing serves is refused at check with nix's line" {
+	declare_roles '[roles.reviewer]
+provides = ["build"]' ''
+	printf 'catalogues = [ { git = "git+file://%s", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } ]\n\n[factories.acme]\npath = "%s"\n' "$REPO" "$REPO" >"$FABRIEK_CONFIG"
+	check
+	assert_failure
+	assert_output --partial "catalogue git+file://$REPO at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa could not be fetched"
+}

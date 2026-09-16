@@ -389,3 +389,29 @@ fabriek_declaration_resolve() {
 	fi
 	fabriek_operator_declaration_of "$json" "$factory"
 }
+
+## A git catalogue fetched on this host (ADR-062 point 2): the reference at
+## its rev through nix's own fetcher, the tree's hash checked against the
+## one the operator wrote, the dir found in it. Prints the store path of
+## the catalogue directory and the hash fetched, tab-separated; refuses
+## naming the reference and the rev.
+##
+## fabriek_catalogue_fetch <git> <rev> <narHash-or-empty> <dir-or-empty>
+fabriek_catalogue_fetch() {
+	local git="$1" rev="$2" want="$3" subdir="$4" answer stored got
+	answer="$("${FABRIEK_NIX:-nix}" flake prefetch --json "$git?rev=$rev" 2>/dev/null)" || {
+		echo "fabriek: catalogue $git at $rev could not be fetched" >&2
+		return 1
+	}
+	stored="$(jq -r .storePath <<<"$answer")"
+	got="$(jq -r .hash <<<"$answer")"
+	if [ -n "$want" ] && [ "$want" != "$got" ]; then
+		echo "fabriek: catalogue $git at $rev: the tree fetched has hash $got, not $want" >&2
+		return 1
+	fi
+	if [ -n "$subdir" ] && [ ! -d "$stored/$subdir" ]; then
+		echo "fabriek: catalogue $git at $rev: the tree has no $subdir" >&2
+		return 1
+	fi
+	printf '%s\t%s\n' "$stored${subdir:+/$subdir}" "$got"
+}

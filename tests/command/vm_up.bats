@@ -390,6 +390,15 @@ TOML
 	assert_line --partial "catalogue: github:acme/cat at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ($TEST_TEMP_DIR/fetched)"
 }
 
+@test "a git catalogue with a dir and no hash is fetched with its dir, and its hash written into the credential" {
+	mkdir -p "$TEST_TEMP_DIR/fetched/catalogue"
+	sed -i.bak '1i catalogues = [ { git = "git+https://forge.example/cat.git", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", dir = "catalogue" } ]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"
+	run_fabriek up acme
+	assert_success
+	run nix eval --json --impure --expr "builtins.fromTOML (builtins.readFile $FABRIEK_MACHINES/acme/fabriek.toml)" --apply 'c: [ (builtins.head c.catalogues).path (builtins.head c.catalogues).narHash ]'
+	assert_output "[\"$TEST_TEMP_DIR/fetched/catalogue\",\"sha256-IVj69VsrFsewKTLrwoGX9qIjVe6heqBwirkYoGlEbx4=\"]"
+}
+
 @test "a git catalogue whose fetched tree has another hash than the one written stops up naming both" {
 	mkdir -p "$TEST_TEMP_DIR/fetched"
 	sed -i.bak '1i catalogues = [ { git = "github:acme/cat", rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", narHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" } ]' "$FABRIEK_CONFIG" && rm "$FABRIEK_CONFIG.bak"

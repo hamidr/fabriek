@@ -273,3 +273,27 @@ description: the first' ''
 	assert_failure
 	assert_output --partial "specialist developer is declared twice"
 }
+
+# ADR-062: a catalogue fetched from a git tree at a rev composes like a
+# directory, since on the machine it is one: the store path the host
+# fetched it to.
+@test "a catalogue from a git tree at a rev composes a specialist onto a role's PATH" {
+	local cat="$TEST_TEMP_DIR/gitcat"
+	mkdir -p "$cat/specialists/tx"
+	git init -q -b main "$cat"
+	git -C "$cat" config user.name c
+	git -C "$cat" config user.email c@invalid
+	printf 'I am tx.\n' >"$cat/specialists/tx/PROMPT.md"
+	printf '{ pkgs, ... }: { prompt = ./PROMPT.md; tools = [ (pkgs.writeShellScriptBin "tx" "") ]; }\n' >"$cat/specialists/tx/default.nix"
+	git -C "$cat" add -A
+	git -C "$cat" -c commit.gpgsign=false commit -qm tx
+	local rev fetched
+	rev="$(git -C "$cat" rev-parse HEAD)"
+	fetched="$(nix flake prefetch --json "git+file://$cat?rev=$rev" | jq -r .storePath)"
+	EXTRA="$fetched"
+	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "tx" ]; }'
+	assert_success
+	[ -x "$output/bin/tx" ]
+	run grep -c 'I am tx.' "$output/share/fabriek/specialist/APPEND_SYSTEM.md"
+	assert_output 1
+}

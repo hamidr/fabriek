@@ -22,41 +22,65 @@
 ##
 ## fabriek_catalogue_eval <self> <system> <repo-or-empty> <rev-or-empty> <expr>
 fabriek_catalogue_eval() {
-	local self="$1" system="$2" repo="$3" rev="$4" expr="$5" out err project extra
+	local self="$1" system="$2" repo="$3" rev="$4" expr="$5" out err project extra uris=""
+	## Restricted (ADR-062 point 3): what a catalogue's Nix may read on
+	## this host is fabriek, its nixpkgs, the repository's tree and the
+	## catalogues named, granted on the search path; the clone is a URI
+	## fetchGit asks for by rev.
+	local nixpkgs
+	nixpkgs="$(nix eval --raw --impure --expr "(builtins.getFlake $(fabriek_nix_string "path:$self")).inputs.nixpkgs.outPath" 2>/dev/null)" || {
+		echo "fabriek: could not resolve fabriek's nixpkgs" >&2
+		return 1
+	}
+	local -a include=(-I "$self" -I "$nixpkgs")
 	if [ -n "$repo" ]; then
 		## The commit's tree, not its flake: the declaration was read from
 		## the commit already (FABRIEK_CHECK_DECLARATION), and the catalogue
 		## it names is a directory of that tree.
 		project="builtins.fetchGit { url = $(fabriek_nix_string "file://$repo"); rev = $(fabriek_nix_string "$rev"); }"
 		extra="if decl ? catalogue then [ \"\${project}/\${decl.catalogue}\" ] else [ ]"
+		uris="git+file://$repo git+file://$repo?exportIgnore=1&rev=$rev"
 	else
 		project="null"
 		extra="[ ]"
 	fi
-	## The operator's own (ADR-061 points 3 and 4), from the file when
-	## there is one: TOML specialists and skills as declared, catalogue
-	## directories before the repository's.
-	local config declared='{ specialists = { }; skills = { }; }' dirs="" json path
+	## The operator's own (ADR-061 points 3 and 4, ADR-062), from the file
+	## when there is one: TOML specialists and skills as declared, with
+	## their prompt and skill files; catalogue directories, a git one
+	## fetched here at its rev, before the repository's.
+	local config declared='{ specialists = { }; skills = { }; }' dirs="" json path git prev want subdir
 	config="$(fabriek_operator_config_path)"
 	if [ -f "$config" ] && json="$(fabriek_operator_config "$config" 2>/dev/null)"; then
 		declared="builtins.fromJSON $(fabriek_nix_string "$(printf '%s' "$json" | jq -c '{specialists: (.specialists // {}), skills: (.skills // {})}')")"
 		while IFS= read -r path; do
 			[ -n "$path" ] || continue
-			dirs="$dirs $path"
-		done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[]')
+			include+=(-I "$path")
+		done < <(printf '%s' "$json" | jq -r '(.specialists[]?.prompt // empty), (.skills[]?.skill // empty) | select(startswith("/"))')
+		## Fields split on a character no path carries: read on a tab
+		## folds an empty field away.
+		while IFS=$'\x1f' read -r path git prev want subdir; do
+			[ -n "$path$git" ] || continue
+			if [ -n "$git" ]; then
+				IFS=$'\t' read -r path _ < <(fabriek_catalogue_fetch "$git" "$prev" "$want" "$subdir") || true
+				[ -n "$path" ] || return 1
+			fi
+			## As a string: a path literal would be copied into the store
+			## on interpolation, and the source shown would be the copy.
+			dirs="$dirs $(fabriek_nix_string "$path")"
+			include+=(-I "$path")
+		done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[] | if type == "string" then [., "", "", "", ""] else ["", .git, .rev, (.narHash // ""), (.dir // "")] end | join("\u001f")')
 	fi
 	extra="[$dirs ] ++ ($extra)"
 	err="$(mktemp)"
-	if out="$(nix eval --json --impure --expr "
-	  let flake = builtins.getFlake $(fabriek_nix_string "path:$self");
-	      pkgs = flake.inputs.nixpkgs.legacyPackages.$system;
+	if out="$(nix eval --json --impure --restrict-eval --allowed-uris "$uris" "${include[@]}" --expr "
+	  let pkgs = import $nixpkgs { system = $(fabriek_nix_string "$system"); };
 	      project = $project;
 	      ## The declaration as validated and expanded (ADR-053), when one was
 	      ## read; nothing otherwise.
 	      decl = $(if [ -n "${FABRIEK_CHECK_DECLARATION:-}" ]; then printf 'builtins.fromJSON %s' "$(fabriek_nix_string "$FABRIEK_CHECK_DECLARATION")"; else printf '{ }'; fi);
-	      cat = flake.lib.catalogue { inherit pkgs; extra = $extra; declared = $declared; };
+	      cat = import $self/modules/catalogue.nix { self = $self; } { inherit pkgs; extra = $extra; declared = $declared; };
 	      show = c: {
-	        inherit (c) order servers promptText;
+	        inherit (c) order servers promptText source;
 	        tools = map (t: t.pname or t.name) c.tools;
 	        skills = map (s: { inherit (s) name description; }) c.skillsDescribed;
 	        tests = builtins.fromJSON (builtins.unsafeDiscardStringContext c.testsJson);
@@ -135,14 +159,36 @@ fabriek_check_repo() {
 	printf '%s' "$composed" | jq -r 'to_entries[] | "  \(.key): \(if .value == [] then "(no specialists)" else (.value | join(", ")) end)"'
 }
 
+## The git catalogues the operator's file names, each as the store path
+## check fetched it to and the reference and rev it was written as, one
+## per line, tab-separated; for naming a source (ADR-062 point 4). A fetch
+## already made is answered from the store.
+fabriek_catalogue_sources() {
+	local config json git rev want subdir path
+	config="$(fabriek_operator_config_path)"
+	[ -f "$config" ] && json="$(fabriek_operator_config "$config" 2>/dev/null)" || return 0
+	while IFS=$'\x1f' read -r git rev want subdir; do
+		[ -n "$git" ] || continue
+		IFS=$'\t' read -r path _ < <(fabriek_catalogue_fetch "$git" "$rev" "$want" "$subdir" 2>/dev/null) || true
+		[ -n "$path" ] && printf '%s\t%s at %s\n' "$path" "$git" "$rev"
+	done < <(printf '%s' "$json" | jq -r '(.catalogues // [])[] | objects | [.git, .rev, (.narHash // ""), (.dir // "")] | join("\u001f")')
+}
+
 ## One composed role or specialist, as a person reads it, or as it is.
 fabriek_catalogue_print() {
 	if [ -n "${FABRIEK_JSON:-}" ]; then
 		jq -c .
 		return 0
 	fi
-	jq -r '
+	## A git catalogue's directory is named by its reference and rev
+	## (ADR-062 point 4), which check fetched it as.
+	local sources
+	sources="$(fabriek_catalogue_sources)"
+	jq -r --arg sources "$sources" '
+	  def named: . as $d | ($sources | split("\n") | map(select(length > 0) | split("\t"))
+	    | map(select(.[0] as $p | $d | startswith($p)) | .[1]) | first) // $d;
 	  "order: \(.order | join(", "))",
+	  "source: \(.source | named)",
 	  "tools: \(.tools | unique | join(", "))",
 	  "skills:",
 	  (.skills[] | "  \(.name): \(.description)"),
