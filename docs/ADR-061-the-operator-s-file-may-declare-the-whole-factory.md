@@ -1,7 +1,7 @@
 ---
 id: ADR-061
 title: The operator's file may declare the whole factory, specialists and skills included, and a factory declared twice is refused
-status: proposed
+status: implemented
 date: 2026-09-16
 status_date: 2026-09-16
 summary: the operator file carries roles, workflows, specialists and skills; one declaration per factory, never in both places

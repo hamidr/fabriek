@@ -1,7 +1,7 @@
 ---
 id: ADR-060
 title: An operator's catalogue reaches the machine as store paths beside fabriek's and the repository's
-status: proposed
+status: superseded
 date: 2026-09-16
 status_date: 2026-09-16
 summary: operator catalogue directories reach the machine through the lower store; roles stay in the repository
