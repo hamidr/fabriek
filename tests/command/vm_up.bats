@@ -31,27 +31,24 @@ while true; do sleep 0.2; done
 EOF
 	chmod +x "$RUNNER/bin/microvm-run"
 
-	# nix. Records every call, answers a build with the runner, a lock or an
-	# update by writing the lock file, and an eval with the spec a build would
-	# have produced for this factory: enough for the CLI to file a credential
-	# and to say what the clamp changed.
+	# nix. Records every call, answers a build of the appliance with the
+	# runner, and knows every store path the machine names as one this host
+	# holds; everything else (the TOML reader, the declaration's schema) is
+	# the real nix, since up reads the declaration at the pin itself now.
+	REAL_NIX="$(command -v nix)"
 	cat >"$STUB_DIR/cw-nix" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$NIX_CALLS"
-case "\$1 \$2" in
-"build "*) echo "$RUNNER" ;;
-"flake lock") dir="\${3#path:}"; echo '{"stub":true}' >"\$dir/flake.lock" ;;
-"flake update") dir="\${5#path:}"; echo "{\"stub\":\"\$3\"}" >"\$dir/flake.lock" ;;
-"eval "*)
-	if grep -q credentials "$FABRIEK_MACHINES/acme/machine/local.json" && jq -e '.credentials["api.anthropic.com"]' "$FABRIEK_MACHINES/acme/machine/local.json" >/dev/null; then
-		echo '{"factory":"acme","egress":["api.anthropic.com"],"egressHeaders":{"api.anthropic.com":"x-api-key"},"notes":["fabriek: acme: egress: dropped api.openai.com, which the operator has not allowed"]}'
-	else
-		echo '{"factory":"acme","egress":["api.anthropic.com"],"egressHeaders":{},"notes":[]}'
-	fi
-	;;
+case "\$1" in
+build) printf '%s\n' "\$*" >>"$NIX_CALLS"; echo "$RUNNER" ;;
+path-info) exit 0 ;;
+*) exec "$REAL_NIX" "\$@" ;;
 esac
 EOF
-	chmod +x "$STUB_DIR/cw-nix"
+	cat >"$STUB_DIR/nix-store" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/nix-store-calls"
+EOF
+	chmod +x "$STUB_DIR/cw-nix" "$STUB_DIR/nix-store"
 	export FABRIEK_NIX="$STUB_DIR/cw-nix"
 
 		cat >"$STUB_DIR/ssh" <<EOF
@@ -64,10 +61,18 @@ printf '%s\n' "\$*" >>"$SSH_CALLS"
 if printf '%s' "\$*" | grep -qE ' fabriek-egress-credential [a-z0-9.-]+\$'; then
 	cat >>"$TEST_TEMP_DIR/ssh-stdin"
 fi
-# A machine verb arrives NUL-separated on stdin for xargs; kept as words.
+# A machine verb arrives NUL-separated on stdin for xargs; kept as words,
+# and answered as the machine would: render says what the clamp changed,
+# endpoints names what the rendered factory reaches, profiles what render
+# built.
 if printf '%s' "\$*" | grep -q 'xargs -0 fabriek-container'; then
-	tr '\0' ' ' >>"$TEST_TEMP_DIR/machine-verbs"
-	echo >>"$TEST_TEMP_DIR/machine-verbs"
+	verb="\$(tr '\0' ' ')"
+	printf '%s\n' "\$verb" >>"$TEST_TEMP_DIR/machine-verbs"
+	case "\$verb" in
+	"factory-render "*) echo "fabriek: egress asked for api.openai.com, which this host does not allow; dropped"; echo "acme: rendered" ;;
+	"factory-endpoints "*) sed -n 's/^"\(api\.[a-z.]*\)" = .*/\1/p' "$FABRIEK_MACHINES/acme/fabriek.toml" ;;
+	"factory-profiles "*) echo '{"rev":"abc","roles":{"builder":"/nix/store/aaaa-fabriek-role-builder"},"decider":"/var/lib/fabriek/factory/pi-decider"}' ;;
+	esac
 fi
 [ -f "$TEST_TEMP_DIR/refuse-shutdown" ] && exit 1
 # Only a shutdown stops the machine. Every other command is one run on a
@@ -115,6 +120,10 @@ egress = ["api.anthropic.com", "api.openai.com"]
 EOF
 	git -C "$REPO" add -A
 	git -C "$REPO" -c commit.gpgsign=false commit -qm declare
+	# The origin the machine clones from (ADR-032): a bare repository here.
+	git init -q --bare "$TEST_TEMP_DIR/origin.git"
+	git -C "$REPO" remote add origin "$TEST_TEMP_DIR/origin.git"
+	git -C "$REPO" push -q origin HEAD
 }
 
 write_operator_config() {
@@ -159,126 +168,137 @@ EOF
 	kill -0 "$(cat "$FABRIEK_MACHINES/acme/pid")"
 }
 
-# What fabriek hands the build is a flake naming the repository and a file
-# of the facts only this host knows (ADR-040). The build composes the rest,
-# and machine_spec.bats asserts on that.
-@test "given a registered factory, up writes a machine flake whose project input is that repository" {
+# What fabriek hands the machine (ADR-057 points 2 and 3): the credential,
+# the operator's config projected for this factory plus the pin; and
+# runtime.json, the facts the runner's script puts on qemu's command line.
+@test "given a registered factory, up writes the credential the machine boots with, pinned at the repository's HEAD" {
 	run_fabriek up acme
 	assert_success
-	local flake="$FABRIEK_MACHINES/acme/machine/flake.nix"
-	[ -f "$flake" ]
-	run grep -c "project.url = \"git+file://$REPO\"" "$flake"
+	local cred="$FABRIEK_MACHINES/acme/fabriek.toml"
+	[ -f "$cred" ]
+	run grep -c "^name = \"acme\"" "$cred"
 	assert_output 1
-	run grep -c "fabriek.url = \"path:$FABRIEK_ROOT\"" "$flake"
+	run grep -c "^remote = \"$TEST_TEMP_DIR/origin.git\"" "$cred"
 	assert_output 1
-}
-
-@test "the build is given the local facts: the way in, both systems, the ceilings and the credential headers" {
-	run_fabriek up acme
-	assert_success
-	local local_file="$FABRIEK_MACHINES/acme/machine/local.json"
-	run jq -r '.factory, .sshPort, .authorizedKey, .system, .hostSystem' "$local_file"
-	assert_line --index 0 acme
-	assert_line --index 1 "$(cat "$FABRIEK_MACHINES/acme/port")"
-	assert_line --index 2 "$(cat "$FABRIEK_MACHINES/acme/id_ed25519.pub")"
-	# The machine is Linux whatever the operator is on, and the runner that
-	# starts it is built for the operator's own host.
-	assert_line --index 3 --regexp '^(aarch64|x86_64)-linux$'
-	assert_line --index 4 --regexp '^(aarch64|x86_64)-(linux|darwin)$'
-	run jq -c '.caps, .credentials' "$local_file"
-	assert_line --index 0 '{"cores":8,"egress":["api.anthropic.com"],"memory":"16G"}'
-	assert_line --index 1 '{"api.anthropic.com":"x-api-key"}'
-	run grep -c "sk-secret-value" "$local_file"
+	run grep -c "^rev = \"$(git -C "$REPO" rev-parse HEAD)\"" "$cred"
+	assert_output 1
+	run grep -c '^"api.anthropic.com" = "x-api-key"' "$cred"
+	assert_output 1
+	run grep -c "sk-secret-value" "$cred"
+	assert_output 0
+	run grep -c "anthropic.key" "$cred"
 	assert_output 0
 }
 
+@test "runtime.json carries the machine's size as the declaration asked and the caps allow, the port, and the two credentials" {
+	run_fabriek up acme
+	assert_success
+	run jq -cS '[.mem, .cpus, .sshPort, .diskSize, .credentials]' "$FABRIEK_MACHINES/acme/runtime.json"
+	assert_output "[4096,2,$(cat "$FABRIEK_MACHINES/acme/port"),65536,{\"fabriek.authorized_keys\":\"id_ed25519.pub\",\"fabriek.toml\":\"fabriek.toml\"}]"
+	[ -f "$FABRIEK_MACHINES/acme/store.img" ]
+	[ -f "$FABRIEK_MACHINES/acme/pool.img" ]
+}
+
+@test "a declaration the schema refuses stops up before a machine is started, naming the key" {
+	printf 'colour = "blue"\n' >>"$REPO/fabriek.toml"
+	git -C "$REPO" -c commit.gpgsign=false commit -qam colour
+	run_fabriek up acme
+	assert_failure
+	assert_output --partial colour
+	[ ! -f "$FABRIEK_MACHINES/acme/pid" ]
+	[ ! -f "$NIX_CALLS" ]
+}
+
 # A build that fails prints a trace with the thrown message at its end,
-# which is the one line the operator can act on (task 5).
-@test "when the build fails, the thrown message is printed first and the trace after it" {
+# which is the one line the operator can act on.
+@test "when the appliance's build fails, the thrown message is printed first and the trace after it" {
 	cat >"$STUB_DIR/cw-nix" <<EOF
 #!/usr/bin/env bash
-case "\$1 \$2" in
-"build "*)
+case "\$1" in
+build)
 	cat >&2 <<'TRACE'
 error:
        ... while evaluating the attribute 'config'
-         at /nix/store/xxx-source/modules/factory.nix:150:3:
-       ... while calling 'compose'
-       error: role backend names specialist rust, which no catalogue declares; the catalogue offers: architect, developer
+         at /nix/store/xxx-source/modules/appliance.nix:30:3:
+       error: attribute 'vmHostPackages' missing
 TRACE
 	exit 1
 	;;
-"flake lock") dir="\${3#path:}"; echo '{"stub":true}' >"\$dir/flake.lock" ;;
-"flake update") dir="\${5#path:}"; echo "{\"stub\":\"\$3\"}" >"\$dir/flake.lock" ;;
+*) exec "$REAL_NIX" "\$@" ;;
 esac
 EOF
 	chmod +x "$STUB_DIR/cw-nix"
 	run_fabriek up acme
 	assert_failure
-	assert_line --index 1 --partial "role backend names specialist rust"
-	assert_output --partial "while calling 'compose'"
+	assert_line --index 1 --partial "attribute 'vmHostPackages' missing"
+	assert_output --partial "while evaluating the attribute"
 	refute_line --index 1 --partial "while evaluating"
 }
 
-@test "the model the operator named for an endpoint reaches the build in the local facts" {
+@test "the model the operator named for an endpoint reaches the machine in the credential" {
 	printf '\n[models]\n"api.anthropic.com" = "claude-opus-5"\n' >>"$FABRIEK_CONFIG"
 	run_fabriek up acme
 	assert_success
-	run jq -r '.models["api.anthropic.com"]' "$FABRIEK_MACHINES/acme/machine/local.json"
-	assert_output "claude-opus-5"
+	run grep -c '^"api.anthropic.com" = "claude-opus-5"' "$FABRIEK_MACHINES/acme/fabriek.toml"
+	assert_output 1
 }
 
-@test "up builds the runner from the machine flake and keeps the spec the build produced" {
+# ADR-057 point 1: the appliance is fabriek's own package, built or fetched
+# once and rooted beside the machine, and nothing of the repository is
+# built on this host.
+@test "up builds the appliance from fabriek itself, rooted beside the machine, and no flake per factory" {
 	run_fabriek up acme
 	assert_success
-	run grep -c "^build --no-link --print-out-paths path:$FABRIEK_MACHINES/acme/machine#runner$" "$NIX_CALLS"
+	run grep -c "^build --out-link $FABRIEK_MACHINES/acme/appliance --print-out-paths path:$FABRIEK_ROOT#machine$" "$NIX_CALLS"
 	assert_output 1
-	run jq -r '.factory' "$FABRIEK_MACHINES/acme/spec.json"
-	assert_output acme
+	[ ! -e "$FABRIEK_MACHINES/acme/machine/flake.nix" ]
+	[ ! -e "$FABRIEK_MACHINES/acme/machine/flake.lock" ]
 }
 
-@test "what the build clamped is said where the operator will see it" {
+@test "what the clamp changed is said where the operator will see it" {
 	run_fabriek up acme
 	assert_success
 	assert_output --partial "api.openai.com"
 }
 
-@test "the first up locks the flake; a second keeps the lock; --update refreshes the project" {
+@test "the first up pins the repository's HEAD; a second keeps the pin; --update moves it" {
 	run_fabriek up acme
 	assert_success
-	run grep -c "^flake lock path:$FABRIEK_MACHINES/acme/machine$" "$NIX_CALLS"
-	assert_output 1
+	local first
+	first="$(git -C "$REPO" rev-parse HEAD)"
+	printf '# more\n' >>"$REPO/fabriek.toml"
+	git -C "$REPO" -c commit.gpgsign=false commit -qam more
 	run_fabriek down acme
 	run_fabriek up acme
 	assert_success
-	run grep -c "^flake lock " "$NIX_CALLS"
+	run grep -c "^rev = \"$first\"" "$FABRIEK_MACHINES/acme/fabriek.toml"
 	assert_output 1
-	run grep -c "^flake update project " "$NIX_CALLS"
-	assert_output 0
 	run_fabriek down acme
 	run_fabriek up -u acme
 	assert_success
-	run grep -c "^flake update project --flake path:$FABRIEK_MACHINES/acme/machine$" "$NIX_CALLS"
+	run grep -c "^rev = \"$(git -C "$REPO" rev-parse HEAD)\"" "$FABRIEK_MACHINES/acme/fabriek.toml"
 	assert_output 1
 }
 
-@test "once the machine answers and holds its credential, up prepares the factory on it" {
+# ADR-057 point 4: render first, then the credential, then prepare. Render
+# needs no secret; the proxy needs the secret; prepare needs the proxy and
+# the bus.
+@test "once the machine answers, up renders the factory, gives the credential, prepares, and roots the profiles it built" {
 	run_fabriek up acme
 	assert_success
 	run cat "$TEST_TEMP_DIR/machine-verbs"
-	assert_output --partial "factory-prepare acme"
-	# After the credential, because the forge and the bus are up by then and
-	# a prepare that ran first would be a prepare against nothing.
-	run bash -c "grep -n 'fabriek-egress-credential \|xargs -0 fabriek-container' '$SSH_CALLS' | head -2"
-	assert_line --index 0 --partial "egress-credential"
-	assert_line --index 1 --partial "xargs -0 fabriek-container"
-}
-
-@test "every up points the fabriek input at the fabriek that is running" {
-	run_fabriek up acme
-	assert_success
-	run grep -c "^flake update fabriek --flake path:$FABRIEK_MACHINES/acme/machine$" "$NIX_CALLS"
-	assert_output 1
+	assert_line --index 0 --partial "factory-render acme"
+	assert_line --index 1 --partial "factory-endpoints acme"
+	assert_line --index 2 --partial "factory-prepare acme $TEST_TEMP_DIR/origin.git"
+	assert_line --index 3 --partial "factory-profiles acme"
+	# The order on the wire: render, endpoints, the credential, prepare.
+	run bash -c "grep -oE 'fabriek-egress-credential [a-z.]+|xargs -0 fabriek-container' '$SSH_CALLS'"
+	assert_line --index 0 "xargs -0 fabriek-container"
+	assert_line --index 1 "xargs -0 fabriek-container"
+	assert_line --index 2 "fabriek-egress-credential api.anthropic.com"
+	assert_line --index 3 "xargs -0 fabriek-container"
+	run cat "$TEST_TEMP_DIR/nix-store-calls"
+	assert_output "--add-root $FABRIEK_MACHINES/acme/roots/builder --indirect -r /nix/store/aaaa-fabriek-role-builder"
 }
 
 @test "starting a machine that is already running builds nothing" {
@@ -382,8 +402,8 @@ path = "$REPO"
 EOF
 	run_fabriek up acme
 	assert_success
-	run jq -c '.egressHeaders' "$FABRIEK_MACHINES/acme/spec.json"
-	assert_output '{}'
+	run grep -c '^"api' "$FABRIEK_MACHINES/acme/fabriek.toml"
+	assert_output 0
 	[ ! -f "$TEST_TEMP_DIR/ssh-stdin" ]
 }
 

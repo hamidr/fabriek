@@ -22,9 +22,11 @@ export FABRIEK_PROOF_DIR="${FABRIEK_PROOF_DIR:-$(mktemp -d)}"
 ROOT="$PWD"
 W="$S/system"
 rm -rf "$W"
-STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge"
-mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE"
-export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC"
+STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge" RUN="$W/run"
+mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE" "$RUN"
+## The prepared mark is per boot, under /run on a machine (ADR-057); here
+## under the scratch directory, since there is no machine.
+export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
 export PATH="$BIN:$PATH" FABRIEK_LIB="$ROOT/modules"
 
 ## Everything this run starts, and everything a run before it left: the

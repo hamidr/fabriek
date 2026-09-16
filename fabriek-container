@@ -115,7 +115,10 @@ usage: fabriek-container
              [--repository <path>] <factory> <role> [cmd...]
   role-worktree <factory> <role> <repo>
   task-file <factory> <workflow> <title> [body]
+  factory-render
   factory-prepare <factory> [origin]
+  factory-endpoints <factory>
+  factory-profiles <factory>
   role-stop <factory> <role> [--now]
   role-transcript <factory> <role> [<session>] [--text]
   factory-mirror <factory>
@@ -124,8 +127,8 @@ usage: fabriek-container
   factory-send <factory> <json>
   factory-roles <factory>
   factory-board <factory>
-  probes-publish <factory>
-  bus-acl <factory>
+  probes-publish [<factory>]
+  bus-acl [<factory>]
 USAGE
 }
 
@@ -532,6 +535,28 @@ cmd_factory_render() {
 	echo "$factory: rendered at $rev"
 }
 
+## Which endpoints the rendered factory reaches, one per line: what up asks
+## before giving the machine a credential, so one for an endpoint the clamp
+## dropped never leaves the host (ADR-025).
+cmd_factory_endpoints() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-endpoints <factory>"
+	factory_declaration "$factory" >/dev/null
+	[ -f "$FABRIEK_ETC/endpoints.json" ] || die "this machine has no rendered endpoints; run fabriek up"
+	jq -r '.credentials | keys[]' "$FABRIEK_ETC/endpoints.json"
+}
+
+## What render made of the pin: the rev, a profile per role and the
+## decider's directory, for up to root on the host and show to print
+## (ADR-057 point 7).
+cmd_factory_profiles() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-profiles <factory>"
+	factory_declaration "$factory" >/dev/null
+	[ -f "$FABRIEK_ETC/profiles.json" ] || die "this machine has no profiles rendered; run fabriek up"
+	cat "$FABRIEK_ETC/profiles.json"
+}
+
 ## ACL, the operator's account and token, the repository, an account and a
 ## read-only-repository token per role, a read-only token for the decider,
 ## a label per stage plus blocked and memory, and each role's memory issue.
@@ -802,6 +827,8 @@ main() {
 	role-worktree) cmd_role_worktree "$@" ;;
 	task-file) cmd_task_file "$@" ;;
 	factory-render) cmd_factory_render "$@" ;;
+	factory-endpoints) cmd_factory_endpoints "$@" ;;
+	factory-profiles) cmd_factory_profiles "$@" ;;
 	factory-prepare) cmd_factory_prepare "$@" ;;
 	role-stop) cmd_role_stop "$@" ;;
 	role-transcript) cmd_role_transcript "$@" ;;
