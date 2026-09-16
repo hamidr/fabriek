@@ -61,6 +61,13 @@ nixpkgs.lib.nixosSystem {
     })
     {
       fabriek.machine.shareProto = spec.shareProto or "virtiofs";
+      ## What factory-render evaluates a role's profile from (ADR-057 point
+      ## 5): this repository, in the store the machine shares, and the
+      ## system the profile is built for. The floor is named in floor.nix.
+      environment.variables = {
+        FABRIEK_SELF = "${self}";
+        FABRIEK_SYSTEM = spec.system;
+      };
       ## A role's worktree is under nixcage's own state, not a workspace root
       ## (modules/role-worktree.sh), so none is shared in.
       nixcage.workspaceRoots = [ ];
