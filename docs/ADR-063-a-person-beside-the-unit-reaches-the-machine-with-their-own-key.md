@@ -1,7 +1,7 @@
 ---
 id: ADR-063
 title: A person beside the unit reaches the machine with their own key, which the host names as an operator's
-status: proposed
+status: implementing
 date: 2026-09-16
 status_date: 2026-09-16
 summary: the host lists operator public keys, the machine accepts them, and a hand without the unit key uses its own
