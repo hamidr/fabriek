@@ -323,11 +323,25 @@ machine_start_shares() {
     return 1
   }
   : >"$dir/virtiofsd.pids"
+  ## Each [program:] is one daemon; supervisord's own [eventlistener:] is
+  ## not. The program is microvm.nix's wrapper script, run as text so that
+  ## its --socket-group (a group the operator need not be in) can go.
+  local section="" program args pid
   while IFS= read -r line; do
-    [[ "$line" == command=* ]] || continue
-    local pid
-    pid="$(cd "$dir" && fabriek_machine_spawn "$dir/virtiofsd.log" bash -c "$(sed 's/--socket-group=[^[:space:]]*//g' "${line#command=}")")"
-    echo "$pid" >>"$dir/virtiofsd.pids"
+    case "$line" in
+    \[program:*) section=program ;;
+    \[*) section="" ;;
+    command=*)
+      [[ "$section" == program ]] || continue
+      program="${line#command=}"
+      args="${program#"${program%% *}"}"
+      program="${program%% *}"
+      args="${args//--socket-group=[^ ]*/}"
+      # shellcheck disable=SC2086  # the wrapper's arguments are words
+      pid="$(cd "$dir" && fabriek_machine_spawn "$dir/virtiofsd.log" bash -c "$(sed 's/--socket-group=[^[:space:]]*//g' "$program")" "$program" $args)"
+      echo "$pid" >>"$dir/virtiofsd.pids"
+      ;;
+    esac
   done <"$conf"
 }
 

@@ -168,6 +168,50 @@ EOF
 	kill -0 "$(cat "$FABRIEK_MACHINES/acme/pid")"
 }
 
+# ADR-057 point 1a: on a Linux host the store reaches the machine over
+# virtiofs, and up starts the appliance's share daemons itself, one per
+# program of the wrapper's supervisord configuration. The configuration
+# also names supervisord's own event listener, which is no daemon of ours.
+@test "up starts one share daemon per program of the runner's virtiofsd wrapper, and not supervisord's listener" {
+	local conf="$TEST_TEMP_DIR/virtiofsd.conf" started="$TEST_TEMP_DIR/shares-started"
+	cat >"$RUNNER/bin/share-daemon" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$1" >>"$started"
+trap 'exit 0' TERM INT
+while true; do sleep 0.2; done
+EOF
+	chmod +x "$RUNNER/bin/share-daemon"
+	cat >"$conf" <<EOF
+[eventlistener:notify]
+command=$RUNNER/bin/share-daemon listener
+events=PROCESS_STATE
+
+[program:virtiofsd-ro-db]
+command=$RUNNER/bin/share-daemon ro-db --socket-group=kvm
+stdout_syslog=true
+
+[program:virtiofsd-ro-store]
+command=$RUNNER/bin/share-daemon ro-store --socket-group=kvm
+
+[supervisord]
+nodaemon=true
+EOF
+	printf '#!/usr/bin/env bash\nexec supervisord --configuration %s "$@"\n' "$conf" >"$RUNNER/bin/virtiofsd-run"
+	chmod +x "$RUNNER/bin/virtiofsd-run"
+	run_fabriek up acme
+	assert_success
+	run sort "$started"
+	assert_output "ro-db
+ro-store"
+	run wc -l <"$FABRIEK_MACHINES/acme/virtiofsd.pids"
+	assert_output 2
+	run_fabriek down acme
+	assert_success
+	sleep 0.5
+	run pgrep -f "share-daemon ro-"
+	assert_failure
+}
+
 # What fabriek hands the machine (ADR-057 points 2 and 3): the credential,
 # the operator's config projected for this factory plus the pin; and
 # runtime.json, the facts the runner's script puts on qemu's command line.
