@@ -25,11 +25,14 @@
         "fabriek-bus-acl.service"
         "forgejo.service"
       ];
-      ## Not before fabriek up has prepared the factory (accounts, tokens,
-      ## passwords owned by their cages): a session started earlier fails or
-      ## is deaf. Prepare writes the mark last and restarts this unit on it;
-      ## on every later boot the mark is already there.
-      unitConfig.ConditionPathExists = "/var/lib/nixcage/prepared";
+      ## Not before factory-prepare has prepared the factory for this boot
+      ## (profiles for these credentials, accounts, tokens, passwords owned
+      ## by their cages): a session started earlier fails, is deaf, or runs
+      ## on last boot's profile. Prepare writes the mark last and restarts
+      ## this unit on it. Under /run on purpose: a mark on the pool survived
+      ## a reboot with new credentials, and the lifecycle model
+      ## (models/vm-lifecycle.qnt) found the executor starting on it.
+      unitConfig.ConditionPathExists = "/run/fabriek/prepared";
       path = [
         pkgs.git
         pkgs.fabriek-container

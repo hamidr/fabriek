@@ -52,6 +52,15 @@
           ## all: it needs setfacl, and acl does not build on darwin.
           // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             fabriek-container = fabriek.container;
+          }
+          ## The appliance: the runner for this host, around a machine of the
+          ## host's architecture on Linux (ADR-057 point 1).
+          // {
+            machine =
+              (inputs.self.lib.appliance {
+                system = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-linux";
+                hostSystem = pkgs.stdenv.hostPlatform.system;
+              }).runner;
           };
 
           devShells.default = pkgs.mkShell {
@@ -109,27 +118,14 @@
       ## per auto-started factory (ADR-048).
       flake.nixosModules.host = import ./modules/host.nix;
 
-      ## One factory's machine, built from a spec the operator's side composes.
-      ## A function rather than a nixosConfigurations attribute because how big
-      ## a machine is and what port it answers on are not facts this repository
-      ## can know (ADR-019).
-      flake.lib.machine = import ./modules/vm.nix {
-        inherit (inputs)
-          nixpkgs
-          microvm
-          nixcage
-          self
-          ;
-      };
-
-      ## One factory's machine from the repository it works, which is what a
-      ## generated machine flake calls (ADR-040). The declaration is validated
-      ## and clamped in a build, and each role's devShell is realised there.
       ## What a role can be: the shipped catalogue and a repository's own,
       ## composed into one derivation per role (ADR-042).
       flake.lib.catalogue = import ./modules/catalogue.nix { inherit (inputs) self; };
 
-      flake.lib.factory = import ./modules/factory.nix {
+      ## The one machine every factory runs in, per guest and host system
+      ## (ADR-057). The operator builds or fetches it once; fabriek up hands
+      ## it a factory at boot.
+      flake.lib.appliance = import ./modules/appliance.nix {
         inherit (inputs)
           nixpkgs
           microvm

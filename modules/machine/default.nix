@@ -1,10 +1,18 @@
-## The machine one factory runs in (ADR-019).
+## The machine a factory runs in (ADR-019, ADR-057).
 ##
-## fabriek builds and runs one VM per factory, on Linux and macOS alike, so
-## that the isolation a factory gets does not depend on which laptop is open and
-## so that two factories share no kernel, store or uid space. Inside it, nixcage
+## fabriek runs one VM per factory, on Linux and macOS alike, so that the
+## isolation a factory gets does not depend on which laptop is open and so
+## that two factories share no kernel, store or uid space. Inside it, nixcage
 ## is in exactly the situation ADR-003 built it for: an ordinary Linux host
 ## running nspawn cages natively.
+##
+## One image serves every factory (ADR-057): nothing of a factory, an
+## operator or a host is evaluated into it. What the factory is arrives as
+## credentials at boot and factory-prepare renders it under the state
+## directory; what the host is (memory, cores, the ssh port) arrives on the
+## hypervisor's command line from the runner's extraArgsScript. Every name
+## below that once carried the factory's is a constant, because one machine
+## runs one factory.
 ##
 ## What is here is the machine. What runs on it is nixcage's host module, which
 ## is imported beside this one and is not restated.
@@ -24,9 +32,38 @@ let
   ## (ADR-018).
   stateDir = "/var/lib/nixcage";
 
-  ## The pool is named after the factory, so a disk that ends up attached to
-  ## the wrong machine refuses to import rather than being adopted.
-  pool = "fabriek-${cfg.factory}";
+  ## One pool per machine and one machine per factory, so the pool needs no
+  ## factory's name; a disk attached to the wrong machine is still refused
+  ## below, by the hostid ZFS stamps on it at creation.
+  pool = "fabriek";
+
+  ## Where prepare renders what the build used to: the clamped declaration,
+  ## the bridge plan, the proxy's configuration, the model, a pi directory
+  ## per role (ADR-057 point 4). On the pool, so a restart finds it; read by
+  ## the machine program through FABRIEK_ETC and included by the services.
+  factoryDir = "/var/lib/fabriek/factory";
+
+  ## The hypervisor arguments the host decides at run time (ADR-057 point
+  ## 2): memory and cores from the clamped resources, the user-mode NIC with
+  ## the ssh port forwarded, and one fw_cfg credential per file of point 3.
+  ## Read from runtime.json in the directory the runner is started in, which
+  ## fabriek up writes; the script is the image's and the facts are the
+  ## host's. It runs on the host, so it is made of the host's packages, as
+  ## the runner is (vm.nix): a macOS host cannot exec the guest's jq. qemu
+  ## takes the last -m and -smp it is given.
+  hostPkgs = config.microvm.vmHostPackages;
+  runtimeArgs = hostPkgs.writeShellScript "fabriek-runtime-args" ''
+    set -eu
+    r=runtime.json
+    [ -f "$r" ] || { echo "fabriek: no $r in $PWD; fabriek up writes it" >&2; exit 1; }
+    args="-m $(${hostPkgs.jq}/bin/jq -r .mem "$r")M -smp $(${hostPkgs.jq}/bin/jq -r .cpus "$r")"
+    args="$args -netdev user,id=fabriek,hostfwd=tcp:127.0.0.1:$(${hostPkgs.jq}/bin/jq -r .sshPort "$r")-:22"
+    args="$args -device virtio-net-pci,netdev=fabriek"
+    while IFS=$'\t' read -r name file; do
+      args="$args -fw_cfg name=opt/io.systemd.credentials/$name,file=$file"
+    done < <(${hostPkgs.jq}/bin/jq -r '.credentials | to_entries[] | "\(.key)\t\(.value)"' "$r")
+    printf '%s\n' "$args"
+  '';
 
   ## Found by serial rather than by drive letter, because a drive letter moves
   ## when the volume list changes and the pool would then be created on top of
@@ -67,45 +104,15 @@ let
 in
 {
   options.fabriek.machine = {
-    factory = lib.mkOption {
-      type = lib.types.str;
-      description = "The factory this machine exists to run. Names its pool.";
-    };
-    cpus = lib.mkOption {
-      type = lib.types.int;
-      default = 4;
-      description = "Cores, as the factory asked and the operator allowed.";
-    };
-    mem = lib.mkOption {
-      type = lib.types.int;
-      default = 8192;
-      description = "Memory in MiB, as the factory asked and the operator allowed.";
-    };
-    diskSize = lib.mkOption {
-      type = lib.types.int;
-      default = 65536;
-      description = "Size in MiB of each volume this machine is given.";
-    };
-    declaration = lib.mkOption {
-      type = lib.types.attrs;
-      default = { };
+    shareProto = lib.mkOption {
+      type = lib.types.enum [
+        "virtiofs"
+        "9p"
+      ];
+      default = "virtiofs";
       description = ''
-        The factory's declaration, validated and clamped by the build
-        (ADR-040). The bridge's address plan and the bus's users are derived
-        from its roles, and the machine program reads it from
-        /etc/fabriek/declaration.json rather than evaluating anything.
-      '';
-    };
-    sshPort = lib.mkOption {
-      type = lib.types.port;
-      description = "The host port fabriek reaches this machine on.";
-    };
-    authorizedKey = lib.mkOption {
-      type = lib.types.str;
-      description = ''
-        The one public key that reaches this machine. fabriek owns the way in
-        because it owns the VM, and this is that: a key made per factory, so no
-        factory holds another factory's way in.
+        How the host's store reaches the machine (ADR-057 point 1a):
+        virtiofs on a Linux host, 9p on macOS where virtiofsd does not run.
       '';
     };
     zfsArcMax = lib.mkOption {
@@ -113,39 +120,10 @@ in
       default = 512;
       description = "ARC ceiling in MiB. Uncapped it would take half the machine.";
     };
-    egressHeaders = lib.mkOption {
-      type = lib.types.attrsOf lib.types.str;
-      default = { };
-      description = ''
-        Which header carries the credential for which endpoint, as the
-        operator's own config says (ADR-025). The value is never here: the
-        machine reads it from its state directory at run time, so nothing
-        about a credential is in the store or in a build log.
-      '';
-    };
-    egressModels = lib.mkOption {
-      type = lib.types.attrsOf lib.types.str;
-      default = { };
-      description = ''
-        The model a session starts on, per endpoint, as the operator's own
-        config names it; absent, the machine's own table in floor.nix
-        decides. The declaration cannot name one (ADR-029).
-      '';
-    };
     egressPort = lib.mkOption {
       type = lib.types.port;
       default = 8118;
       description = "Where on the bridge a role's agent finds the proxy.";
-    };
-    egress = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = ''
-        The hosts this factory's agents may reach, as the repository declared
-        them and the operator allowed them (ADR-025). Empty is a machine that
-        reaches nothing, which is what an operator who has named no endpoints
-        has asked for.
-      '';
     };
   };
 
@@ -160,52 +138,65 @@ in
   ];
 
   config = {
-    ## The declaration, on the machine as a file (ADR-040).
-    environment.etc."fabriek/declaration.json".text = builtins.toJSON cfg.declaration;
+    ## Where the machine program reads what prepare rendered, and the
+    ## runtime args script the runner calls.
+    environment.variables.FABRIEK_ETC = factoryDir;
+    microvm.extraArgsScript = "${runtimeArgs}";
 
     ## The VM owns its store. The closure ships read-only and builds land in a
     ## persistent overlay, so nothing of the host's store is shared in and two
     ## factories cannot see each other's through it.
+    ## The store (ADR-057 point 1a): the host's, shared read-only as the
+    ## lower layer, with this machine's builds in a persistent overlay on
+    ## store.img. Nothing of the closure is copied into a disk and a path
+    ## the host holds is never fetched here. The host's db rides beside the
+    ## store so nix sees a host path as valid and not only present. Both
+    ## volumes are made by fabriek up at the size the caps allow; no
+    ## interface and no forwarded port are declared here, the runtime args
+    ## carry them.
     microvm = {
       hypervisor = "qemu";
-      vcpu = cfg.cpus;
-      mem = cfg.mem;
+      storeOnDisk = false;
       writableStoreOverlay = "/nix/.rw-store";
+      shares = [
+        {
+          source = "/nix/store";
+          mountPoint = "/nix/.ro-host/nix/store";
+          tag = "ro-store";
+          proto = cfg.shareProto;
+        }
+        {
+          source = "/nix/var/nix/db";
+          mountPoint = "/nix/.ro-host/nix/var/nix/db";
+          tag = "ro-db";
+          proto = cfg.shareProto;
+        }
+      ];
 
       volumes = [
         {
           image = "store.img";
           mountPoint = "/nix/.rw-store";
-          size = cfg.diskSize;
+          autoCreate = false;
         }
         {
-          ## Unmounted here and taken over by the service below. microvm.nix
-          ## makes a filesystem on every volume it creates and has no mkfs.zfs
-          ## to make one with, so this arrives carrying an ext4 superblock that
-          ## zpool overwrites.
+          ## Unmounted here and taken over by the service below.
           image = "pool.img";
           mountPoint = null;
           serial = poolSerial;
-          size = cfg.diskSize;
+          autoCreate = false;
         }
       ];
 
-      interfaces = [
-        {
-          type = "user";
-          id = "cw0";
-          mac = "02:00:00:00:00:01";
-        }
-      ];
-
-      forwardPorts = [
-        {
-          from = "host";
-          host.port = cfg.sshPort;
-          guest.port = 22;
-        }
-      ];
+      interfaces = [ ];
+      forwardPorts = [ ];
     };
+
+    ## The overlay is the machine's default store, so the daemon, nix build
+    ## at prepare and nixcage's closure query for every session all answer
+    ## for a host path as valid (ADR-057 point 1a). Experimental in this nix;
+    ## the measurement plan checks it on a machine.
+    nix.settings.store = "local-overlay://?root=/&lower-store=${lib.escapeURL "local?root=/nix/.ro-host&read-only=true"}&upper-layer=/nix/.rw-store/store";
 
     boot = {
       supportedFilesystems.zfs = true;
@@ -220,12 +211,11 @@ in
       kernelParams = [ "zfs.zfs_arc_max=${toString (cfg.zfsArcMax * 1048576)}" ];
     };
 
-    ## ZFS wants one per machine, and every factory's machine is a different
-    ## one. Derived from the factory's name so that rebuilding a machine does
-    ## not change the identity of the pool it imports.
+    ## ZFS wants a hostid; one image means one, and a pool made by this
+    ## image imports on any machine running it, which is the point.
     networking = {
-      hostName = "fabriek-${cfg.factory}";
-      hostId = builtins.substring 0 8 (builtins.hashString "sha256" cfg.factory);
+      hostName = "fabriek";
+      hostId = "fab21e57";
 
       ## This machine has a link-local IPv6 address, no global one and no route,
       ## so an AAAA record is an address it cannot reach. The resolver answers
@@ -258,8 +248,11 @@ in
         PasswordAuthentication = false;
         PermitRootLogin = "prohibit-password";
       };
+      ## The operator's key arrives as a credential at boot (ADR-057 point
+      ## 3), so the machine is reachable before anything else runs and no
+      ## key is in the image.
+      authorizedKeysFiles = [ "/run/credentials/@system/fabriek.authorized_keys" ];
     };
-    users.users.root.openssh.authorizedKeys.keys = [ cfg.authorizedKey ];
 
     systemd.services.fabriek-storage = {
       description = "Import or create the pool this factory's state lives on";
@@ -343,17 +336,14 @@ in
       size = 64;
     };
 
-    ## The machine's own way of being handed a secret. Present only where
-    ## there is somewhere to reach, which is the same condition the proxy has.
-    ## The supervisor reads a factory's declaration by evaluating the flake it
-    ## is committed in (ADR-020), and it does that here rather than on the
-    ## operator's host. A machine whose nix refuses these reads no declaration
-    ## at all: no role resolves, no worktree is prepared and no session starts,
-    ## and what it says while failing is that the repository declares no
-    ## factory.
+    ## prepare evaluates the repository's devShell and catalogue at the rev
+    ## and builds each role's profile here (ADR-057 point 5); the overlay
+    ## store above is what makes the host's paths count.
     nix.settings.experimental-features = [
       "nix-command"
       "flakes"
+      "local-overlay-store"
+      "read-only-local-store"
     ];
 
     ## git is on the machine's own PATH, not only inside the wrapper the
@@ -366,8 +356,8 @@ in
       ## The machine program itself. Every role-, task- and factory- verb the
       ## CLI sends runs here, so this is what "the factory moves in" means.
       pkgs.fabriek-container
-    ]
-    ++ lib.optionals (cfg.egress != [ ]) [ egressCredential ];
+      egressCredential
+    ];
 
     ## Who the proxy is (ADR-025 point 2). It exists here rather than beside
     ## the service because the firewall below is written in terms of it: the
@@ -455,10 +445,14 @@ in
       };
     };
 
-    ## What the include above reads, made before nginx opens it. The secret
-    ## comes off the machine's own state directory, which the operator writes
-    ## and no cage can read.
-    systemd.services.fabriek-egress-credentials = lib.mkIf (cfg.egress != [ ]) {
+    ## What the proxy's include reads, made before nginx opens it and again
+    ## when prepare has rendered the endpoints (ADR-057 point 4). Which
+    ## header carries which endpoint's credential is in the endpoints file
+    ## prepare wrote from the operator's credential; the secret itself comes
+    ## off the machine's own state directory, which the operator writes over
+    ## ssh and no cage can read. Before prepare there is no file and nothing
+    ## is written, which is a proxy with no endpoints.
+    systemd.services.fabriek-egress-credentials = {
       description = "Compose this factory's credential headers for the egress proxy";
       wantedBy = [ "multi-user.target" ];
       before = [ "nginx.service" ];
@@ -468,23 +462,26 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ pkgs.coreutils ];
+      path = [
+        pkgs.coreutils
+        pkgs.jq
+      ];
       script = ''
         set -eu
         install -d -m 0750 -o fabriek-egress -g fabriek-egress /run/fabriek-egress
-        ${lib.concatMapStrings (host: ''
-          conf=/run/fabriek-egress/${host}.conf
-          secret=${stateDir}/egress/${host}
+        endpoints=${factoryDir}/endpoints.json
+        [ -f "$endpoints" ] || exit 0
+        jq -r '.credentials | to_entries[] | "\(.key)\t\(.value)"' "$endpoints" |
+        while IFS=$'\t' read -r host header; do
+          conf=/run/fabriek-egress/$host.conf
+          secret=${stateDir}/egress/$host
           : >"$conf"
-          ${lib.optionalString (cfg.egressHeaders ? ${host}) ''
-            if [ -s "$secret" ]; then
-              printf 'proxy_set_header %s "%s";\n' \
-                ${lib.escapeShellArg cfg.egressHeaders.${host}} "$(cat "$secret")" >"$conf"
-            fi
-          ''}
+          if [ -s "$secret" ]; then
+            printf 'proxy_set_header %s "%s";\n' "$header" "$(cat "$secret")" >"$conf"
+          fi
           chown fabriek-egress:fabriek-egress "$conf"
           chmod 0400 "$conf"
-        '') cfg.egress}
+        done
       '';
     };
 

@@ -12,10 +12,11 @@
 ## between two ports of one bridge never reaches the inet hooks.
 ##
 ## The veth's host end is named by nixcage from a hash of the cage's name
-## (nixcage ADR-013), and the function that names it is nixcage's flake
-## lib, so the set below is keyed on what nixcage will call the interface
-## and the address the executor hands the session, which is the same plan
-## this file writes to /etc/fabriek/bridge.json for the executor to read.
+## (nixcage ADR-013). Which cages there are is the factory's, and the factory
+## arrives at boot (ADR-057), so the set below is declared empty here and
+## filled by factory-prepare from the plan it renders (modules/
+## factory-render.sh), with nft add element; the same plan is written for
+## the executor to read, so the two cannot disagree.
 ##
 ## The machine's own firewall is the third party here: it drops a new
 ## connection on an interface it was not told about, so the bridge is named
@@ -23,30 +24,15 @@
 {
   config,
   lib,
-  ## nixcage's flake lib, for the name it gives a cage's veth.
-  vethHostName,
   ...
 }:
 let
   cfg = config.fabriek.machine;
-  roles = lib.attrNames (cfg.declaration.roles or { });
-  net = "10.77.0";
-  bridge = "fabriek-${cfg.factory}";
-  host = "${net}.1";
-  cages = {
-    decider = "${net}.2";
-  }
-  // lib.listToAttrs (lib.imap0 (i: r: lib.nameValuePair r "${net}.${toString (10 + i)}") roles);
-  plan = {
-    inherit bridge host cages;
-    prefix = 24;
-    proxy = "${host}:${toString cfg.egressPort}";
-    forgejo = "${host}:${toString cfg.forgejoPort}";
-    valkey = "${host}:${toString cfg.valkeyPort}";
-  };
-  members = lib.concatStringsSep ", " (
-    lib.mapAttrsToList (name: addr: ''"${vethHostName name}" . ${addr}'') cages
-  );
+  ## One bridge per machine and one machine per factory: a constant name,
+  ## which the egress chain's "fabriek-*" also matches.
+  bridge = "fabriek0";
+  host = "10.77.0.1";
+  prefix = 24;
 in
 {
   options.fabriek.machine = {
@@ -67,7 +53,7 @@ in
     networking.interfaces.${bridge}.ipv4.addresses = [
       {
         address = host;
-        prefixLength = plan.prefix;
+        prefixLength = prefix;
       }
     ];
     ## An empty bridge has no carrier, and networkd withholds an address from
@@ -78,10 +64,15 @@ in
     systemd.network.networks."40-${bridge}".networkConfig.ConfigureWithoutCarrier = true;
     boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind" = 1;
 
-    ## The plan, for the executor that starts sessions and the proofs that
-    ## check them. One copy, and the rules below are generated from the same
-    ## attributes, so the two cannot disagree.
-    environment.etc."fabriek/bridge.json".text = builtins.toJSON plan;
+    ## What the machine program renders the plan with: the bridge's name
+    ## and where the services answer, the same numbers the services bind.
+    environment.variables = {
+      FABRIEK_BRIDGE = bridge;
+      FABRIEK_BRIDGE_HOST = host;
+      FABRIEK_PROXY_PORT = toString cfg.egressPort;
+      FABRIEK_FORGEJO_PORT = toString cfg.forgejoPort;
+      FABRIEK_VALKEY_PORT = toString cfg.valkeyPort;
+    };
 
     networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
       cfg.forgejoPort
@@ -92,9 +83,10 @@ in
     networking.nftables.tables.fabriek-cages = {
       family = "bridge";
       content = ''
+        ## Filled by factory-prepare: nft add element bridge fabriek-cages
+        ## cages { "nc-..." . 10.77.0.10, ... }, from the rendered plan.
         set cages {
           type ifname . ipv4_addr
-          elements = { ${members} }
         }
 
         chain prerouting {

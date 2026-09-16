@@ -53,10 +53,11 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 # buy a tidier name and cost every factory its datasets (ADR-018).
 STATE_DIR="${FABRIEK_STATE:-/var/lib/nixcage}"
 
-# What the machine's build put on it: the bridge plan and each role's profile
-# (ADR-040). Overridable so the suite can put a machine's facts in a scratch
+# What factory-prepare rendered on the machine (ADR-057): the clamped
+# declaration, the bridge plan, each role's profile and pi directory. On the
+# pool; the image sets the variable, and the suite points it at a scratch
 # directory.
-FABRIEK_ETC="${FABRIEK_ETC:-/etc/fabriek}"
+FABRIEK_ETC="${FABRIEK_ETC:-/var/lib/fabriek/factory}"
 
 
 ## The declaration a factory is working, read out of its own clone (ADR-020)
@@ -619,22 +620,39 @@ cmd_factory_board() {
 	printf '%s\n' "$password"
 }
 
+## The factory this machine runs, from the declaration prepare rendered;
+## the caller may name it to have it checked. Before prepare there is none,
+## which is a machine with nothing to apply yet and not a fault: the units
+## that call these at boot are restarted by prepare.
+prepared_declaration() {
+	local factory="${1:-}" file="$FABRIEK_ETC/declaration.json"
+	if [ ! -f "$file" ]; then
+		echo "fabriek-container: no factory prepared yet at $file" >&2
+		return 1
+	fi
+	if [ -n "$factory" ]; then
+		factory_declaration "$factory"
+	else
+		printf '%s\n' "$file"
+	fi
+}
+
 ## Who may say what on the bus, applied from the password files prepare
 ## wrote (ADR-033 point 3). The machine's ACL unit runs this at boot and
 ## prepare restarts that unit after writing a new password.
 cmd_bus_acl() {
-	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: fabriek-container bus-acl <factory>"
-	fabriek_bus_apply "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(factory_declaration "$factory")" ||
+	local declaration
+	declaration="$(prepared_declaration "${1:-}")" || exit 0
+	fabriek_bus_apply "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$declaration" ||
 		die "could not apply the bus ACL"
 }
 
 ## The kernel's lines, from bpftrace on stdin, onto the bus with the role
 ## each uid belongs to (ADR-038 point 3).
 cmd_probes_publish() {
-	local factory="${1:-}"
-	[ -n "$factory" ] || die "usage: fabriek-container probes-publish <factory>"
-	fabriek_probes_publish "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(factory_declaration "$factory")"
+	local declaration
+	declaration="$(prepared_declaration "${1:-}")" || exit 0
+	fabriek_probes_publish "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$declaration"
 }
 
 cmd_factory_mirror() {

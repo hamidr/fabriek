@@ -16,25 +16,15 @@
 ## account.
 {
   config,
-  lib,
   pkgs,
   ...
 }:
 let
   cfg = config.fabriek.machine;
-  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
+  host = config.environment.variables.FABRIEK_BRIDGE_HOST;
 in
 {
-  options.fabriek.machine.tokenCeiling = lib.mkOption {
-    type = lib.types.int;
-    default = 0;
-    description = ''
-      Input plus output tokens the factory may spend before the proxy refuses,
-      as the factory asked and the operator allowed. Zero is no ceiling.
-    '';
-  };
-
-  config = lib.mkIf (cfg.egress != [ ]) {
+  config = {
     ## The body filter and the status handler, a file beside this one so
     ## node can drive it with the API's own bodies (spend.test.mjs); on the
     ## machine it is read from /etc, where njs has no import path trouble
@@ -65,39 +55,29 @@ in
           'ratelimit_tokens=$upstream_http_anthropic_ratelimit_tokens_remaining';
       '';
 
+      ## The ceiling and the locations are the factory's (ADR-057 point 4):
+      ## factory-prepare renders them under the state directory from the
+      ## clamped declaration (modules/factory-render.sh) and reloads nginx.
+      ## A glob include of nothing is a vhost with no endpoint, which is
+      ## what a machine before prepare, or an operator who allowed none, has.
       virtualHosts."fabriek-egress" = {
         listen = [
           {
-            addr = plan.host;
+            addr = host;
             port = cfg.egressPort;
           }
         ];
         extraConfig = ''
-          set $spend_ceiling ${toString cfg.tokenCeiling};
           access_log syslog:server=unix:/dev/log,tag=fabriek_egress,nohostname fabriek_egress;
           error_log syslog:server=unix:/dev/log,tag=fabriek_egress,nohostname;
+          set $spend_ceiling 0;
 
           location = /status {
             js_content spend.status;
           }
-        ''
-        + lib.concatMapStrings (host: ''
-          location /${host}/ {
-            if ($spend_over = 1) {
-              return 429;
-            }
-            proxy_pass https://${host}/;
-            proxy_set_header Host ${host};
-            proxy_ssl_server_name on;
-            ## Streamed responses must reach the filter chunk by chunk, or
-            ## the last figure is the only one and arrives when the turn is
-            ## over; gzip would hide the body from the filter altogether.
-            proxy_buffering off;
-            proxy_set_header Accept-Encoding "";
-            js_body_filter spend.count;
-            include /run/fabriek-egress/${host}.conf;
-          }
-        '') cfg.egress;
+
+          include /var/lib/fabriek/factory/proxy/*.conf;
+        '';
       };
     };
   };

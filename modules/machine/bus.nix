@@ -13,7 +13,7 @@
 }:
 let
   cfg = config.fabriek.machine;
-  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
+  host = config.environment.variables.FABRIEK_BRIDGE_HOST;
 in
 {
   config = {
@@ -24,15 +24,16 @@ in
       serviceConfig = {
         ## Nothing saved and nothing appended: a restart is an empty bus, and
         ## every actor re-announces itself (ADR-033).
-        ExecStart = "${pkgs.valkey}/bin/valkey-server --bind ${plan.host} --port ${toString cfg.valkeyPort} --save \"\" --appendonly no --protected-mode no";
+        ExecStart = "${pkgs.valkey}/bin/valkey-server --bind ${host} --port ${toString cfg.valkeyPort} --save \"\" --appendonly no --protected-mode no";
         Restart = "on-failure";
         DynamicUser = true;
       };
     };
 
     ## The ACL, applied from the password files that exist. Restarted by
-    ## fabriek up after it writes them, so a new role's user appears
-    ## without a reboot.
+    ## factory-prepare after it writes them, so a new role's user appears
+    ## without a reboot; before prepare there is no declaration and the
+    ## verb applies nothing.
     systemd.services.fabriek-bus-acl = {
       description = "Who may say what on this factory's bus";
       wantedBy = [ "multi-user.target" ];
@@ -56,7 +57,7 @@ in
         pkgs.fabriek-container
         "/run/current-system/sw"
       ];
-      script = "fabriek-container bus-acl ${cfg.factory}";
+      script = "fabriek-container bus-acl";
     };
   };
 }

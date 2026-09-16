@@ -1,10 +1,10 @@
-## Building the machine one factory runs in (ADR-019).
+## Building the machine every factory runs in (ADR-019, ADR-057).
 ##
-## A function of the inputs fabriek pins and a spec describing one factory's
-## machine, returning a NixOS configuration. It is a function rather than a
-## nixosConfigurations attribute because a machine is per factory and per
-## operator: how many cores it has and what port it answers on are not facts
-## this repository can know.
+## A function of the inputs fabriek pins and a spec naming the guest's and
+## the host's system, returning a NixOS configuration. It is a function
+## rather than a nixosConfigurations attribute because the runner is built
+## from the host's packages, and which host is not a fact this repository
+## can know; everything else about a machine is decided at run time.
 ##
 ## The machine is nixpkgs, microvm.nix, nixcage's host module and fabriek' own,
 ## which is what ADR-019 point 2 decides. Inside the VM nixcage is in exactly
@@ -60,21 +60,10 @@ nixpkgs.lib.nixosSystem {
       microvm.vmHostPackages = nixpkgs.legacyPackages.${spec.hostSystem or spec.system};
     })
     {
-      fabriek.machine = builtins.removeAttrs spec [
-        "system"
-        "hostSystem"
-        "workspaceRoots"
-        "notes"
-        "modules"
-      ];
-      ## Nothing of the operator's is shared in yet: no role works in this
-      ## machine until PRD-004 phase 3, and a share nothing reads is a hole
-      ## nobody asked for.
-      nixcage.workspaceRoots = spec.workspaceRoots or [ ];
+      fabriek.machine.shareProto = spec.shareProto or "virtiofs";
+      ## A role's worktree is under nixcage's own state, not a workspace root
+      ## (modules/role-worktree.sh), so none is shared in.
+      nixcage.workspaceRoots = [ ];
     }
-  ]
-  ## What a factory adds to its own machine beyond the spec: the declaration
-  ## as a file and a profile per role (factory.nix). A list so that vm.nix
-  ## keeps taking a spec and knows nothing about what a factory is.
-  ++ (spec.modules or [ ]);
+  ];
 }

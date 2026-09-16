@@ -86,7 +86,8 @@ fabriek_role_profile() {
 	readlink -f "$link"
 }
 
-## The store path of a role's pi directory, resolved like its profile.
+## A role's pi directory, rendered by prepare beside its profile
+## (factory-render.sh), resolved like the profile.
 fabriek_role_pi_dir() {
 	local etc="$1" role="$2" link
 	fabriek_name_ok "$role" || return 1
@@ -193,11 +194,15 @@ fabriek_actor_args() {
 		[ -e "$entry" ] || continue
 		printf '%s\n' "--bind-ro" "$entry:/run/fabriek/pi/${entry##*/}"
 	done
-	## The directory's files import the loop and the extensions by store
-	## path, so the cage has to see their closure: the directory is a root
-	## (nixcage ADR-014), and a bind alone would show files that import
-	## nothing the cage can find.
-	printf '%s\n' "--store-root" "$pidir"
+	## The directory's index files import the loop and the extensions from
+	## the floor the image carries (floor.nix), so the cage has to see the
+	## floor's closure: the floor is a root (nixcage ADR-014), and a bind
+	## alone would show files that import nothing the cage can find.
+	if [ -z "${FABRIEK_FLOOR:-}" ]; then
+		echo "fabriek: FABRIEK_FLOOR is not set; the machine's image names the floor" >&2
+		return 1
+	fi
+	printf '%s\n' "--store-root" "$FABRIEK_FLOOR"
 	printf '%s\n' \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_AGENT_DIR=/run/fabriek/pi" \

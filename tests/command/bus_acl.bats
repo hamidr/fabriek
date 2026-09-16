@@ -107,3 +107,21 @@ acl_calls() {
 	run grep "SETUSER default off" "$TEST_TEMP_DIR/bus-calls"
 	assert_failure
 }
+
+# ADR-057: the ACL unit runs at boot, before factory-prepare has rendered a
+# declaration; a machine with no factory yet has nothing to apply and is
+# not a failed unit.
+@test "before prepare has rendered a declaration, bus-acl applies nothing and exits clean" {
+	rm "$FABRIEK_ETC/declaration.json"
+	run_fabriek_container bus-acl
+	assert_success
+	assert_output --partial "no factory prepared yet"
+	[ ! -e "$TEST_TEMP_DIR/bus-calls" ] || ! grep -q "ACL SETUSER" "$TEST_TEMP_DIR/bus-calls"
+}
+
+@test "given no factory name, bus-acl applies the ACL of the declaration prepare rendered" {
+	run_fabriek_container bus-acl
+	assert_success
+	run acl_calls
+	assert_line --partial "SETUSER builder on"
+}

@@ -62,7 +62,7 @@ in
       ];
       script = ''
         set -u
-        bpftrace -q -f text /etc/fabriek/probes.bt | fabriek-container probes-publish ${cfg.factory}
+        bpftrace -q -f text /etc/fabriek/probes.bt | fabriek-container probes-publish
       '';
     };
   };

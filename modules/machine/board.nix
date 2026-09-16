@@ -18,17 +18,17 @@
 let
   cfg = config.fabriek.machine;
   stateDir = "/var/lib/nixcage";
-  plan = builtins.fromJSON config.environment.etc."fabriek/bridge.json".text;
+  host = config.environment.variables.FABRIEK_BRIDGE_HOST;
+  forgejo = "${host}:${toString cfg.forgejoPort}";
 in
 {
   options.fabriek.machine.recordQuota = lib.mkOption {
     type = lib.types.int;
     default = 4096;
     description = ''
-      Size in MiB the record may reach, as the factory asked and the operator
-      allowed (ADR-036). A default rather than a required value, for the
-      reason the ledger's bound had one: refusing to boot over an unstated
-      number is a worse answer than a modest one.
+      Size in MiB the record may reach before factory-prepare has applied
+      what the factory asked and the operator allowed (ADR-036, ADR-057):
+      prepare asks the storage primitive again with the clamped number.
     '';
   };
 
@@ -52,10 +52,10 @@ in
       database.type = "sqlite3";
       settings = {
         server = {
-          HTTP_ADDR = plan.host;
+          HTTP_ADDR = host;
           HTTP_PORT = cfg.forgejoPort;
-          DOMAIN = plan.host;
-          ROOT_URL = "http://${plan.forgejo}/";
+          DOMAIN = host;
+          ROOT_URL = "http://${forgejo}/";
           ## Nothing on this machine pushes over ssh; the executor is local
           ## and a role holds no repository credential (ADR-036 point 5).
           DISABLE_SSH = true;
