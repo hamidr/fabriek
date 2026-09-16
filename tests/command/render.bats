@@ -282,6 +282,54 @@ JSON
 	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme git+file://$STATE/factories/acme?exportIgnore=1&rev=$(git -C "$REPO" rev-parse HEAD) github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993?narHash=sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU%3D https://example.invalid/pkgs.git?narHash=sha256-AA/A%2BA%3D "
 }
 
+# ADR-061 point 6: a factory declared in the operator's file arrives in
+# the credential, and render reads it there instead of the clone's file;
+# the operator's specialists, skills and catalogue directories reach the
+# profile build as JSON and as paths the evaluator may read.
+@test "render takes the declaration from the credential when it carries one, and the clone's file is not read" {
+	git -C "$REPO" rm -q fabriek.toml
+	git -C "$REPO" -c commit.gpgsign=false commit -qm undeclare
+	sed -i.bak "s/rev = \".*\"/rev = \"$(git -C "$REPO" rev-parse HEAD)\"/" "$CRED" && rm "$CRED.bak"
+	sed -i.bak '1i catalogues = ["/nix/store/cccc-catalogue"]' "$CRED" && rm "$CRED.bak"
+	cat >>"$CRED" <<'TOML'
+
+[declaration]
+"name" = "acme"
+
+[declaration."roles"."builder"]
+"provides" = ["build"]
+"specialists" = ["strict"]
+
+[[declaration."workflows"."ship"."stages"]]
+"needs" = "build"
+
+[specialists."strict"]
+"extends" = ["reviewer"]
+"tools" = ["semgrep"]
+"prompt" = "/nix/store/pppp-strict.md"
+
+[skills."profile"]
+"skill" = "text"
+TOML
+	run_fabriek_container factory-render
+	assert_success
+	run jq -c '.roles | keys' "$ETC/declaration.json"
+	assert_output '["builder"]'
+	run cat "$CALLS/nix-build"
+	assert_line --index 0 --partial 'role = "builder"'
+	assert_line --index 0 --partial 'declared = builtins.fromJSON "{\"specialists\":{\"strict\":{\"extends\":[\"reviewer\"],\"prompt\":\"/nix/store/pppp-strict.md\",\"tools\":[\"semgrep\"]}},\"skills\":{\"profile\":{\"skill\":\"text\"}}}"'
+	assert_line --index 0 --partial 'catalogues = [ /nix/store/cccc-catalogue ]'
+	assert_line --index 0 --partial "-I /nix/store/cccc-catalogue -I /nix/store/pppp-strict.md "
+}
+
+@test "a credential carrying no declaration renders the clone's file, with no operator entries on the build line" {
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$CALLS/nix-build"
+	assert_line --index 0 --partial 'declared = builtins.fromJSON "{\"specialists\":{},\"skills\":{}}"'
+	assert_line --index 0 --partial 'catalogues = [ ]'
+}
+
 @test "a declaration the schema refuses stops render naming the key, before anything is written" {
 	echo 'colour = "blue"' >>"$REPO/fabriek.toml"
 	git -C "$REPO" -c commit.gpgsign=false commit -qam colour

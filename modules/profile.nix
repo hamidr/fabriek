@@ -27,6 +27,13 @@
   shell ? null,
   ## The repository's own catalogue, a path under it, or null (ADR-042).
   catalogue ? null,
+  ## The operator's specialists and skills declared in TOML, and catalogue
+  ## directories of the operator's own, as store paths (ADR-061).
+  declared ? {
+    specialists = { };
+    skills = { };
+  },
+  catalogues ? [ ],
 }:
 let
   pkgs = import nixpkgs { inherit system; };
@@ -38,9 +45,10 @@ let
     inherit rev;
   };
   project = builtins.getFlake "git+file://${clone}?rev=${rev}";
+  ## fabriek's first, the operator's, the repository's (ADR-061 point 5).
   composed = import "${self}/modules/catalogue.nix" { inherit self; } {
-    inherit pkgs;
-    extra = lib.optional (catalogue != null) "${source}/${catalogue}";
+    inherit pkgs declared;
+    extra = catalogues ++ lib.optional (catalogue != null) "${source}/${catalogue}";
   };
   kit = composed.compose { inherit role specialists; };
   ## stdenv hands a shell its inputs as dev outputs, which is what a build

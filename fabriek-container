@@ -483,7 +483,7 @@ render_profiles() {
 	rm -f "$FABRIEK_ETC/profiles.json"
 	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")")"
 	while IFS= read -r role; do
-		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_NIXPKGS" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json")" || {
+		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_NIXPKGS" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json" "$FABRIEK_ETC/declared.json" "$FABRIEK_ETC/catalogues")" || {
 			rm -f "$FABRIEK_ETC/roles/$role/profile"
 			die "could not build a profile for role $role"
 		}
@@ -517,7 +517,19 @@ cmd_factory_render() {
 
 	clone="$(render_clone "$factory" "$remote" "$rev")" || exit 1
 	declaration="$(mktemp)"
-	fabriek_declaration_read "$clone" "$rev" >"$declaration" || exit 1
+	## From the credential when the operator's file declared the factory
+	## (ADR-061 point 6), the clone's fabriek.toml at the pin otherwise;
+	## the host refused a factory declared in both before the boot.
+	if jq -e '.declaration' "$credential" >/dev/null; then
+		jq '.declaration' "$credential" | fabriek_declaration_validate >"$declaration" || exit 1
+	else
+		fabriek_declaration_read "$clone" "$rev" >"$declaration" || exit 1
+	fi
+	## The operator's specialists, skills and catalogue directories, for
+	## the profile builds (ADR-061 points 3 and 4).
+	local declared_json catalogues_list
+	declared_json="$(jq -c '{specialists: (.specialists // {}), skills: (.skills // {})}' "$credential")"
+	catalogues_list="$(jq -r '(.catalogues // [])[]' "$credential")"
 	local_file="$(mktemp)"
 	fabriek_render_local "$credential" >"$local_file"
 	spec="$(mktemp)"
@@ -525,6 +537,8 @@ cmd_factory_render() {
 	jq -c --slurpfile c "$credential" '. + { embedder: $c[0].embedder.url }' "$spec" >"$spec.2" && mv "$spec.2" "$spec"
 
 	mkdir -p "$FABRIEK_ETC"
+	printf '%s\n' "$declared_json" >"$FABRIEK_ETC/declared.json"
+	printf '%s\n' "$catalogues_list" >"$FABRIEK_ETC/catalogues"
 	render_files "$spec" "$clone" "$rev"
 	render_machine "$spec"
 	render_profiles "$clone" "$rev"

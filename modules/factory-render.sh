@@ -107,7 +107,9 @@ fabriek_render_routed() {
 ## fabriek_render_model <declaration.json> <models-json>
 fabriek_render_model() {
 	local declaration="$1" models="$2" host provider
-	IFS=$'\t' read -r host provider < <(fabriek_render_routed "$declaration")
+	## A declaration allowing no endpoint routes nothing, and read says so
+	## by its status, which is not a failure here.
+	IFS=$'\t' read -r host provider < <(fabriek_render_routed "$declaration") || true
 	[ -n "$provider" ] || {
 		host="api.anthropic.com"
 		provider="anthropic"
@@ -218,14 +220,32 @@ fabriek_profile_allowed_uris() {
 ## the pin (ADR-057 point 5, modules/profile.nix). Prints the store path, or
 ## nix's own refusal, which names the role and what it lacked.
 ##
-## fabriek_profile_build <clone> <rev> <self> <nixpkgs> <system> <role> <declaration.json>
+## The operator's entries (ADR-061): declared.json is the credential's
+## [specialists] and [skills]; catalogues one directory per line. Each
+## path among them is a store path the host put there, granted to the
+## evaluator on the search path as fabriek's own is.
+##
+## fabriek_profile_build <clone> <rev> <self> <nixpkgs> <system> <role> <declaration.json> [<declared.json> <catalogues>]
 fabriek_profile_build() {
-	local clone="$1" rev="$2" self="$3" nixpkgs="$4" system="$5" role="$6" declaration="$7"
-	local specialists shell catalogue uris
+	local clone="$1" rev="$2" self="$3" nixpkgs="$4" system="$5" role="$6" declaration="$7" declared="${8:-}" catalogues="${9:-}"
+	local specialists shell catalogue uris declared_json="{}" extra="" path
 	specialists="$(jq -c --arg r "$role" '.roles[$r].specialists // []' "$declaration")"
 	shell="$(jq -c --arg r "$role" '.roles[$r].shell // null' "$declaration")"
 	catalogue="$(jq -c '.catalogue // null' "$declaration")"
 	uris="$(fabriek_profile_allowed_uris "$clone" "$rev" | tr '\n' ' ')"
+	local -a include=(-I "$self" -I "$nixpkgs")
+	[ -n "$declared" ] && [ -f "$declared" ] && declared_json="$(jq -c '{specialists: (.specialists // {}), skills: (.skills // {})}' "$declared")"
+	if [ -n "$catalogues" ] && [ -f "$catalogues" ]; then
+		while IFS= read -r path; do
+			[ -n "$path" ] || continue
+			extra="$extra $path"
+			include+=(-I "$path")
+		done <"$catalogues"
+	fi
+	while IFS= read -r path; do
+		[ -n "$path" ] || continue
+		include+=(-I "$path")
+	done < <(printf '%s' "$declared_json" | jq -r '(.specialists[]?.prompt // empty), (.skills[]?.skill // empty) | select(startswith("/"))')
 	## One line, so a record of the call is one line too.
 	local expr
 	expr="import $self/modules/profile.nix {"
@@ -233,11 +253,13 @@ fabriek_profile_build() {
 	expr="$expr clone = $(fabriek_nix_string "$clone"); rev = $(fabriek_nix_string "$rev");"
 	expr="$expr system = $(fabriek_nix_string "$system"); role = $(fabriek_nix_string "$role");"
 	expr="$expr specialists = builtins.fromJSON $(fabriek_nix_string "$specialists");"
-	expr="$expr shell = $shell; catalogue = $catalogue; }"
-	## The URIs let getFlake fetch the clone; reading fabriek and nixpkgs
-	## by path is a file access, which restricted mode grants to the search
-	## path and to nothing else.
+	expr="$expr shell = $shell; catalogue = $catalogue;"
+	expr="$expr declared = builtins.fromJSON $(fabriek_nix_string "$declared_json");"
+	expr="$expr catalogues = [$extra ]; }"
+	## The URIs let getFlake fetch the clone; reading fabriek, nixpkgs and
+	## the operator's paths is a file access, which restricted mode grants
+	## to the search path and to nothing else.
 	nix build --no-link --print-out-paths --impure \
-		--restrict-eval --allowed-uris "${uris% }" -I "$self" -I "$nixpkgs" \
+		--restrict-eval --allowed-uris "${uris% }" "${include[@]}" \
 		--expr "$expr"
 }
