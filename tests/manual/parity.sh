@@ -59,7 +59,7 @@ when "the operator asks Forgejo for the factory's repository"
 check "Forgejo answers" 200 "$(sshm "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
 check "the repository operator/$F exists" 200 \
 	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" $forge$repo" 2>/dev/null)"
-mapfile -t stages < <(jq -r '.declaration.workflows.ship.stages[].needs' "$D/spec.json" 2>/dev/null)
+mapfile -t stages < <(jq -r '.declaration.workflows.ship.stages[].needs' "$(spec_json)" 2>/dev/null)
 check "the workflow ship declares at least two stages" yes "$([ "${#stages[@]}" -ge 2 ] && echo yes || echo no)"
 check "every stage is a label" "$(printf '%s\n' "${stages[@]}" | sort | paste -sd, -)" \
 	"$(api GET "$repo/labels" | jq -r --argjson s "$(printf '%s\n' "${stages[@]}" | jq -R . | jq -sc .)" '[.[].name | select(. as $n | $s | index($n))] | sort | join(",")')"
@@ -85,7 +85,7 @@ check "the issue carries the first stage's label" "${stages[0]}" "$(eventually 3
 ## endpoint accepts. Asked once, from the machine, before waiting on it.
 answer="$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
 	-d '{\"model\":\"probe\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' \
-	http://$proxy/$(jq -r '.egress[0]' "$D/spec.json")/v1/messages" 2>/dev/null | tr -d '\r')"
+	http://$proxy/$(jq -r '.egress[0]' "$(spec_json)")/v1/messages" 2>/dev/null | tr -d '\r')"
 if [ "$answer" = 401 ]; then
 	gated "the issue is assigned to a role" "the endpoint refused the credential, and a decider with no model decides nothing; needs a real one"
 	gated "the work moves through every stage on its own" "same"
@@ -117,7 +117,7 @@ pr_count() { api GET "$repo/pulls?state=open" | jq -r 'length'; }
 check "one pull request is open" 1 "$(eventually 120 1 pr_count)"
 pr="$(api GET "$repo/pulls?state=open" | jq -r '.[0].number')"
 head_branch="$(api GET "$repo/pulls/$pr" | jq -r '.head.ref')"
-check "its branch is in a role's namespace" yes "$(printf '%s\n' "${head_branch%%/*}" | grep -qxF -f <(jq -r '.declaration.roles | keys[]' "$D/spec.json") && echo yes || echo no)"
+check "its branch is in a role's namespace" yes "$(printf '%s\n' "${head_branch%%/*}" | grep -qxF -f <(jq -r '.declaration.roles | keys[]' "$(spec_json)") && echo yes || echo no)"
 ## The origin is what up filed on the machine, and it is asked from there:
 ## a file:// origin of the machine's own is not a path on this host.
 origin="$(sshm cat /var/lib/nixcage/origin 2>/dev/null)"

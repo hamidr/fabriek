@@ -129,7 +129,7 @@ else
 fi
 
 scenario "A replicated role is N roles, each with a cage of its own (ADR-053)"
-mapfile -t replicas < <(jq -r '.declaration.roles | keys[] | select(test("^[a-z]+-[0-9]+$"))' "$D/spec.json" 2>/dev/null)
+mapfile -t replicas < <(jq -r '.declaration.roles | keys[] | select(test("^[a-z]+-[0-9]+$"))' "$(spec_json)" 2>/dev/null)
 if [ "${#replicas[@]}" -ge 2 ]; then
 	when "the machine is asked about each replica"
 	for r in "${replicas[@]}"; do
@@ -143,7 +143,7 @@ if [ "${#replicas[@]}" -ge 2 ]; then
 	check "the replicas' uids differ" "yes" \
 		"$([ "$(sshm "nixcage-container uid ${replicas[0]}" 2>/dev/null)" != "$(sshm "nixcage-container uid ${replicas[1]}" 2>/dev/null)" ] && echo yes)"
 	check "no role carries the base name" "absent" \
-		"$(jq -r --arg b "${replicas[0]%-*}" '.declaration.roles | has($b) | if . then "present" else "absent" end' "$D/spec.json")"
+		"$(jq -r --arg b "${replicas[0]%-*}" '.declaration.roles | has($b) | if . then "present" else "absent" end' "$(spec_json)")"
 else
 	gated "a replicated role's cages" "declare replicas = 2 on a role of $F and run up -u; the proof then asks each replica's cage"
 fi
@@ -157,15 +157,15 @@ scenario "An assignment past the declared concurrency is refused (ADR-055)"
 ## files at the first stage only, so the verb goes through send with the
 ## files put on the machine by hand. Each is a real small task, since a
 ## role handed a tautology reports blocked and asks, at some cost.
-concurrency="$(jq -r '.declaration.resources.concurrency // 0' "$D/spec.json")"
+concurrency="$(jq -r '.declaration.resources.concurrency // 0' "$(spec_json)")"
 busy_stage="$(jq -r --argjson n "$concurrency" '
 	.declaration as $d | $d.workflows.ship.stages[].needs as $s
-	| select(([$d.roles[] | select(.provides | index($s))] | length) > $n) | $s' "$D/spec.json" | head -1)"
+	| select(([$d.roles[] | select(.provides | index($s))] | length) > $n) | $s' "$(spec_json)" | head -1)"
 if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ] && [ "$concurrency" -ge 1 ] 2>/dev/null && [ -n "$busy_stage" ]; then
 	given "the factory allows $concurrency tasks in flight and more roles than that provide $busy_stage"
 	when "the operator files one more goal than that at $busy_stage and assigns each to a free role"
 	since="$(date +%s)000-0"
-	mapfile -t providers < <(jq -r --arg s "$busy_stage" '.declaration.roles | to_entries[] | select(.value.provides | index($s)) | .key' "$D/spec.json")
+	mapfile -t providers < <(jq -r --arg s "$busy_stage" '.declaration.roles | to_entries[] | select(.value.provides | index($s)) | .key' "$(spec_json)")
 	for i in $(seq 1 $((concurrency + 1))); do
 		dir="/var/lib/nixcage/filed/proof-$(date +%s)-$i"
 		sshm "mkdir -p $dir && printf '%s\n' 'Add a docstring to parse_line ($i)' >$dir/title && printf '%s\n' 'acceptance: parse_line has a one-line docstring saying what it splits on; nothing else changes' >$dir/body" >/dev/null 2>&1

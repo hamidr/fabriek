@@ -22,7 +22,7 @@
 ## object of tokens spent per source address (2.2); nftables on the machine
 ## dropping a packet whose source is not the sender's address (2.2).
 set -uo pipefail
-F=acme
+F="${F:-acme}"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 
@@ -32,7 +32,7 @@ wait_ssh || {
 	exit 1
 }
 
-roles="$(jq -r '.declaration.roles | keys[]' "$D/spec.json" 2>/dev/null)"
+roles="$(jq -r '.declaration.roles | keys[]' "$(spec_json)" 2>/dev/null)"
 a="$(printf '%s\n' "$roles" | sed -n 1p)"
 b="$(printf '%s\n' "$roles" | sed -n 2p)"
 if [ -z "$a" ] || [ -z "$b" ]; then
@@ -77,7 +77,7 @@ check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ]
 ## The proxy's location for a model endpoint is the endpoint's name (ADR-037
 ## point 3); a request to the provider lands there and leaves with the
 ## credential the operator holds.
-endpoint="$(jq -r '.egress[0] // empty' "$D/spec.json")"
+endpoint="$(jq -r '.egress[0] // empty' "$(spec_json)")"
 check "the spec allows one endpoint the proxy can be asked for" yes "$([ -n "$endpoint" ] && echo yes || echo no)"
 messages="http://$proxy/$endpoint/v1/messages"
 
@@ -135,7 +135,7 @@ sshm "nsenter -t '$pid' -n sh -c 'ip addr add $addr_b/32 dev host0 2>/dev/null; 
 check "$b's count did not move" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "The hard limit is the proxy's"
-ceiling="$(jq -r '.tokenCeiling // empty' "$D/spec.json")"
+ceiling="$(jq -r '.tokenCeiling // empty' "$(spec_json)")"
 given "a token ceiling of ${ceiling:-none} in the spec"
 check "a ceiling is declared" yes "$([ -n "$ceiling" ] && echo yes || echo no)"
 when "$a sends requests until the proxy refuses"

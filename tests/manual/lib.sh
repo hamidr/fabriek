@@ -23,6 +23,19 @@ sshm() {
 		-o ConnectTimeout=3 root@localhost "$@"
 }
 
+## What the factory is, as the machine rendered it (ADR-057): the clamped
+## declaration under .declaration, with the two fields the older spec.json
+## carried beside it. Fetched once per run; the proofs that predate
+## ADR-057 read it where the host's spec.json was.
+spec_json() {
+	if [ ! -s "$D/spec.json" ]; then
+		sshm cat /var/lib/fabriek/factory/declaration.json 2>/dev/null |
+			jq '{declaration: ., egress: .resources.egress, tokenCeiling: .resources.tokens}' >"$D/spec.json" 2>/dev/null ||
+			rm -f "$D/spec.json"
+	fi
+	printf '%s\n' "$D/spec.json"
+}
+
 ## Waits up to WAIT_SSH seconds (default 180) for the machine to answer.
 wait_ssh() {
 	local _i
