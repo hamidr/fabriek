@@ -1,7 +1,7 @@
 ---
 id: ADR-064
 title: The bridge's rules are nixcage's, and fabriek names only the three ports a cage may reach
-status: proposed
+status: implementing
 date: 2026-09-16
 status_date: 2026-09-16
 summary: attribution and cage-to-cage isolation move to nixcage with the lock bump; bridge.nix keeps the address and the firewall
@@ -97,3 +97,15 @@ nixcage chose.
 entry. `tests/command/render.bats`: prepare runs no `nft`. On a machine,
 `tests/manual/isolation.sh` unchanged, and its bridge half passing is
 recorded in nixcage ADR-015 as well as here.
+
+Implemented 2026-09-16: `flake.lock` at nixcage `3cdcfe6`, which carries
+ADR-015 through ADR-018 there. Removed in the same change: the
+`fabriek-cages` table in `modules/machine/bridge.nix`,
+`fabriek_render_cage_elements` and its scenario, the `nft` lines in
+`render_machine` and the `nft` stub, the `vethHostName` argument in
+`modules/vm.nix`, the interface-table row in `CLAUDE.md`.
+`tests/command/machine_services.bats` reads the appliance's tables and
+finds no `fabriek-cages`; `tests/command/render.bats` runs prepare with no
+`nft` on `PATH`; `tests/command/seam.bats` is unchanged and passes. Open:
+`tests/manual/isolation.sh` on a machine, recorded here and in nixcage
+ADR-015 when run.
