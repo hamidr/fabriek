@@ -274,7 +274,7 @@ in
     ## One unit per factory asked for: the same program a person runs, on
     ## the same file and the same state, so `fabriek ps` sees both.
     systemd.services = lib.mapAttrs' (
-      name: _:
+      name: f:
       lib.nameValuePair "fabriek-${name}" {
         description = "The machine the factory ${name} runs in";
         wantedBy = [ "multi-user.target" ];
@@ -286,6 +286,12 @@ in
         environment = {
           FABRIEK_CONFIG = "/etc/fabriek/config.toml";
           FABRIEK_MACHINES = "/var/lib/fabriek/machines";
+          ## The checkout is the operator's and the unit is root: git
+          ## refuses a directory another uid owns unless told, for this
+          ## one path, that it is safe. Read only: the origin and the pin.
+          GIT_CONFIG_COUNT = "1";
+          GIT_CONFIG_KEY_0 = "safe.directory";
+          GIT_CONFIG_VALUE_0 = f.path;
         };
         path = [ pkgs.nix ];
         serviceConfig = {

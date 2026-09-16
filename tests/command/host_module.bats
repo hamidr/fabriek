@@ -63,8 +63,14 @@ host_eval() {
 		   type = c.systemd.services.fabriek-acme.serviceConfig.Type; env = c.systemd.services.fabriek-acme.environment;
 		   wanted = c.systemd.services.fabriek-acme.wantedBy; widgets = c.systemd.services ? fabriek-widgets; }'
 	assert_success
-	run jq -c '[(.start | test("/bin/fabriek up acme$")), (.stop | test("/bin/fabriek down acme$")), .type, .env.FABRIEK_CONFIG, .env.FABRIEK_MACHINES, .wanted, .widgets]' <<<"$output"
+	local unit="$output"
+	run jq -c '[(.start | test("/bin/fabriek up acme$")), (.stop | test("/bin/fabriek down acme$")), .type, .env.FABRIEK_CONFIG, .env.FABRIEK_MACHINES, .wanted, .widgets]' <<<"$unit"
 	assert_output '[true,true,"oneshot","/etc/fabriek/config.toml","/var/lib/fabriek/machines",["multi-user.target"],false]'
+	# The unit reads the operator's checkout as root, which git refuses as
+	# dubious unless that one directory is declared safe to it (measured
+	# 2026-09-16: "has no origin" on the first boot of the pc).
+	run jq -c '[.env.GIT_CONFIG_COUNT, .env.GIT_CONFIG_KEY_0, .env.GIT_CONFIG_VALUE_0]' <<<"$unit"
+	assert_output '["1","safe.directory","/srv/acme"]'
 }
 
 @test "the CLI is on the host's PATH, since the unit and a hand run the same program" {
