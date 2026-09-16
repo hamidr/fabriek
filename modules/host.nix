@@ -13,32 +13,94 @@ let
   cfg = config.services.fabriek;
 
   ## The file, rendered here rather than by a derivation so that its text
-  ## is a value of the evaluation: a scenario reads it without a build. The
-  ## schema is three kinds of value and one level of table, which is all
-  ## TOML this needs.
+  ## is a value of the evaluation: a scenario reads it without a build.
+  ## Nested tables and arrays of tables included (ADR-061): a factory
+  ## declared whole is roles, workflows with their stages, resources. A
+  ## path (a prompt, a SKILL.md, a catalogue directory) becomes the store
+  ## path Nix makes of it, which is what up wants of the file.
+  scalar =
+    v: !builtins.isAttrs v && !(builtins.isList v && v != [ ] && builtins.isAttrs (lib.head v));
   tomlValue =
     v:
-    if builtins.isInt v then
+    if builtins.isBool v then
+      lib.boolToString v
+    else if builtins.isInt v then
       toString v
+    else if builtins.isPath v then
+      builtins.toJSON "${v}"
     else if builtins.isList v then
       "[ ${lib.concatMapStringsSep ", " tomlValue v} ]"
     else
       builtins.toJSON v;
   tomlKey = k: if builtins.match "[A-Za-z0-9_-]+" k != null then k else builtins.toJSON k;
-  tomlPairs =
-    attrs: lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "${tomlKey k} = ${tomlValue v}") attrs);
-  tomlTable = name: attrs: "[${name}]\n${tomlPairs attrs}\n";
+  tomlTables =
+    prefix: attrs:
+    let
+      p = if prefix == "" then "" else "${prefix}.";
+      scalars = lib.filterAttrs (_: scalar) attrs;
+      tables = lib.filterAttrs (_: v: builtins.isAttrs v) attrs;
+      arrays = lib.filterAttrs (
+        _: v: builtins.isList v && v != [ ] && builtins.isAttrs (lib.head v)
+      ) attrs;
+    in
+    lib.optional (prefix != "" && (scalars != { } || (tables == { } && arrays == { }))) (
+      "[${prefix}]\n"
+      + lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "${tomlKey k} = ${tomlValue v}") scalars)
+      + "\n"
+    )
+    ++ lib.optionals (prefix == "") (
+      lib.mapAttrsToList (k: v: "${tomlKey k} = ${tomlValue v}\n") scalars
+    )
+    ++ lib.concatLists (lib.mapAttrsToList (k: v: tomlTables "${p}${tomlKey k}" v) tables)
+    ++ lib.concatLists (
+      lib.mapAttrsToList (
+        k: vs:
+        map (
+          v:
+          "[[${p}${tomlKey k}]]\n"
+          + lib.concatStringsSep "\n" (lib.mapAttrsToList (k2: v2: "${tomlKey k2} = ${tomlValue v2}") v)
+          + "\n"
+        ) vs
+      ) arrays
+    );
+  ## A factory's table is its path, autoStart left out (the unit is this
+  ## module's), and the declaration keys given.
+  factoryTable = f: lib.filterAttrs (k: v: k != "autoStart" && v != null && v != { }) f;
   rendered = lib.concatStringsSep "\n" (
-    [ (tomlTable "caps" cfg.caps) ]
-    ++ lib.mapAttrsToList (
-      name: f: tomlTable "factories.${tomlKey name}" { inherit (f) path; }
-    ) cfg.factories
-    ++ lib.mapAttrsToList (
-      host: c: tomlTable "credentials.${tomlKey host}" { inherit (c) header file; }
-    ) cfg.credentials
-    ++ lib.optional (cfg.models != { }) (tomlTable "models" cfg.models)
+    tomlTables "" (
+      {
+        inherit (cfg) caps;
+        factories = lib.mapAttrs (_: factoryTable) cfg.factories;
+        credentials = lib.mapAttrs (_: c: { inherit (c) header file; }) cfg.credentials;
+        catalogues = cfg.catalogues;
+      }
+      // lib.optionalAttrs (cfg.models != { }) { inherit (cfg) models; }
+      // lib.optionalAttrs (cfg.specialists != { }) {
+        specialists = lib.mapAttrs (_: s: lib.filterAttrs (_: v: v != null && v != [ ]) s) cfg.specialists;
+      }
+      // lib.optionalAttrs (cfg.skills != { }) {
+        skills = lib.mapAttrs (_: s: lib.filterAttrs (_: v: v != null && v != [ ]) s) cfg.skills;
+      }
+    )
   );
   autoStarted = lib.filterAttrs (_: f: f.autoStart) cfg.factories;
+
+  ## The declaration's own shape (fabriek.toml, ADR-058), as options: what
+  ## the CLI's schema checks is checked there, so these are loose on
+  ## purpose and refuse only what Nix itself cannot render.
+  json = lib.types.attrsOf (
+    lib.types.oneOf [
+      lib.types.str
+      lib.types.int
+      lib.types.bool
+      (lib.types.listOf lib.types.str)
+    ]
+  );
+  names = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+  };
+  textOrPath = lib.types.either lib.types.str lib.types.path;
 in
 {
   options.services.fabriek = {
@@ -112,11 +174,96 @@ in
               default = false;
               description = "Bring this factory's machine up at boot and down at shutdown, as a unit.";
             };
+            ## The declaration, in fabriek.toml's own words (ADR-061 point
+            ## 1): given here, the repository must carry none.
+            roles = lib.mkOption {
+              type = lib.types.attrsOf json;
+              default = { };
+              description = "The roles, as [roles.<name>] of fabriek.toml: provides, specialists, shell, replicas, command.";
+            };
+            workflows = lib.mkOption {
+              type = lib.types.attrsOf (
+                lib.types.submodule {
+                  options = {
+                    stages = lib.mkOption {
+                      type = lib.types.listOf json;
+                      default = [ ];
+                    };
+                    budget = lib.mkOption {
+                      type = json;
+                      default = { };
+                    };
+                    consults = lib.mkOption {
+                      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+                      default = { };
+                    };
+                  };
+                }
+              );
+              default = { };
+              description = "The workflows, as [workflows.<name>] of fabriek.toml.";
+            };
+            resources = lib.mkOption {
+              type = json;
+              default = { };
+              description = "What this factory asks of the machine, as [resources] of fabriek.toml.";
+            };
+            decider = lib.mkOption {
+              type = json;
+              default = { };
+              description = "The decider's table: policy, a file of the repository.";
+            };
+            catalogue = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "The repository's own catalogue, a path inside it.";
+            };
           };
         }
       );
       default = { };
       description = "The factories registered on this host, by name.";
+    };
+
+    ## The operator's own specialists and skills (ADR-061 point 3), and
+    ## catalogue directories with ADR-042's layout (point 4).
+    specialists = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            extends = names;
+            tools = names;
+            skills = names;
+            prompt = lib.mkOption {
+              type = lib.types.nullOr textOrPath;
+              default = null;
+              description = "The prompt, as text or a path to a Markdown file.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = "Specialists of the operator's own: tools by nixpkgs attribute, parents and skills by name.";
+    };
+    skills = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            tools = names;
+            skill = lib.mkOption {
+              type = textOrPath;
+              description = "The SKILL.md, as text or a path to it.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = "Skills of the operator's own, in the Agent Skills format.";
+    };
+    catalogues = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
+      default = [ ];
+      description = "Catalogue directories of the operator's own, with fabriek's layout.";
     };
   };
 
