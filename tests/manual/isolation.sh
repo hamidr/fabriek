@@ -126,10 +126,14 @@ check "the proxy answers" answered \
 ## One request to the endpoint, answering the status the endpoint gave.
 ## Spend is counted from the endpoint's answer, so an endpoint that refuses
 ## the credential (401) leaves nothing to count, and the two Thens that need
-## a count are gated on it rather than failed.
+## a count are gated on it rather than failed. The prompt is about two
+## hundred tokens, counted whole by the proxy whether the provider cached
+## them or not, so that fifty requests spend ten thousand and reach a
+## ceiling the decider's first thought leaves standing.
+padding="$(printf 'the quick brown fox jumps over the lazy dog %.0s' $(seq 1 30))"
 ask_model() {
 	http "$1" "$proxy" POST "$messages_path" \
-		"{\"model\":\"${model:-probe}\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+		"{\"model\":\"${model:-probe}\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"$padding hi\"}]}"
 }
 
 scenario "Spend is attributed to the sender and to nobody else"
@@ -162,10 +166,12 @@ ceiling="$(jq -r '.tokenCeiling // empty' "$(spec_json)")"
 given "a token ceiling of ${ceiling:-none} in the spec"
 check "a ceiling is declared" yes "$([ -n "$ceiling" ] && echo yes || echo no)"
 when "$a sends requests until the proxy refuses"
-## Fifty requests of one token each spend a few thousand; a ceiling above
-## that is one this proof cannot reach and says so.
-if [ "${ceiling:-0}" -gt 5000 ]; then
-	gated "the proxy answers 429 at the hard limit" "the ceiling is $ceiling tokens; declare one under 5000 for this factory to reach it here"
+## Fifty requests of two hundred tokens each spend ten thousand; a ceiling
+## above twice that is one this proof cannot reach and says so. Under it,
+## the decider's first thought (6273 tokens seen 2026-09-16) and a second
+## on the ready set's change still leave the count-moved Then room.
+if [ "${ceiling:-0}" -gt 20000 ]; then
+	gated "the proxy answers 429 at the hard limit" "the ceiling is $ceiling tokens; declare one under 20000 for this factory to reach it here"
 else
 	code=""
 	for _ in $(seq 1 50); do
@@ -177,6 +183,22 @@ else
 	else
 		check "the proxy answers 429 at the hard limit" 429 "$code"
 	fi
+fi
+
+## Only where the ceiling was reached: elsewhere the decider is not held.
+if [ "$code" = 429 ]; then
+	scenario "At the ceiling the executor holds the decider"
+	given "the proxy refusing everything"
+	decider_exits() { sshm journalctl -u fabriek-executor --no-pager 2>/dev/null | grep -c 'session decider exited'; }
+	# shellcheck disable=SC2329  # invoked through eventually
+	held_said() { sshm journalctl -u fabriek-executor --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
+	when "the decider's session meets the 429 and ends"
+	check "the executor says the decider is held" yes "$(eventually 120 yes held_said)"
+	exits="$(decider_exits)"
+	when "forty-five seconds pass"
+	sleep 45
+	check "no decider session exited since" "$exits" "$(decider_exits)"
+	check "the executor is still running" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
 fi
 
 scenario "The machine's daemon substitutes and never fetches (ADR-025 point 5, ADR-057 point 6)"

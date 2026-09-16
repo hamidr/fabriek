@@ -313,8 +313,9 @@ One package, built through the flake, tests in its own runner.
   and `ls -R` over the system closure (688 paths, 273868 entries) on
   virtiofs is 19.6s cold and 12.8s warm; 9p is not timed here. The
   eleven things the first boot found, their fixes and the numbers are in
-  ADR-057's verification. `isolation.sh` passes whole, its ceiling
-  scenario gated on the example's 20M tokens.
+  ADR-057's verification. `isolation.sh` passes whole; its ceiling
+  scenario ran at 15000 tokens once ADR-065 let it reach the limit with
+  its own requests.
 - 6.8 `tests/manual/host-autostart.sh` passes on a NixOS host (ADR-048):
   the unit active after boot, `fabriek ps` by hand seeing its machine, and
   both agreeing across a stop and a start. Everything else of ADR-048 is

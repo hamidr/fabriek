@@ -1,7 +1,7 @@
 ---
 id: ADR-065
 title: At the ceiling the executor holds the decider, and the proof reaches the ceiling itself
-status: proposed
+status: implemented
 date: 2026-09-16
 status_date: 2026-09-16
 summary: no decider session is restarted while the proxy refuses; isolation.sh spends its way to the limit itself
@@ -129,3 +129,17 @@ thousand: the count-moved Then and the 429 Then both `ok` in one run, and
 after the 429, `sshm journalctl -u fabriek-executor | grep -c 'session
 decider exited'` reads the same number two minutes apart while
 `fabriek-executor` stays active. Recorded here when run.
+
+Implemented 2026-09-16: `Executor.atCeiling` in `factory/src/executor/core.ts`
+reads the count against the declared ceiling; `RoleSessions` in
+`sessions.ts` asks `mayRestart` on every exit, holds a session refused
+and reports it under `held()`; `main.ts` asks for the decider alone,
+publishes `decider_held` and `decider_resumed` on `events:executor` and
+starts a held decider again from the ten-second outcomes check.
+`tests/manual/isolation.sh` sends a padded prompt, gates on twenty
+thousand, and asks the executor's journal after the 429. Measured on a
+machine built from this change at a ceiling of 15000 tokens: every Then
+`ok`, none gated, in one run: the sender's count moved, the proxy
+answered 429, the executor said the decider is held, no decider session
+exited in the forty-five seconds after, and `fabriek-executor` stayed
+active. The package's 185 scenarios and the journey pass.
