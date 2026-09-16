@@ -483,7 +483,7 @@ render_profiles() {
 	rm -f "$FABRIEK_ETC/profiles.json"
 	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")")"
 	while IFS= read -r role; do
-		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json")" || {
+		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_NIXPKGS" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json")" || {
 			rm -f "$FABRIEK_ETC/roles/$role/profile"
 			die "could not build a profile for role $role"
 		}
@@ -503,8 +503,8 @@ render_profiles() {
 ## profile and a pi directory per role. Idempotent: up runs it after every
 ## restart. What the clamp changed is said here, as the build's log was not.
 cmd_factory_render() {
-	[ -n "${FABRIEK_FLOOR:-}" ] && [ -n "${FABRIEK_SELF:-}" ] && [ -n "${FABRIEK_SYSTEM:-}" ] ||
-		die "FABRIEK_FLOOR, FABRIEK_SELF and FABRIEK_SYSTEM name the image's floor, source and system; the machine sets them"
+	[ -n "${FABRIEK_FLOOR:-}" ] && [ -n "${FABRIEK_SELF:-}" ] && [ -n "${FABRIEK_NIXPKGS:-}" ] && [ -n "${FABRIEK_SYSTEM:-}" ] ||
+		die "FABRIEK_FLOOR, FABRIEK_SELF, FABRIEK_NIXPKGS and FABRIEK_SYSTEM name the image's floor, source, nixpkgs and system; the machine sets them"
 	local credential local_file spec factory remote rev clone declaration
 	credential="$(mktemp)"
 	fabriek_render_credential "$FABRIEK_CREDENTIAL" >"$credential" || exit 1

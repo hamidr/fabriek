@@ -185,14 +185,15 @@ fabriek_render_local() {
 }
 
 ## The URIs a profile's evaluation may reach (ADR-057 point 6): the clone at
-## the pin, fabriek itself, and every input the repository's flake locks,
-## by the reference the lock records. Nothing else; with the host's store as
-## the lower layer, an unrestricted evaluation could read all of it.
+## the pin and every input the repository's flake locks, by the reference
+## the lock records. Nothing else; with the host's store as the lower
+## layer, an unrestricted evaluation could read all of it. fabriek and its
+## nixpkgs are paths, granted on the search path and not here.
 ##
-## fabriek_profile_allowed_uris <clone> <rev> <self>
+## fabriek_profile_allowed_uris <clone> <rev>
 fabriek_profile_allowed_uris() {
-	local clone="$1" rev="$2" self="$3" lock
-	printf '%s\n' "git+file://$clone" "path:$self"
+	local clone="$1" rev="$2" lock
+	printf '%s\n' "git+file://$clone"
 	if lock="$(git -C "$clone" show "$rev:flake.lock" 2>/dev/null)"; then
 		printf '%s' "$lock" | jq -r '
 		  .nodes | to_entries[] | .value.locked // empty
@@ -208,26 +209,26 @@ fabriek_profile_allowed_uris() {
 ## the pin (ADR-057 point 5, modules/profile.nix). Prints the store path, or
 ## nix's own refusal, which names the role and what it lacked.
 ##
-## fabriek_profile_build <clone> <rev> <self> <system> <role> <declaration.json>
+## fabriek_profile_build <clone> <rev> <self> <nixpkgs> <system> <role> <declaration.json>
 fabriek_profile_build() {
-	local clone="$1" rev="$2" self="$3" system="$4" role="$5" declaration="$6"
+	local clone="$1" rev="$2" self="$3" nixpkgs="$4" system="$5" role="$6" declaration="$7"
 	local specialists shell catalogue uris
 	specialists="$(jq -c --arg r "$role" '.roles[$r].specialists // []' "$declaration")"
 	shell="$(jq -c --arg r "$role" '.roles[$r].shell // null' "$declaration")"
 	catalogue="$(jq -c '.catalogue // null' "$declaration")"
-	uris="$(fabriek_profile_allowed_uris "$clone" "$rev" "$self" | tr '\n' ' ')"
+	uris="$(fabriek_profile_allowed_uris "$clone" "$rev" | tr '\n' ' ')"
 	## One line, so a record of the call is one line too.
 	local expr
 	expr="import $self/modules/profile.nix {"
-	expr="$expr fabriek = builtins.getFlake $(fabriek_nix_string "path:$self");"
+	expr="$expr self = $self; nixpkgs = $nixpkgs;"
 	expr="$expr clone = $(fabriek_nix_string "$clone"); rev = $(fabriek_nix_string "$rev");"
 	expr="$expr system = $(fabriek_nix_string "$system"); role = $(fabriek_nix_string "$role");"
 	expr="$expr specialists = builtins.fromJSON $(fabriek_nix_string "$specialists");"
 	expr="$expr shell = $shell; catalogue = $catalogue; }"
-	## The URIs let getFlake fetch the clone and fabriek; importing
-	## profile.nix out of fabriek by path is a file access, which restricted
-	## mode grants to the search path and to nothing else.
+	## The URIs let getFlake fetch the clone; reading fabriek and nixpkgs
+	## by path is a file access, which restricted mode grants to the search
+	## path and to nothing else.
 	nix build --no-link --print-out-paths --impure \
-		--restrict-eval --allowed-uris "${uris% }" -I "$self" \
+		--restrict-eval --allowed-uris "${uris% }" -I "$self" -I "$nixpkgs" \
 		--expr "$expr"
 }

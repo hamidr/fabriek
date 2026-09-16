@@ -6,13 +6,17 @@
 ## has no daemon (ADR-037) is handed a toolchain it could not realise.
 ##
 ## Evaluated by fabriek-container with --restrict-eval and the URIs it may
-## reach named (ADR-057 point 6): the clone at the rev, fabriek itself, and
-## the repository's locked inputs. The flake is read only when the commit
-## has one, so a repository without a flake is a role with its specialists
-## alone.
+## reach named (ADR-057 point 6): the clone at the rev and the repository's
+## locked inputs. fabriek and its nixpkgs are two store paths the image
+## names, on the search path, so nothing of fabriek's own lock is fetched
+## here: a getFlake on fabriek would fetch every input it locks, from the
+## machine, for every factory (measured 2026-09-16). The flake is read
+## only when the commit has one, so a repository without a flake is a role
+## with its specialists alone.
 {
-  ## fabriek's own flake, for nixpkgs and the catalogue.
-  fabriek,
+  ## fabriek itself, for the catalogue, and the nixpkgs it pins.
+  self,
+  nixpkgs,
   ## The repository's clone and the rev the pin names.
   clone,
   rev,
@@ -25,7 +29,7 @@
   catalogue ? null,
 }:
 let
-  pkgs = fabriek.inputs.nixpkgs.legacyPackages.${system};
+  pkgs = import nixpkgs { inherit system; };
   lib = pkgs.lib;
   ## The commit's tree, for the catalogue: a fetch, not the flake, so a
   ## repository without a flake still has one (ADR-058 point 3).
@@ -34,7 +38,7 @@ let
     inherit rev;
   };
   project = builtins.getFlake "git+file://${clone}?rev=${rev}";
-  composed = fabriek.lib.catalogue {
+  composed = import "${self}/modules/catalogue.nix" { inherit self; } {
     inherit pkgs;
     extra = lib.optional (catalogue != null) "${source}/${catalogue}";
   };

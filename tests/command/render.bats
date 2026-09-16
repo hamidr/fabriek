@@ -27,7 +27,7 @@ setup() {
 	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
 	export FABRIEK_BRIDGE=fabriek0 FABRIEK_BRIDGE_HOST=10.77.0.1 FABRIEK_PROXY_PORT=8118 \
 		FABRIEK_FORGEJO_PORT=3000 FABRIEK_VALKEY_PORT=6379
-	export FABRIEK_FLOOR="$TEST_TEMP_DIR/floor" FABRIEK_SELF="$TEST_TEMP_DIR/self" FABRIEK_SYSTEM=aarch64-linux
+	export FABRIEK_FLOOR="$TEST_TEMP_DIR/floor" FABRIEK_SELF="$TEST_TEMP_DIR/self" FABRIEK_NIXPKGS="$TEST_TEMP_DIR/nixpkgs" FABRIEK_SYSTEM=aarch64-linux
 	mkdir -p "$FABRIEK_FLOOR/extensions/fabriek" "$FABRIEK_FLOOR/decider/extensions/fabriek" "$FABRIEK_SELF"
 	echo loop >"$FABRIEK_FLOOR/extensions/fabriek/index.ts"
 	echo decider >"$FABRIEK_FLOOR/decider/extensions/fabriek/index.ts"
@@ -217,11 +217,13 @@ teardown() {
 	assert_success
 	run cat "$CALLS/nix-build"
 	assert_line --index 0 --partial '--restrict-eval'
-	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme path:$FABRIEK_SELF"
-	# An allowed URI lets getFlake fetch fabriek; importing profile.nix out
-	# of it by path is a file access, which restricted mode grants to the
-	# search path and nothing else (measured 2026-09-16).
-	assert_line --index 0 --partial "-I $FABRIEK_SELF "
+	assert_line --index 0 --partial "--allowed-uris git+file://$STATE/factories/acme "
+	# fabriek and its nixpkgs are read by path, which restricted mode grants
+	# to the search path and nothing else; neither is a URI, so nothing of
+	# fabriek's own lock is fetched on the machine (measured 2026-09-16).
+	assert_line --index 0 --partial "-I $FABRIEK_SELF -I $FABRIEK_NIXPKGS "
+	assert_line --index 0 --partial "self = $FABRIEK_SELF; nixpkgs = $FABRIEK_NIXPKGS;"
+	refute_line --index 0 --partial "getFlake"
 	assert_line --index 0 --partial "rev = \"$REV\""
 	assert_line --index 0 --partial 'role = "builder"'
 	assert_line --index 0 --partial 'shell = "backend"'

@@ -287,6 +287,8 @@ JSON
 	# itself, in the store, for the machine's system.
 	run machine_text 'c.environment.variables.FABRIEK_SELF'
 	assert_regex "$output" '^/nix/store/.*-source$'
+	run machine_text 'c.environment.variables.FABRIEK_NIXPKGS'
+	assert_regex "$output" '^/nix/store/.*-source$'
 	run machine_text 'c.environment.variables.FABRIEK_SYSTEM'
 	assert_output "$MACHINE"
 	run machine_eval 'map (p: p.pname or p.name) c.nixcage.containerPackages'
