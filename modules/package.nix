@@ -91,7 +91,21 @@ let
             with pkgs;
             [
               coreutils
+              ## What the shell modules reach for beside coreutils: awk and
+              ## sed over the runner's files, grep, xargs for the machine's
+              ## argv, setsid to detach the runner and perl where setsid
+              ## is absent. A unit on a NixOS host has no PATH but this one
+              ## (measured 2026-09-16: "awk: command not found" from the
+              ## pc's unit).
+              gawk
+              gnused
+              gnugrep
+              findutils
+              perl
               jq
+              ## The operator's checkout is read with git: its origin, its
+              ## pin, its declaration at the commit (ADR-020, ADR-032).
+              git
               ## The operator's config is TOML and nix parses it, which is one
               ## dependency rather than two: nix is already what reads a
               ## repository's declaration (ADR-020).
@@ -102,6 +116,7 @@ let
               ## The TUI (ADR-039 point 3), which factory console execs.
               (import ../factory { inherit pkgs; }).package
             ]
+            ++ pkgs.lib.optional pkgs.stdenv.isLinux pkgs.util-linux
           )
         }
     '';
