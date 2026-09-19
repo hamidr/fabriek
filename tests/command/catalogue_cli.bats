@@ -18,6 +18,7 @@ setup() {
 	printf '{ specialists, skills, ... }: { extends = [ specialists.python ]; skills = [ skills.release-here ]; prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/local/default.nix"
 	printf -- '---\nname: release-here\ndescription: Cut a release of this repository.\n---\n# Release\n' >"$REPO/fabriek/catalogue/skills/release-here/SKILL.md"
 	printf '{ ... }: { src = ./.; }\n' >"$REPO/fabriek/catalogue/skills/release-here/default.nix"
+	printf '{ fabriek }: fabriek.catalogue { version = 1; }\n' >"$REPO/fabriek/catalogue/default.nix"
 	cat >"$REPO/fabriek.toml" <<'TOML'
 name = "acme"
 catalogue = "fabriek/catalogue"

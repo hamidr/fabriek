@@ -7,6 +7,7 @@ needs beside it. A role in a repository's `fabriek.toml` names specialists;
 fabriek composes them at build and pi reads the result in the cage.
 
 ```
+default.nix                     { fabriek }: fabriek.catalogue { version = 1; }
 specialists/<name>/PROMPT.md    what this specialist is told
 specialists/<name>/default.nix  { pkgs, specialists, skills, ... }:
                                 { extends = [ specialists.python ]; tools = [ pkgs.ruff ];
@@ -16,7 +17,13 @@ skills/<name>/SKILL.md          frontmatter (name, description) and the procedur
 skills/<name>/default.nix       { pkgs, ... }: { tools = [ pkgs.maven ]; src = ./.; }
 ```
 
-The directory name is the name. Each `default.nix` is a function of `pkgs`
+A directory is a catalogue when its `default.nix` calls the constructor
+fabriek hands it, at the protocol version this fabriek speaks (1); it may
+name where `specialists` and `skills` live, and defaults to the two
+directories beside it. A directory without that file, or one at another
+version, is refused by name rather than read as an empty catalogue.
+
+The directory name is the name. Each entry's `default.nix` is a function of `pkgs`
 (fabriek's own pin), `specialists` and `skills` (every entry of every
 catalogue, so one may extend another by value). A role's specialists and
 everything they extend are flattened once per name, parents first, left to

@@ -2,12 +2,14 @@
 ## catalogue, and the one derivation a role gets from the specialists it
 ## names.
 ##
-## A catalogue is a directory: specialists/<name>/default.nix and
-## skills/<name>/default.nix, each a function of pkgs and of the other
+## A catalogue is a directory that says so: a default.nix calling the
+## constructor handed to it as `fabriek.catalogue`, at the protocol version
+## this file speaks, naming where its specialists and skills live. Each
+## entry is a default.nix of its own, a function of pkgs and of the other
 ## entries, so a tool is a package and a parent is a value. fabriek ships
-## one; a repository may add its own with the same layout. Every refusal
-## here names the entry it is about, because the person reading it is
-## holding a directory and not a stack trace.
+## one; a repository or an operator may add others. Every refusal here
+## names the directory or the entry it is about, because the person
+## reading it is holding one and not a stack trace.
 { self }:
 {
   ## The packages every tool resolves against: the machine's, not the
@@ -26,7 +28,54 @@
 }:
 let
   lib = pkgs.lib;
-  catalogues = [ "${self}/catalogue" ] ++ extra;
+  base = toString "${self}/catalogue";
+
+  ## The protocol a catalogue's default.nix is written against. The
+  ## constructor tags what it is given and nothing more: the checks run
+  ## where the directory is known, so a refusal can name it.
+  version = 1;
+  protocol = {
+    catalogue = args: { __fabriekCatalogue = true; } // args;
+  };
+  catalogueKeys = [
+    "version"
+    "specialists"
+    "skills"
+  ];
+
+  ## What a directory is as a catalogue: where each kind of entry lives,
+  ## and whether it is the base. Anything short of a default.nix calling
+  ## the constructor at this version is refused as not a catalogue, never
+  ## read as an empty one.
+  catalogueOf =
+    dir:
+    let
+      root = toString dir;
+      file = "${root}/default.nix";
+      fn = import file;
+      got = if builtins.isFunction fn then fn { fabriek = protocol; } else null;
+      tagged = builtins.isAttrs got && (got.__fabriekCatalogue or false);
+      unknown = lib.subtractLists catalogueKeys (
+        lib.attrNames (removeAttrs got [ "__fabriekCatalogue" ])
+      );
+    in
+    if !builtins.pathExists file then
+      throw "catalogue ${root}: has no default.nix, so it is not a catalogue"
+    else if !tagged then
+      throw "catalogue ${root}: default.nix does not call fabriek.catalogue"
+    else if unknown != [ ] then
+      throw "catalogue ${root}: ${lib.head unknown} is not something a catalogue declares"
+    else if !(got ? version) then
+      throw "catalogue ${root}: declares no version"
+    else if got.version != version then
+      throw "catalogue ${root}: speaks protocol version ${toString got.version}; this fabriek speaks ${toString version}"
+    else
+      {
+        specialists = toString (got.specialists or "${root}/specialists");
+        skills = toString (got.skills or "${root}/skills");
+        base = root == base;
+      };
+  catalogues = map catalogueOf ([ base ] ++ extra);
 
   ## What a TOML entry becomes: the node a directory's default.nix would
   ## have returned. A tool is looked up by name and refused with the
@@ -43,6 +92,7 @@ let
     {
       inherit name file;
       dir = "config.toml";
+      base = false;
       tools = map (package "skill" name) (entry.tools or [ ]);
       ## Copied into a directory of its own, as a skill's is, so the build
       ## finds SKILL.md where every skill has it.
@@ -64,6 +114,7 @@ let
       {
         inherit name;
         dir = "config.toml";
+        base = false;
         extends = map (
           p: c.specialists.${p} or (throw "specialist ${name} extends ${p}, which no catalogue declares")
         ) (entry.extends or [ ]);
@@ -93,25 +144,31 @@ let
   };
   singular = kind: lib.removeSuffix "s" kind;
 
-  ## name -> directory, for one kind across every catalogue. A name in two
-  ## catalogues is refused rather than shadowed: a repository that quietly
-  ## replaced a shipped specialist would be changing what every reader of
-  ## the shipped one believes it means.
+  ## name -> { dir, base }, for one kind across every catalogue. A name in
+  ## two catalogues is refused rather than shadowed: a repository that
+  ## quietly replaced a shipped specialist would be changing what every
+  ## reader of the shipped one believes it means.
   entriesOf =
     kind:
     lib.foldl (
-      acc: root:
+      acc: cat:
       let
-        dir = "${root}/${kind}";
-        here = lib.mapAttrs (name: _: "${dir}/${name}") (
-          lib.filterAttrs (_: type: type == "directory") (
-            if builtins.pathExists dir then builtins.readDir dir else { }
-          )
-        );
+        dir = cat.${kind};
+        here =
+          lib.mapAttrs
+            (name: _: {
+              dir = "${dir}/${name}";
+              inherit (cat) base;
+            })
+            (
+              lib.filterAttrs (_: type: type == "directory") (
+                if builtins.pathExists dir then builtins.readDir dir else { }
+              )
+            );
         twice = lib.intersectLists (lib.attrNames acc) (lib.attrNames here);
       in
       if twice != [ ] then
-        throw "${singular kind} ${lib.head twice} is declared twice: ${acc.${lib.head twice}} and ${here.${lib.head twice}}"
+        throw "${singular kind} ${lib.head twice} is declared twice: ${acc.${lib.head twice}.dir} and ${here.${lib.head twice}.dir}"
       else
         acc // here
     ) { } catalogues;
@@ -129,10 +186,11 @@ let
   load =
     kind: args:
     lib.mapAttrs (
-      name: dir:
+      name:
+      { dir, base }:
       checked kind name dir (import "${dir}/default.nix" args)
       // {
-        inherit name dir;
+        inherit name dir base;
       }
     ) (entriesOf kind);
 

@@ -10,6 +10,13 @@ setup() {
 	setup_temp_dir
 	EXTRA="$TEST_TEMP_DIR/catalogue"
 	mkdir -p "$EXTRA/specialists" "$EXTRA/skills"
+	protocol "$EXTRA" 'version = 1;'
+}
+
+## The file that makes a directory a catalogue: default.nix calling the
+## constructor fabriek hands it, with the body given as its arguments.
+protocol() {
+	printf '{ fabriek }: fabriek.catalogue { %s }\n' "$2" >"$1/default.nix"
 }
 
 teardown() {
@@ -17,11 +24,15 @@ teardown() {
 }
 
 ## A specialist in the scenario's own catalogue. Body is the attribute set's
-## inside; the prompt is one line naming the specialist so order shows.
+## inside; the prompt is one line naming the specialist so order shows. One
+## whose body names no parent extends committer, the base's root, so that
+## the scenario is about what its body says and not about reaching the base.
 specialist() {
+	local extends=""
+	case "$2" in *extends*) ;; *) extends="extends = [ specialists.committer ];" ;; esac
 	mkdir -p "$EXTRA/specialists/$1"
 	printf 'I am %s.\n' "$1" >"$EXTRA/specialists/$1/PROMPT.md"
-	printf '{ pkgs, specialists, skills, ... }:\n{ prompt = ./PROMPT.md; %s }\n' "$2" >"$EXTRA/specialists/$1/default.nix"
+	printf '{ pkgs, specialists, skills, ... }:\n{ prompt = ./PROMPT.md; %s %s }\n' "$extends" "$2" >"$EXTRA/specialists/$1/default.nix"
 }
 
 ## A skill in the scenario's own catalogue, with the frontmatter given.
@@ -47,14 +58,19 @@ catalogue_eval() {
 		2> >(grep -v -e 'Nix search path entry' >&2)
 }
 
-## Build what a role gets and print its store path.
+## Build what a role gets and print its store path. What nix says while
+## building reaches the scenario only when the build fails, so a path is
+## the whole output whether or not the store had it already.
 catalogue_build() {
+	local err="$TEST_TEMP_DIR/build.err"
 	nix build --no-link --print-out-paths --impure --expr "
 	  let flake = builtins.getFlake \"path:$FABRIEK_ROOT\";
 	      pkgs = flake.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
 	      cat = flake.lib.catalogue { inherit pkgs; extra = [ $EXTRA ]; declared = $DECLARED; };
 	  in $1" \
-		2> >(grep -v -e 'Nix search path entry' >&2)
+		2>"$err" && return 0
+	grep -v -e 'Nix search path entry' "$err" >&2
+	return 1
 }
 
 @test "the shipped catalogue offers its specialists by directory name" {
@@ -131,11 +147,12 @@ description: the first' ''
 	run catalogue_build 'cat.compose { role = "backend"; specialists = [ "y" ]; }'
 	assert_success
 	out="$output"
-	run cat "$out/share/fabriek/specialist/APPEND_SYSTEM.md"
-	assert_line --index 0 "## x"
-	assert_line --index 1 "I am x."
-	assert_line --index 2 "## y"
-	assert_line --index 3 "I am y."
+	run grep -E '^(## |I am )' "$out/share/fabriek/specialist/APPEND_SYSTEM.md"
+	assert_line --index 0 "## committer"
+	assert_line --index 1 "## x"
+	assert_line --index 2 "I am x."
+	assert_line --index 3 "## y"
+	assert_line --index 4 "I am y."
 	[ -f "$out/share/fabriek/specialist/skills/one/SKILL.md" ]
 	[ -x "$out/bin/tx" ]
 }
@@ -253,7 +270,7 @@ description: the first' ''
 }
 
 @test "a TOML specialist naming a tool nixpkgs lacks, a parent or a skill nothing has, is refused by name" {
-	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"tools\": [\"no-such-package-xyz\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"extends\": [\"reviewer\"], \"tools\": [\"no-such-package-xyz\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
 	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
 	assert_failure
 	assert_output --partial "specialist x: tool no-such-package-xyz is not a package of nixpkgs"
@@ -261,7 +278,7 @@ description: the first' ''
 	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
 	assert_failure
 	assert_output --partial "specialist x extends nobody, which no catalogue declares"
-	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"skills\": [\"nothing\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"extends\": [\"reviewer\"], \"skills\": [\"nothing\"], \"prompt\": \"p\" } }, \"skills\": {} }''"
 	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
 	assert_failure
 	assert_output --partial "specialist x names skill nothing, which no catalogue declares"
@@ -284,7 +301,8 @@ description: the first' ''
 	git -C "$cat" config user.name c
 	git -C "$cat" config user.email c@invalid
 	printf 'I am tx.\n' >"$cat/specialists/tx/PROMPT.md"
-	printf '{ pkgs, ... }: { prompt = ./PROMPT.md; tools = [ (pkgs.writeShellScriptBin "tx" "") ]; }\n' >"$cat/specialists/tx/default.nix"
+	printf '{ pkgs, specialists, ... }: { extends = [ specialists.committer ]; prompt = ./PROMPT.md; tools = [ (pkgs.writeShellScriptBin "tx" "") ]; }\n' >"$cat/specialists/tx/default.nix"
+	protocol "$cat" 'version = 1;'
 	git -C "$cat" add -A
 	git -C "$cat" -c commit.gpgsign=false commit -qm tx
 	local rev fetched
@@ -296,4 +314,54 @@ description: the first' ''
 	[ -x "$output/bin/tx" ]
 	run grep -c 'I am tx.' "$output/share/fabriek/specialist/APPEND_SYSTEM.md"
 	assert_output 1
+}
+
+# A catalogue is a directory that says so: default.nix calling the
+# constructor fabriek hands it, at the protocol version this fabriek
+# speaks. A directory that does not is refused as not a catalogue, and
+# never read as an empty one.
+@test "a directory without default.nix is refused as not a catalogue" {
+	rm "$EXTRA/default.nix"
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "catalogue $EXTRA: has no default.nix, so it is not a catalogue"
+}
+
+@test "a default.nix that does not call fabriek.catalogue is refused naming the directory" {
+	printf '{ fabriek }: { specialists = ./specialists; }\n' >"$EXTRA/default.nix"
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "catalogue $EXTRA: default.nix does not call fabriek.catalogue"
+}
+
+@test "a catalogue at a protocol version this fabriek does not speak is refused by both numbers" {
+	protocol "$EXTRA" 'version = 2;'
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "catalogue $EXTRA: speaks protocol version 2; this fabriek speaks 1"
+}
+
+@test "a catalogue without a version is refused" {
+	protocol "$EXTRA" ''
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "catalogue $EXTRA: declares no version"
+}
+
+@test "a key the constructor does not take is refused by name" {
+	protocol "$EXTRA" 'version = 1; colour = "blue";'
+	run catalogue_eval 'builtins.attrNames cat.specialists'
+	assert_failure
+	assert_output --partial "catalogue $EXTRA: colour is not something a catalogue declares"
+}
+
+@test "a catalogue names where its specialists and skills live, and a missing one is no entries" {
+	rm -r "$EXTRA/specialists" "$EXTRA/skills"
+	mkdir -p "$EXTRA/who/ours"
+	printf 'I am ours.\n' >"$EXTRA/who/ours/PROMPT.md"
+	printf '{ specialists, ... }: { extends = [ specialists.committer ]; prompt = ./PROMPT.md; }\n' >"$EXTRA/who/ours/default.nix"
+	protocol "$EXTRA" 'version = 1; specialists = ./who;'
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "ours" ]; }).order'
+	assert_success
+	assert_output '["committer","ours"]'
 }

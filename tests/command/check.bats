@@ -91,6 +91,7 @@ colour = "blue"' ''
 	mkdir -p "$REPO/fabriek/catalogue/specialists/local"
 	printf 'I am local.\n' >"$REPO/fabriek/catalogue/specialists/local/PROMPT.md"
 	printf '{ specialists, ... }: { extends = [ specialists.developer ]; prompt = ./PROMPT.md; }\n' >"$REPO/fabriek/catalogue/specialists/local/default.nix"
+	printf '{ fabriek }: fabriek.catalogue { version = 1; }\n' >"$REPO/fabriek/catalogue/default.nix"
 	declare_roles '[roles.backend]
 provides = ["build"]
 specialists = ["local"]' 'catalogue = "fabriek/catalogue"'
@@ -205,6 +206,7 @@ TOML
 	git -C "$cat" config user.email c@invalid
 	printf 'Be strict.\n' >"$cat/catalogue/specialists/strict/PROMPT.md"
 	printf '{ specialists, ... }: { extends = [ specialists.reviewer ]; prompt = ./PROMPT.md; }\n' >"$cat/catalogue/specialists/strict/default.nix"
+	printf '{ fabriek }: fabriek.catalogue { version = 1; }\n' >"$cat/catalogue/default.nix"
 	git -C "$cat" add -A
 	git -C "$cat" -c commit.gpgsign=false commit -qm strict
 	local rev
