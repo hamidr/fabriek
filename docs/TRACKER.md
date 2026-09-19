@@ -4,11 +4,11 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-16
+**Generated:** 2026-09-19
 
 **Next PRD number:** 008
 
-**Next ADR number:** 066
+**Next ADR number:** 067
 
 ## PRDs
 
@@ -91,3 +91,4 @@ document, then regenerate.
 | [ADR-063](ADR-063-a-person-beside-the-unit-reaches-the-machine-with-their-own-key.md) | A person beside the unit reaches the machine with their own key, which the host names as an operator's | implemented | -- | ADR-019, ADR-048, ADR-057 | the host lists operator public keys, the machine accepts them, and a hand without the unit key uses its own |  |
 | [ADR-064](ADR-064-the-bridge-rules-are-nixcage-s-and-fabriek-names-only-its-ports.md) | The bridge's rules are nixcage's, and fabriek names only the three ports a cage may reach | implemented | -- | ADR-018, ADR-037 | attribution and cage-to-cage isolation move to nixcage with the lock bump; bridge.nix keeps the address and the firewall |  |
 | [ADR-065](ADR-065-at-the-ceiling-the-executor-holds-the-decider.md) | At the ceiling the executor holds the decider, and the proof reaches the ceiling itself | implemented | -- | ADR-035, ADR-037 | no decider session is restarted while the proxy refuses; isolation.sh spends its way to the limit itself |  |
+| [ADR-066](ADR-066-a-catalogue-says-so-and-every-specialist-reaches-the-base.md) | A catalogue says so through its default.nix, and every specialist reaches the base | implemented | -- | ADR-042, ADR-061, ADR-062 | a catalogue directory calls fabriek.catalogue at a protocol version; every other specialist extends a shipped one |  |

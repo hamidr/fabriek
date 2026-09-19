@@ -70,8 +70,14 @@ runs its 136 scenarios.
 **`catalogue/`** is what a role can be (ADR-042): one directory per
 specialist (`PROMPT.md` and a `default.nix` naming its tools, its parents
 and its skills as values) and one per skill (`SKILL.md` in the Agent Skills
-format and a `default.nix` naming its tools). A repository may carry a
-second one with the same layout, named by `catalogue` in its `fabriek.toml`.
+format and a `default.nix` naming its tools). A directory is a catalogue
+when its own `default.nix` calls `fabriek.catalogue { version = 1; }`, the
+constructor `modules/catalogue.nix` hands it (ADR-066); one without it, or
+at another version, is refused by name rather than read as empty. The
+shipped one is the base: a specialist declared anywhere else reaches one
+of its specialists through `extends` or is refused naming `committer`. A
+repository may carry a second one with the same layout, named by
+`catalogue` in its `fabriek.toml`.
 A role names its specialists in `fabriek.toml` and nothing else; `command`
 defaults to pi. A role may declare `replicas = N` (ADR-053): the shell
 validator expands it into `<role>-1` to `<role>-N`, each the same

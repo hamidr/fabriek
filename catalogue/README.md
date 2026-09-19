@@ -23,6 +23,11 @@ name where `specialists` and `skills` live, and defaults to the two
 directories beside it. A directory without that file, or one at another
 version, is refused by name rather than read as an empty catalogue.
 
+This catalogue is the base. A specialist in any other catalogue, or
+declared in the operator's file, reaches one of these through `extends`
+(`committer` at the least) or is refused naming what to extend: so every
+role, whoever declares it, carries the base's kit and voice.
+
 The directory name is the name. Each entry's `default.nix` is a function of `pkgs`
 (fabriek's own pin), `specialists` and `skills` (every entry of every
 catalogue, so one may extend another by value). A role's specialists and

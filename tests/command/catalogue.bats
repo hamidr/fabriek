@@ -35,6 +35,13 @@ specialist() {
 	printf '{ pkgs, specialists, skills, ... }:\n{ prompt = ./PROMPT.md; %s %s }\n' "$extends" "$2" >"$EXTRA/specialists/$1/default.nix"
 }
 
+## A specialist that extends nothing at all.
+orphan() {
+	mkdir -p "$EXTRA/specialists/$1"
+	printf 'I am %s.\n' "$1" >"$EXTRA/specialists/$1/PROMPT.md"
+	printf '{ ... }:\n{ prompt = ./PROMPT.md; }\n' >"$EXTRA/specialists/$1/default.nix"
+}
+
 ## A skill in the scenario's own catalogue, with the frontmatter given.
 skill() {
 	mkdir -p "$EXTRA/skills/$1"
@@ -364,4 +371,28 @@ description: the first' ''
 	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "ours" ]; }).order'
 	assert_success
 	assert_output '["committer","ours"]'
+}
+
+# The shipped catalogue is the base: a specialist anywhere else reaches
+# one of its specialists through extends, or it is not a specialist here.
+@test "a specialist that extends nothing of the base catalogue is refused naming what to extend" {
+	orphan alone
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "alone" ]; }).order'
+	assert_failure
+	assert_output --partial "specialist alone extends nothing of fabriek's catalogue; extend committer or one of its descendants"
+}
+
+@test "a specialist reaching the base through another catalogue's specialist is accepted" {
+	specialist near 'extends = [ specialists.reviewer ];'
+	specialist far 'extends = [ specialists.near ];'
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "far" ]; }).order'
+	assert_success
+	assert_output '["committer","reviewer","near","far"]'
+}
+
+@test "a TOML specialist that extends nothing of the base catalogue is refused" {
+	DECLARED="builtins.fromJSON ''{ \"specialists\": { \"x\": { \"prompt\": \"p\" } }, \"skills\": {} }''"
+	run catalogue_eval '(cat.compose { role = "r"; specialists = [ "x" ]; }).order'
+	assert_failure
+	assert_output --partial "specialist x extends nothing of fabriek's catalogue"
 }

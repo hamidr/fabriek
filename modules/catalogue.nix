@@ -7,9 +7,11 @@
 ## this file speaks, naming where its specialists and skills live. Each
 ## entry is a default.nix of its own, a function of pkgs and of the other
 ## entries, so a tool is a package and a parent is a value. fabriek ships
-## one; a repository or an operator may add others. Every refusal here
-## names the directory or the entry it is about, because the person
-## reading it is holding one and not a stack trace.
+## one catalogue, the base; a repository or an operator may add others,
+## and a specialist of theirs is one here only when it reaches the base
+## through extends. Every refusal here names the directory or the entry it
+## is about, because the person reading it is holding one and not a stack
+## trace.
 { self }:
 {
   ## The packages every tool resolves against: the machine's, not the
@@ -265,13 +267,23 @@ let
     { role, specialists }:
     let
       offered = lib.concatStringsSep ", " (lib.attrNames catalogue.specialists);
-      order = flatten (
-        map (
-          name:
-          catalogue.specialists.${name}
-            or (throw "role ${role} names specialist ${name}, which no catalogue declares; the catalogue offers: ${offered}")
-        ) specialists
+      named = map (
+        name:
+        catalogue.specialists.${name}
+          or (throw "role ${role} names specialist ${name}, which no catalogue declares; the catalogue offers: ${offered}")
+      ) specialists;
+      ## The base's roots, what a specialist from elsewhere is told to
+      ## extend when it reaches none of the base.
+      roots = lib.concatStringsSep ", " (
+        lib.attrNames (lib.filterAttrs (_: s: s.base && (s.extends or [ ]) == [ ]) catalogue.specialists)
       );
+      grounded =
+        node:
+        if lib.any (n: n.base) (flatten [ node ]) then
+          node
+        else
+          throw "specialist ${node.name} extends nothing of fabriek's catalogue; extend ${roots} or one of its descendants";
+      order = flatten (map grounded named);
       skillsOf = node: node.skills or [ ];
       toolsOf =
         node: map lib.getBin ((node.tools or [ ]) ++ lib.concatMap (s: s.tools or [ ]) (skillsOf node));
