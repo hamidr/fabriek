@@ -78,42 +78,30 @@ teardown() {
 	assert_output --partial "unknown verb"
 }
 
-@test "every machine command goes to the factory's own machine and nowhere else" {
-	# The transport is the only thing fabriek knows about where the cages
-	# are, and a second way to reach them would be a second thing to keep
-	# true. It used to be nixcage exec, which reaches the shared VM of the
-	# arrangement ADR-019 replaced; a factory has a machine of its own now
-	# and is reached over the port and key fabriek allocated it.
-	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -cE '\"\\\$NIXCAGE\" exec'"
-	assert_output "0"
-	# Comments stripped: what matters is what runs.
-	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -cE '(^|[^a-z])sudo[[:space:]]'"
-	assert_output "0"
-}
-
-# A machine verb carries a task's acceptance and a role's outcome, and ssh joins
-# argv into one string for a remote shell. Sending the words NUL-separated and
-# splitting them with xargs -0 on the far side keeps what nixcage exec gave for
-# free: nothing is quoted for a remote shell and nothing is ever re-split.
-@test "a machine command's words survive the transport as words" {
-	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -cE \"printf '%s\\\\0'\""
-	refute_output "0"
-	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -c 'xargs -0 fabriek-container'"
-	refute_output "0"
-}
-
-# ADR-018 had fabriek open no SSH connection at all. ADR-019 reverses that
-# for one case and one only: fabriek owns the way into a machine it built
-# itself. So ssh is here now, and every use of it has to carry the arguments
-# that name one factory's key, port and known hosts -- never an ad hoc one.
-@test "ssh reaches a machine fabriek built, and nothing else" {
+# ADR-067 point 1: the machine program runs on this host as root, reached
+# through sudo for that one program, with the factory named in the
+# environment. That is the only transport, and every use of it goes
+# through machine(), so one place carries the factory and the words.
+@test "every machine command reaches the machine program through sudo, and through nothing else" {
 	local uses named
 	uses="$(grep -vE '^[[:space:]]*#' "$FABRIEK_BIN" |
-		grep -cE '(^|[^a-z_])ssh[[:space:]]' || true)"
+		grep -cE '(^|[^a-z_])sudo[[:space:]]' || true)"
 	named="$(grep -vE '^[[:space:]]*#' "$FABRIEK_BIN" |
-		grep -cF 'ssh "${ssh_args[@]}"' || true)"
+		grep -cF 'sudo "${sudo_args[@]}"' || true)"
 	[ "$uses" = "$named" ]
 	[ "$uses" -ge 1 ]
+	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -cE '(^|[^a-z_])ssh[[:space:]]'"
+	assert_output "0"
+	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -cE '\"\\\$NIXCAGE\" exec'"
+	assert_output "0"
+}
+
+# A machine verb carries a task's acceptance and a role's outcome as words.
+# sudo passes argv through as argv, so nothing is quoted for a shell and
+# nothing is re-split on the way; the NUL framing ssh needed is gone.
+@test "a machine command's words survive the transport as words" {
+	run bash -c "grep -vE '^[[:space:]]*#' '$FABRIEK_BIN' | grep -c 'xargs -0'"
+	assert_output "0"
 }
 
 @test "nothing here reads nixcage's own state" {

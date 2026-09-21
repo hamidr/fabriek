@@ -454,7 +454,7 @@ describe("the executor", () => {
     assert.equal(await x.atCeiling(), false);
   });
 
-  it("mirror pushes main and the record together", async () => {
+  it("mirror brings main and the record into the clone together", async () => {
     const { x, f } = await executor();
     await x.mirror();
     assert.deepEqual(f.log, ["mirror"]);

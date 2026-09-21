@@ -79,50 +79,35 @@ run_fabriek() {
 	run bash "$FABRIEK_BIN" "$@"
 }
 
-# The transport, stubbed. fabriek reaches its machine program over the ssh port
-# and key it allocated the factory's own machine (ADR-019), and knows nothing
-# else about where the cages are, so this is the whole of what the CLI tests
-# have to stand in for.
-#
-# The words arrive NUL-separated on stdin and xargs -0 splits them on the far
-# side, so the stub reads stdin rather than its own argv: what a caller passed
-# is never part of the remote command line, which is the property the transport
-# exists to keep.
+# The transport, stubbed. fabriek reaches its machine program as root on
+# this host through sudo, for that one program and the fabriek group
+# (ADR-067 point 1), with the factory named in the environment; that is the
+# whole of what the CLI tests have to stand in for. The stub records the
+# argv the machine program actually sees and the environment it was handed.
 stub_nixcage() {
 	STUB_DIR="$TEST_TEMP_DIR/bin"
 	NIXCAGE_CALLS="$TEST_TEMP_DIR/nixcage-calls"
 	NIXCAGE_ARGV="$TEST_TEMP_DIR/nixcage-argv"
-	SSH_FLAGS="$TEST_TEMP_DIR/ssh-flags"
+	SUDO_ENV="$TEST_TEMP_DIR/sudo-env"
 	mkdir -p "$STUB_DIR"
-	export PATH="$STUB_DIR:$PATH" NIXCAGE_CALLS NIXCAGE_ARGV SSH_FLAGS
-	cat >"$STUB_DIR/ssh" <<STUB
+	export PATH="$STUB_DIR:$PATH" NIXCAGE_CALLS NIXCAGE_ARGV SUDO_ENV
+	cat >"$STUB_DIR/sudo" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$SSH_FLAGS"
-## Only a machine command carries argv on stdin; anything else is a machine
-## verb reaching the same host and says nothing about the machine program.
-if printf '%s' "\$*" | grep -q 'xargs -0 fabriek-container'; then
-	## xargs -0 execs fabriek-container with those words, so that is the
-	## argv the machine program actually sees and what a test should assert on.
-	mapfile -d '' -t words < <(cat)
-	words=(fabriek-container "\${words[@]}")
-	printf '%s ' "\${words[@]}" >>"$NIXCAGE_CALLS"
-	printf '\n' >>"$NIXCAGE_CALLS"
-	printf '%s\n' "\${words[@]}" >>"$NIXCAGE_ARGV"
-	## What the machine program would have printed, when a test says so.
-	if [ -f "$TEST_TEMP_DIR/machine-answer" ]; then cat "$TEST_TEMP_DIR/machine-answer"; fi
-fi
+## sudo's own flags, then VAR=value words, then the program and its argv.
+while [ \$# -gt 0 ]; do
+	case "\$1" in
+	-*) shift ;;
+	*=*) printf '%s\n' "\$1" >>"$SUDO_ENV"; shift ;;
+	*) break ;;
+	esac
+done
+printf '%s ' "\$@" >>"$NIXCAGE_CALLS"
+printf '\n' >>"$NIXCAGE_CALLS"
+printf '%s\n' "\$@" >>"$NIXCAGE_ARGV"
+## What the machine program would have printed, when a test says so.
+if [ -f "$TEST_TEMP_DIR/machine-answer" ]; then cat "$TEST_TEMP_DIR/machine-answer"; fi
 STUB
-	chmod +x "$STUB_DIR/ssh"
-
-	## A machine to reach. The CLI takes the key and the port from the
-	## factory's own machine directory now, and refuses rather than falling
-	## back to localhost when there is none, so a test that drives a machine
-	## verb has to have one.
-	export FABRIEK_MACHINES="$TEST_TEMP_DIR/machines"
-	mkdir -p "$FABRIEK_MACHINES/acme"
-	: >"$FABRIEK_MACHINES/acme/id_ed25519"
-	echo 22100 >"$FABRIEK_MACHINES/acme/port"
-	: >"$FABRIEK_MACHINES/acme/known_hosts"
+	chmod +x "$STUB_DIR/sudo"
 }
 
 # One line per invocation, for asserting on the shape of a call.
@@ -136,7 +121,8 @@ nixcage_argv() {
 	cat "$NIXCAGE_ARGV"
 }
 
-# The flags the transport itself carried, for the tty and the forwarded agent.
-ssh_flags() {
-	cat "$SSH_FLAGS"
+# The environment the transport handed the machine program: the factory,
+# and for a hand's session the agent socket.
+sudo_env() {
+	cat "$SUDO_ENV"
 }

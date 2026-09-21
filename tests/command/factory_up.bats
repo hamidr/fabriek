@@ -268,3 +268,14 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	run_fabriek_container factory-status acme
 	assert_output "acme: stopped"
 }
+
+@test "the clone's path and the declaring file are answered for the CLI" {
+	run_fabriek_container factory-clone acme
+	assert_output "$STATE/factories/acme"
+	run_fabriek_container factory-declared acme
+	assert_failure
+	run_fabriek_container factory-up acme
+	assert_success
+	run_fabriek_container factory-declared acme
+	assert_output "$REPO/fabriek.toml"
+}

@@ -1,8 +1,10 @@
 // Git as the executor runs it in the factory's clone (ADR-036 points 5 and
-// 7): count a role's commits, push its branch to the forge, and mirror main
-// and the record to origin on the operator's word. The forge is reached with
-// the operator's token through a credential helper that reads a file, so the
-// token is in no argument and no remote URL.
+// 7): count a role's commits, push its branch to the forge, and on the
+// operator's word bring merged main and the record into the clone, where
+// the operator's own fetch finds them (ADR-067 point 5): nothing here
+// writes the operator's checkout. The forge is reached with the operator's
+// token through a credential helper that reads a file, so the token is in
+// no argument and no remote URL.
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -57,7 +59,7 @@ export class CloneGit implements Git {
     await git(this.o.clone, ["push", this.o.forgeUrl, `refs/heads/${branch}:refs/heads/${branch}`], this.helper());
   }
 
-  /** main and refs/fabriek/record to origin, together (ADR-036 point 7). */
+  /** main and refs/fabriek/record into the clone, together (ADR-036 point 7). */
   async mirror(): Promise<void> {
     await git(this.o.clone, ["fetch", this.o.forgeUrl, `refs/heads/${this.base}:refs/heads/${this.base}`], this.helper());
     if (this.o.record) {
@@ -76,6 +78,5 @@ export class CloneGit implements Git {
         await rm(dir, { recursive: true, force: true });
       }
     }
-    await git(this.o.clone, ["push", "origin", `refs/heads/${this.base}:refs/heads/${this.base}`, "+refs/fabriek/record:refs/fabriek/record"]);
   }
 }

@@ -26,7 +26,7 @@ STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge" RUN="$W
 mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE" "$RUN"
 ## The prepared mark is per boot, under /run on a machine (ADR-057); here
 ## under the scratch directory, since there is no machine.
-export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
+export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY="$F"
 export PATH="$BIN:$PATH" FABRIEK_LIB="$ROOT/modules"
 
 ## Everything this run starts, and everything a run before it left: the
@@ -85,7 +85,7 @@ STUB
 cat >"$BIN/systemctl" <<STUB
 #!/usr/bin/env bash
 case "\$*" in
-*fabriek-bus-acl*) exec fabriek-container bus-acl $F ;;
+*fabriek-$F-bus-acl*) exec fabriek-container bus-acl $F ;;
 *) exit 0 ;;
 esac
 STUB
@@ -101,15 +101,16 @@ exec env FORGEJO_WORK_DIR="$FORGE" GITEA_WORK_DIR="$FORGE" "$forge_bin" --config
 STUB
 chmod +x "$BIN"/*
 
-## The repository the factory works: a bare origin with one commit on main.
-ORIGIN="$W/origin.git"
-git init -q --bare -b main "$ORIGIN"
-seed="$W/seed"
-git init -q -b main "$seed"
-echo "# acme" >"$seed/README.md"
-git -C "$seed" add README.md
-git -C "$seed" -c user.name=operator -c user.email=operator@acme.invalid -c commit.gpgsign=false commit -q -m "first"
-git -C "$seed" push -q "$ORIGIN" main
+## The repository the factory works: the operator's checkout on this host
+## (ADR-067 point 5), one commit on main, with main checked out and a file
+## the operator is editing, both of which nothing in the factory may touch.
+ORIGIN="$W/checkout"
+git init -q -b main "$ORIGIN"
+echo "# acme" >"$ORIGIN/README.md"
+git -C "$ORIGIN" add README.md
+git -C "$ORIGIN" -c user.name=operator -c user.email=operator@acme.invalid -c commit.gpgsign=false commit -q -m "first"
+echo "draft" >"$ORIGIN/NOTES.md"
+CHECKOUT_HEAD="$(git -C "$ORIGIN" rev-parse HEAD)"
 
 scenario "The bus and the forge come up on this host"
 valkey-server --bind 127.0.0.1 --port "$VALKEY_PORT" --save "" --appendonly no --protected-mode no >"$LOG/valkey" 2>&1 &
@@ -272,9 +273,19 @@ pulls() { api GET "$repo/pulls?state=open" | jq -r '[.[].head.ref] | join(",")';
 check "the forge shows the pull request" "builder/work" "$(eventually 30 builder/work pulls)"
 check "mirror is requested" "$F: mirror requested" "$(fabriek-container factory-mirror "$F" 2>>"$LOG/operator" | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
-record_on_origin() { git -C "$ORIGIN" rev-parse --verify --quiet refs/fabriek/record >/dev/null && echo yes || echo no; }
-check "refs/fabriek/record lands on origin" yes "$(eventually 60 yes record_on_origin)"
-check "the record carries every issue" "$(api GET "$repo/issues?state=all&type=issues&limit=100" | jq -r 'length')" "$(git -C "$ORIGIN" show refs/fabriek/record:issues.json | jq -r 'length')"
+record_in_clone() { git -C "$CLONE" rev-parse --verify --quiet refs/fabriek/record >/dev/null && echo yes || echo no; }
+check "refs/fabriek/record lands in the clone" yes "$(eventually 60 yes record_in_clone)"
+## The operator's side (ADR-067 point 5): the remote fabriek up adds to the
+## checkout and the fetch every verb runs, as the operator, and nothing else
+## writes it.
+git -C "$ORIGIN" remote add "fabriek-$F" "$CLONE"
+git -C "$ORIGIN" config --replace-all "remote.fabriek-$F.fetch" "+refs/heads/*:refs/heads/fabriek/$F/*"
+git -C "$ORIGIN" config --add "remote.fabriek-$F.fetch" "+refs/fabriek/*:refs/fabriek/$F/*"
+git -C "$ORIGIN" fetch -q "fabriek-$F"
+check "the role's branch is in the checkout under the factory's name" "$(git -C "$CLONE" rev-parse refs/heads/builder/work)" "$(git -C "$ORIGIN" rev-parse "refs/heads/fabriek/$F/builder/work")"
+check "the record is in the checkout under the factory's name, carrying every issue" "$(api GET "$repo/issues?state=all&type=issues&limit=100" | jq -r 'length')" "$(git -C "$ORIGIN" show "refs/fabriek/$F/record:issues.json" | jq -r 'length')"
+check "the checkout's own branch has not moved" "$CHECKOUT_HEAD" "$(git -C "$ORIGIN" rev-parse HEAD)"
+check "the operator's uncommitted file is as they left it" "?? NOTES.md" "$(git -C "$ORIGIN" status --porcelain)"
 check "the relay printed the executor's board events" yes "$(grep -q '"name":"board"' "$LOG/relay" && echo yes || echo no)"
 
 echo

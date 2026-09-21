@@ -143,6 +143,8 @@ usage: fabriek-container
   factory-up [--update] <factory>
   factory-down <factory>
   factory-status <factory>
+  factory-clone <factory>
+  factory-declared <factory>
   factory-watch <factory> [--from <id>] [--stream <name>]...
   role-steer <factory> <role> <text>
   factory-send <factory> <json>
@@ -925,6 +927,28 @@ cmd_factory_down() {
 	echo "$factory has stopped"
 }
 
+## Where the factory's clone is, for the remote the CLI adds to the
+## operator's checkout (ADR-067 point 5).
+cmd_factory_clone() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-clone <factory>"
+	fabriek_factory_clone_path "$STATE_DIR" "$factory" || die "invalid factory name: $factory"
+}
+
+## Which file declared the factory (ADR-061 point 6): the operator's own
+## when the credential carries a declaration, else the checkout's
+## fabriek.toml at the pin.
+cmd_factory_declared() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-declared <factory>"
+	[ -f "$FABRIEK_ETC/fabriek.toml" ] || die "$factory has not been brought up"
+	if grep -q '^\[declaration\]$' "$FABRIEK_ETC/fabriek.toml"; then
+		printf '%s\n' "$(fabriek_operator_config_path)"
+	else
+		printf '%s/fabriek.toml\n' "$(sed -n 's/^path = "\(.*\)"$/\1/p' "$FABRIEK_ETC/fabriek.toml")"
+	fi
+}
+
 ## What a factory is doing: running at its pin once prepared, stopped
 ## otherwise. Read off the mark and the rendered rev, which is what the
 ## executor's own condition reads.
@@ -955,6 +979,8 @@ main() {
 	factory-up) cmd_factory_up "$@" ;;
 	factory-down) cmd_factory_down "$@" ;;
 	factory-status) cmd_factory_status "$@" ;;
+	factory-clone) cmd_factory_clone "$@" ;;
+	factory-declared) cmd_factory_declared "$@" ;;
 	factory-watch) cmd_factory_watch "$@" ;;
 	factory-board) cmd_factory_board "$@" ;;
 	probes-publish) cmd_probes_publish "$@" ;;

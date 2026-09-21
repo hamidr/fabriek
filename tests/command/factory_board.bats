@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
-# The board's web UI from the operator's host (ADR-036): merging is a click
-# there and has no verb, and Forgejo listens on the bridge where only the
-# factory's own ssh reaches, so the CLI tunnels a local port to it over the
-# same key and port every other verb uses, and says where and how to log in.
+# The board's web UI (ADR-036): merging is a click there and has no verb.
+# Forgejo listens on the factory's bridge, which the host itself reaches
+# (ADR-067), so the CLI says the address and how to log in and opens
+# nothing else.
 
 load ../test_helper/common
 
@@ -17,16 +17,13 @@ teardown() {
 	teardown_temp_dir
 }
 
-@test "factory board tunnels a local port to the board over the factory's own ssh and prints the URL and the login" {
+@test "factory board prints the board's address on the bridge and the login, and holds nothing open" {
 	run_fabriek -f acme board
 	assert_success
-	assert_output --regexp 'http://127\.0\.0\.1:[0-9]+/operator/acme'
+	assert_line --index 0 'http://10.77.0.1:3000/operator/acme'
 	assert_output --partial "operator"
 	assert_output --partial "secret-of-the-day"
-	run ssh_flags
-	assert_output --regexp -- '-N -L 127\.0\.0\.1:[0-9]+:10\.77\.0\.1:3000 root@localhost'
-	assert_output --partial "-i $FABRIEK_MACHINES/acme/id_ed25519"
-	assert_output --partial "-p 22100"
+	refute_output --partial "tunnel"
 }
 
 @test "factory board asks the machine for the address rather than guessing one" {
