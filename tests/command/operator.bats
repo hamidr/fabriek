@@ -87,7 +87,7 @@ sent_json() {
 	run_fabriek_container role-stop acme builder --now
 	assert_success
 	run cat "$TEST_TEMP_DIR/nixcage.calls"
-	assert_output "stop builder"
+	assert_output "stop acme-builder"
 	[ ! -e "$TEST_TEMP_DIR/bus-calls" ]
 }
 

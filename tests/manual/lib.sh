@@ -1,52 +1,52 @@
 # shellcheck shell=bash
-## What every manual proof needs before it can ask a machine anything: the
+## What every manual proof needs before it can ask a factory anything: the
 ## scratch directory the operator named, the environment that points fabriek
-## at it, a way to reach one factory's machine, and a checker that says which
-## step failed and what it saw.
+## at it, a way to run a command as root on this host with one factory's
+## facts loaded (ADR-067), and a checker that says which step failed and what
+## it saw.
 ##
 ## Sourced, never run. A script says which factory it is about by setting F
-## before sourcing, and gets D (the machine's directory), sshm, wait_ssh, check
-## and scenario. The scripts that predate this file carry their own copies;
-## they are replaced rather than migrated, because what they prove is
-## replaced too (docs/roadmap.md phases 2 and 5).
+## before sourcing, and gets onhost, in_cage, wait_cages, check, scenario
+## and eventually. The proofs run on the NixOS host the factory is declared
+## on: services.fabriek carries the factory, and this file reads its facts
+## from where the host wrote them.
 
 cd "${FABRIEK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}" || exit 1
 S="${FABRIEK_PROOF_DIR:?set FABRIEK_PROOF_DIR to a scratch directory}"
-export FABRIEK_MACHINES="$S/machines" FABRIEK_CONFIG="$S/cfg.toml" \
-	FABRIEK_LIB="$PWD/modules" FABRIEK_SELF="$PWD"
+export FABRIEK_LIB="$PWD/modules" FABRIEK_SELF="$PWD"
 F="${F:-acme}"
-D="$S/machines/$F"
+FACTS="${FABRIEK_FACTORIES:-/etc/fabriek/factories}/$F.env"
+[ -f "$FACTS" ] || {
+	echo "the factory $F is not declared on this host: no $FACTS"
+	exit 1
+}
+## The factory's facts, for the proof's own reading: where its state and
+## its rendered files are, and its bridge.
+fact() { sed -n "s/^$1=//p" "$FACTS"; }
+# shellcheck disable=SC2034  # read by the scripts that source this
+STATE="$(fact FABRIEK_STATE)"
+ETC="$(fact FABRIEK_ETC)"
+# shellcheck disable=SC2034
+BRIDGE="$(fact FABRIEK_BRIDGE)"
+mkdir -p "$S"
 
-sshm() {
-	ssh -i "$D/id_ed25519" -p "$(cat "$D/port")" -o UserKnownHostsFile="$D/known_hosts" \
-		-o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -o BatchMode=yes \
-		-o ConnectTimeout=3 root@localhost "$@"
+## A command as root on this host, with the factory's facts in its
+## environment, the way the units and the machine program have them.
+onhost() {
+	sudo env "FABRIEK_FACTORY=$F" "FABRIEK_LIB=$FABRIEK_LIB" bash -c "set -a; . '$FACTS'; set +a; $*"
 }
 
-## What the factory is, as the machine rendered it (ADR-057): the clamped
-## declaration under .declaration, with the two fields the older spec.json
-## carried beside it. Fetched once per run, and a run starts without the
-## last run's copy: a ceiling changed between two runs was read stale
-## (seen 2026-09-16). The proofs that predate ADR-057 read it where the
-## host's spec.json was.
-rm -f "$D/spec.json"
+## What the factory is, as render wrote it: the clamped declaration under
+## .declaration, with the two fields the proofs read beside it. Fetched
+## once per run, and a run starts without the last run's copy.
+rm -f "$S/spec.json"
 spec_json() {
-	if [ ! -s "$D/spec.json" ]; then
-		sshm cat /var/lib/fabriek/factory/declaration.json 2>/dev/null |
-			jq '{declaration: ., egress: .resources.egress, tokenCeiling: .resources.tokens}' >"$D/spec.json" 2>/dev/null ||
-			rm -f "$D/spec.json"
+	if [ ! -s "$S/spec.json" ]; then
+		onhost "cat '$ETC/declaration.json'" 2>/dev/null |
+			jq '{declaration: ., egress: .resources.egress, tokenCeiling: .resources.tokens}' >"$S/spec.json" 2>/dev/null ||
+			rm -f "$S/spec.json"
 	fi
-	printf '%s\n' "$D/spec.json"
-}
-
-## Waits up to WAIT_SSH seconds (default 180) for the machine to answer.
-wait_ssh() {
-	local _i
-	for _i in $(seq 1 "${WAIT_SSH:-180}"); do
-		sshm true 2>/dev/null && return 0
-		sleep 1
-	done
-	return 1
+	printf '%s\n' "$S/spec.json"
 }
 
 ## Waits up to WAIT_CAGES seconds (default 120) for the executor to hold a
@@ -56,7 +56,7 @@ wait_ssh() {
 cages_present() {
 	local role
 	for role in "$@"; do
-		sshm "pgrep -f -- '--machine=$role( |\$)' >/dev/null" 2>/dev/null || return 1
+		onhost "nixcage-container status '$F-$role'" 2>/dev/null | grep -q '^running' || return 1
 	done
 }
 wait_cages() {
@@ -79,9 +79,9 @@ in_cage() {
 
 # shellcheck disable=SC2034  # read by the script that sources this
 fail=0
-## A Then. What came back has crossed ssh and a container's stdout and can
-## carry a carriage return that makes two identical strings report as
-## different, so it is trimmed before comparing.
+## A Then. What came back has crossed a container's stdout and can carry a
+## carriage return that makes two identical strings report as different, so
+## it is trimmed before comparing.
 check() {
 	local what="$1" want="$2" got="$3"
 	got="$(printf '%s' "$got" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"

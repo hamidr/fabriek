@@ -1,36 +1,32 @@
 #!/usr/bin/env bash
-## ADR-037's measurement plan, which needs a real machine and so cannot be a
-## bats test. Written before the bridge exists (docs/roadmap.md 0.6) so that
-## phase 2.4 has something to make pass; today every scenario fails at its
-## first Then, and the first line of output says the bridge is absent.
+## ADR-037's measurement plan on the host a factory is declared on (ADR-067),
+## which needs cages and a bridge for real and so cannot be a bats test.
 ##
-## Replaced tests/manual/egress.sh, whose uid filter ADR-037 deleted; that
-## script, with moves-in.sh and observe.sh, is in the history for the ADRs
-## that cite them.
-##
-## Wants the scratch directory the other proofs use: an operator config and a
-## repository declaring a factory called acme with at least two roles, an
-## egress ceiling that allows one host, a credential for it, and a token
-## ceiling small enough to reach in a handful of requests.
+## Wants a NixOS host with the factory in services.fabriek, a scratch
+## directory, and a repository declaring a factory called acme with at least
+## two roles, an egress ceiling that allows one host, a credential for it,
+## and a token ceiling small enough to reach in a handful of requests. For
+## the substrate scenario, one role declared `substrate = "microvm"` and
+## nixcage.microvm.enable on the host; without it that scenario is gated.
+## For the forward scenario, run once with docker enabled on the host, so
+## ip_forward is set and its FORWARD chain present.
 ##
 ##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   tests/manual/isolation.sh
 ##
-## What the machine must offer for these to pass, and where each is decided:
-## a bridge named fabriek-<factory> (2.2); one veth per cage carrying one
-## address (1.1, 2.2); the proxy on the bridge answering /status with a JSON
-## object of tokens spent per source address (2.2); nftables on the machine
-## dropping a packet whose source is not the sender's address (2.2).
+## What the host must offer for these to pass, and where each is decided:
+## a bridge per factory (modules/host/bridge.nix); one port per cage carrying
+## one address (nixcage ADR-015); the proxy on the bridge answering /status
+## with a JSON object of tokens spent per source address
+## (modules/host/proxy.nix); a forward chain dropping anything from or to a
+## factory's bridge (the same); nixcage dropping a frame whose source is not
+## its port's address (nixcage ADR-064).
 set -uo pipefail
 F="${F:-acme}"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 
 bash fabriek up "$F" || exit 1
-wait_ssh || {
-	echo "the machine never answered"
-	exit 1
-}
 
 roles="$(jq -r '.declaration.roles | keys[]' "$(spec_json)" 2>/dev/null)"
 a="$(printf '%s\n' "$roles" | sed -n 1p)"
@@ -45,11 +41,8 @@ wait_cages "$a" "$b" || {
 	bash fabriek down "$F"
 	exit 1
 }
-## One machine runs one factory, so the bridge carries no factory's name
-## (ADR-057); the machine says what it is called.
-# shellcheck disable=SC2016  # expands on the machine
-bridge="$(sshm 'printf %s "$FABRIEK_BRIDGE"' 2>/dev/null | tr -d '\r')"
-bridge="${bridge:-fabriek0}"
+## The factory's bridge, from its facts (modules/host/bridge.nix).
+bridge="$BRIDGE"
 
 ## The executor keeps one session per role, and a cage is one veth and one
 ## address on the bridge under the role's name. A hand session joins the
@@ -75,22 +68,22 @@ http() {
 ## that joined a namespace by path is the host's sysfs and lists the host's.
 interfaces_of() { in_cage "$1" cat /proc/net/dev | tr -d '\r' | tail -n +3 | cut -d: -f1 | tr -d ' ' | grep -v '^lo$' | paste -sd, -; }
 ## Tokens the proxy has counted for one source address.
-spent_by() { sshm curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 0'; }
+spent_by() { curl -s "http://$proxy/status" | jq -r --arg a "$1" '.[$a] // 0'; }
 
 scenario "A cage is on the factory's bridge and nowhere else"
-given "a factory whose machine is up and its actors running"
-check "the executor is running the actors" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
+given "a factory that is up and its actors running"
+check "the executor is running the actors" active "$(systemctl is-active "fabriek-$F-executor" 2>/dev/null)"
 when "a role's cage is entered by hand, beside its actor"
-check "the bridge $bridge exists on the machine" present \
-	"$(sshm ip link show "$bridge" >/dev/null 2>&1 && echo present || echo absent)"
+check "the bridge $bridge exists on the host" present \
+	"$(ip link show "$bridge" >/dev/null 2>&1 && echo present || echo absent)"
 check "role $a sees host0 and nothing else besides lo" host0 "$(interfaces_of "$a")"
 addr_a="$(addr_of "$a")"
 addr_b="$(addr_of "$b")"
 check "role $a holds one global address" yes "$([ -n "$addr_a" ] && echo yes || echo no)"
 check "role $b holds a different address" yes "$([ -n "$addr_b" ] && [ "$addr_a" != "$addr_b" ] && echo yes || echo no)"
 
-proxy="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null | jq -r .proxy)"
-check "the machine says where the proxy is on the bridge" yes "$([ -n "$proxy" ] && echo yes || echo no)"
+proxy="$(onhost "cat '$ETC/bridge.json'" 2>/dev/null | jq -r .proxy)"
+check "render says where the proxy is on the bridge" yes "$([ -n "$proxy" ] && echo yes || echo no)"
 ## The proxy's location for a model endpoint is the endpoint's name (ADR-037
 ## point 3); a request to the provider lands there and leaves with the
 ## credential the operator holds.
@@ -98,21 +91,31 @@ endpoint="$(jq -r '.egress[0] // empty' "$(spec_json)")"
 check "the spec allows one endpoint the proxy can be asked for" yes "$([ -n "$endpoint" ] && echo yes || echo no)"
 ## The provider's own path and shape, and the model the operator named for
 ## it, so a request that reaches it is answered and counted.
-model="$(sed -n "/^\[models\]/,/^\[/ s/^\"$endpoint\" = \"\(.*\)\"/\1/p" "$D/fabriek.toml" | head -1)"
+model="$(onhost "sed -n '/^\\[models\\]/,/^\\[/ s/^\"$endpoint\" = \"\\(.*\\)\"/\\1/p' '$ETC/fabriek.toml'" | head -1)"
 case "$endpoint" in
 api.anthropic.com) messages_path="/$endpoint/v1/messages" ;;
 *) messages_path="/$endpoint/v1/chat/completions" ;;
 esac
 messages="http://$proxy$messages_path"
 
-scenario "A cage has no route off the machine"
+scenario "A cage has no route off the host"
 given "role $a inside its cage"
-when "it opens a connection to an address outside the machine"
+when "it opens a connection to an address outside the host"
 check "the connection fails" refused \
 	"$(in_cage "$a" bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' >/dev/null 2>&1 && echo connected || echo refused)"
 when "it resolves a name"
 check "resolution fails" refused \
 	"$(in_cage "$a" getent hosts example.com >/dev/null 2>&1 && echo resolved || echo refused)"
+## ADR-067: the host may forward for others (docker, libvirt, a VPN), and a
+## cage's bridge is dropped in the forward chain beside their tables.
+given "the host forwarding for others, or not"
+check "ip_forward on the host is $(cat /proc/sys/net/ipv4/ip_forward)" "" ""
+check "the fabriek table drops what comes from or goes to an fb-* bridge" yes \
+	"$(sudo nft list table inet fabriek 2>/dev/null | grep -q 'iifname "fb-\*" drop' && echo yes || echo no)"
+when "$a opens a connection to an address on another interface of the host"
+other="$(ip -4 -o addr show scope global | awk '$2 !~ /^fb-/ {print $4}' | cut -d/ -f1 | head -1)"
+check "the connection to ${other:-nothing} fails" refused \
+	"$([ -z "$other" ] || in_cage "$a" bash -c "exec 3<>/dev/tcp/$other/22" >/dev/null 2>&1 && echo connected || echo refused)"
 
 scenario "A cage cannot reach a peer"
 given "roles $a and $b each in their cage, $b at $addr_b"
@@ -151,14 +154,14 @@ fi
 check "$b's count did not" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "A forged source address is dropped at the bridge"
-given "root on the machine inside $a's network namespace"
+given "root on the host inside $a's network namespace"
 ## A cage is not registered with machined, so its leader is found by the
-## nspawn that holds it: the one whose argv names the machine, and its child.
-pid="$(sshm "pgrep -P \"\$(pgrep -f -- '--machine=$a( |\$)' | head -1)\" 2>/dev/null | head -1")"
+## nspawn that holds it: the one whose argv names the cage, and its child.
+pid="$(sudo pgrep -P "$(sudo pgrep -f -- "--machine=$F-$a( |\$)" | head -1)" 2>/dev/null | head -1)"
 check "the actor's cage for $a is running and its leader pid is known" yes "$([ -n "$pid" ] && echo yes || echo no)"
 before_b="$(spent_by "$addr_b")"
 when "a request leaves $a's veth carrying $b's address"
-sshm "nsenter -t '$pid' -n sh -c 'ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null'" >/dev/null 2>&1
+sudo nsenter -t "$pid" -n sh -c "ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null" >/dev/null 2>&1
 check "$b's count did not move" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "The hard limit is the proxy's"
@@ -189,26 +192,38 @@ fi
 if [ "$code" = 429 ]; then
 	scenario "At the ceiling the executor holds the decider"
 	given "the proxy refusing everything"
-	decider_exits() { sshm journalctl -u fabriek-executor --no-pager 2>/dev/null | grep -c 'session decider exited'; }
+	decider_exits() { sudo journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -c 'session decider exited'; }
 	# shellcheck disable=SC2329  # invoked through eventually
-	held_said() { sshm journalctl -u fabriek-executor --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
+	held_said() { sudo journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
 	when "the decider's session meets the 429 and ends"
 	check "the executor says the decider is held" yes "$(eventually 120 yes held_said)"
 	exits="$(decider_exits)"
 	when "forty-five seconds pass"
 	sleep 45
 	check "no decider session exited since" "$exits" "$(decider_exits)"
-	check "the executor is still running" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
+	check "the executor is still running" active "$(systemctl is-active "fabriek-$F-executor" 2>/dev/null)"
 fi
 
-scenario "The machine's daemon substitutes and never fetches (ADR-025 point 5, ADR-057 point 6)"
-when "the machine is asked for a path the cache has, and for a derivation that fetches"
-check "a host path is valid to the machine's store, through the overlay" "yes" \
-	"$(sshm "nix-store --query --requisites /run/current-system | head -1 | grep -q /nix/store && echo yes")"
-check "a fixed-output derivation does not build here" "refused" \
-	"$(sshm 'nix build --no-link --impure --expr "builtins.fetchurl { url = \"https://example.com/\"; sha256 = \"0000000000000000000000000000000000000000000000000000\"; }" >/dev/null 2>&1 && echo built || echo refused')"
-check "a second render substituted nothing" 0 \
-	"$(sshm 'fabriek-container factory-render 2>&1 | grep -c "copying path"')"
+scenario "A role declared microvm runs in a kernel of its own, and one declared nspawn in the host's (ADR-067 point 4)"
+mv_role="$(jq -r '.declaration.roles | to_entries[] | select(.value.substrate == "microvm") | .key' "$(spec_json)" | head -1)"
+ns_role="$(jq -r '.declaration.roles | to_entries[] | select((.value.substrate // "nspawn") == "nspawn") | .key' "$(spec_json)" | head -1)"
+host_kernel="$(uname -r)"
+if [ -n "$ns_role" ]; then
+	check "role $ns_role sees the host's kernel $host_kernel" "$host_kernel" "$(in_cage "$ns_role" uname -r)"
+fi
+if [ -z "$mv_role" ]; then
+	gated "a microvm role sees a kernel of its own" "no role declares substrate = \"microvm\"; declare one and set nixcage.microvm.enable"
+else
+	wait_cages "$mv_role" || true
+	check "role $mv_role sees a kernel that is not the host's" yes "$([ "$(in_cage "$mv_role" uname -r)" != "$host_kernel" ] && echo yes || echo no)"
+	check "nixcage names a machine scope for $mv_role's cage" yes "$(onhost "nixcage-container status '$F-$mv_role'" 2>/dev/null | grep -q 'machine-' && echo yes || echo no)"
+fi
+when "the operator's floor is microvm and a role asked for nspawn"
+if onhost "grep -q '^substrate = \"microvm\"' '$ETC/fabriek.toml'" 2>/dev/null; then
+	check "up printed the clamp for a raised role" yes "$(onhost "cat '$ETC/notes.json'" | grep -q 'raised to microvm' && echo yes || echo no)"
+else
+	gated "up printed the clamp for a raised role" "no substrate floor in the operator's caps; set caps.substrate = \"microvm\" for this"
+fi
 
 bash fabriek down "$F"
 exit "$fail"

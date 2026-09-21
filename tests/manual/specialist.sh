@@ -95,10 +95,10 @@ scenario "nixcage answers for the running cage (ADR-045)"
 when "the machine is asked about the role's cage through nixcage"
 ## The scope's spelling is nixcage's to know (ADR-012 as amended): read
 ## off status and asked back, never composed here.
-scope="$(sshm "nixcage-container status $ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
+scope="$(onhost "nixcage-container status $F-$ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
 check "status says running with a scope under machine.slice" "yes" "$([ -n "$scope" ] && echo yes)"
 check "the scope carries the memory bound" "yes" \
-	"$(sshm "systemctl show -p MemoryMax --value $scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
+	"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
 check "a hand lands inside the actor's cage" "yes" \
 	"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
 gated "enter --print-argv matches seam.bats" "compare nixcage-container enter --print-argv for the role against the line seam.bats asserts; needs the role's uid and paths from the machine"
@@ -134,14 +134,14 @@ if [ "${#replicas[@]}" -ge 2 ]; then
 	when "the machine is asked about each replica"
 	for r in "${replicas[@]}"; do
 		check "$r has a cage of its own" "yes" \
-			"$(sshm "nixcage-container status $r" 2>/dev/null | grep -q '^running ' && echo yes)"
+			"$(onhost "nixcage-container status $F-$r" 2>/dev/null | grep -q '^running ' && echo yes)"
 		check "$r has a worktree of its own" "yes" \
 			"$(in_cage "$r" sh -c 'test -d .git -o -f .git && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo yes')"
 	done
 	## Asked of the machine: inside a cage every role is root, mapped onto
 	## its own host uid, and it is the host uid that tells them apart.
 	check "the replicas' uids differ" "yes" \
-		"$([ "$(sshm "nixcage-container uid ${replicas[0]}" 2>/dev/null)" != "$(sshm "nixcage-container uid ${replicas[1]}" 2>/dev/null)" ] && echo yes)"
+		"$([ "$(onhost "nixcage-container uid $F-${replicas[0]}" 2>/dev/null)" != "$(onhost "nixcage-container uid $F-${replicas[1]}" 2>/dev/null)" ] && echo yes)"
 	check "no role carries the base name" "absent" \
 		"$(jq -r --arg b "${replicas[0]%-*}" '.declaration.roles | has($b) | if . then "present" else "absent" end' "$(spec_json)")"
 else
@@ -168,13 +168,13 @@ if [ "${FABRIEK_PROOF_MODEL:-}" = 1 ] && [ "$concurrency" -ge 1 ] 2>/dev/null &&
 	mapfile -t providers < <(jq -r --arg s "$busy_stage" '.declaration.roles | to_entries[] | select(.value.provides | index($s)) | .key' "$(spec_json)")
 	for i in $(seq 1 $((concurrency + 1))); do
 		dir="/var/lib/nixcage/filed/proof-$(date +%s)-$i"
-		sshm "mkdir -p $dir && printf '%s\n' 'Add a docstring to parse_line ($i)' >$dir/title && printf '%s\n' 'acceptance: parse_line has a one-line docstring saying what it splits on; nothing else changes' >$dir/body" >/dev/null 2>&1
+		onhost "mkdir -p $dir && printf '%s\n' 'Add a docstring to parse_line ($i)' >$dir/title && printf '%s\n' 'acceptance: parse_line has a one-line docstring saying what it splits on; nothing else changes' >$dir/body" >/dev/null 2>&1
 		bash fabriek -f "$F" send "{\"verb\":\"file\",\"titleFile\":\"$dir/title\",\"bodyFile\":\"$dir/body\",\"stage\":\"$busy_stage\"}" >/dev/null 2>&1
 	done
 	## The issues the executor opened for them, newest first off the board.
 	sleep 15
-	forge="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null | tr -d '\r' | sed -n 's/.*"forgejo":"\([^"]*\)".*/\1/p')"
-	mapfile -t issues < <(sshm "curl -s -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" 'http://$forge/api/v1/repos/operator/$F/issues?state=open&limit=50'" 2>/dev/null | tr -d '\r' |
+	forge="$(onhost "cat '$ETC/bridge.json'" 2>/dev/null | tr -d '\r' | sed -n 's/.*"forgejo":"\([^"]*\)".*/\1/p')"
+	mapfile -t issues < <(onhost "curl -s -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" 'http://$forge/api/v1/repos/operator/$F/issues?state=open&limit=50'" 2>/dev/null | tr -d '\r' |
 		jq -r --arg t "Add a docstring to parse_line" '.[] | select(.title | startswith($t)) | .number' | head -n $((concurrency + 1)))
 	check "the executor opened one issue per goal" "$((concurrency + 1))" "${#issues[@]}"
 	k=0

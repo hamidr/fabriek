@@ -29,18 +29,14 @@ F=acme
 WAIT_TASK="${WAIT_TASK:-900}"
 
 bash fabriek up "$F" || exit 1
-wait_ssh || {
-	echo "the machine never answered"
-	exit 1
-}
 
-plan="$(sshm cat /var/lib/fabriek/factory/bridge.json 2>/dev/null)"
+plan="$(onhost "cat '$ETC/bridge.json'" 2>/dev/null)"
 forge="http://$(jq -r .forgejo <<<"$plan")/api/v1"
 proxy="$(jq -r .proxy <<<"$plan")"
 # shellcheck disable=SC2016  # the token expands on the machine, not here
 api() {
 	local method="$1" path="$2" body="${3:-}"
-	sshm "curl -s -X '$method' -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" \
+	onhost "curl -s -X '$method' -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" \
 		-H 'Content-Type: application/json' ${body:+-d '$body'} '$forge$path'"
 }
 repo="/repos/operator/$F"
@@ -56,9 +52,9 @@ state_of() { api GET "$repo/issues/$1" | jq -r '.state'; }
 scenario "The board is on the machine"
 given "a factory whose machine is up"
 when "the operator asks Forgejo for the factory's repository"
-check "Forgejo answers" 200 "$(sshm "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
+check "Forgejo answers" 200 "$(onhost "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
 check "the repository operator/$F exists" 200 \
-	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" $forge$repo" 2>/dev/null)"
+	"$(onhost "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" $forge$repo" 2>/dev/null)"
 mapfile -t stages < <(jq -r '.declaration.workflows.ship.stages[].needs' "$(spec_json)" 2>/dev/null)
 check "the workflow ship declares at least two stages" yes "$([ "${#stages[@]}" -ge 2 ] && echo yes || echo no)"
 check "every stage is a label" "$(printf '%s\n' "${stages[@]}" | sort | paste -sd, -)" \
@@ -66,8 +62,8 @@ check "every stage is a label" "$(printf '%s\n' "${stages[@]}" | sort | paste -s
 
 scenario "A filed goal is assigned without a second command"
 given "the executor is running and the decider's session with it"
-check "the executor unit is active" active "$(sshm systemctl is-active fabriek-executor 2>/dev/null)"
-check "the decider's cage is running" yes "$(sshm "pgrep -f -- '--machine=decider( |\$)'" >/dev/null 2>&1 && echo yes || echo no)"
+check "the executor unit is active" active "$(systemctl is-active "fabriek-$F-executor" 2>/dev/null)"
+check "the decider's cage is running" yes "$(onhost "nixcage-container status '$F-decider'" 2>/dev/null | grep -q '^running' && echo yes || echo no)"
 when "the operator files a goal"
 ## Filing is one entry on the operator stream; the executor opens the issue.
 ## The number is read off the board by title, because task file cannot know
@@ -83,7 +79,7 @@ check "the issue carries the first stage's label" "${stages[0]}" "$(eventually 3
 ## Everything from here needs a model to answer: the decider assigns and a
 ## role works only through the proxy, and the proxy only relays what the
 ## endpoint accepts. Asked once, from the machine, before waiting on it.
-answer="$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+answer="$(onhost "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
 	-d '{\"model\":\"probe\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' \
 	http://$proxy/$(jq -r '.egress[0]' "$(spec_json)")/v1/messages" 2>/dev/null | tr -d '\r')"
 if [ "$answer" = 401 ]; then
@@ -111,35 +107,43 @@ for stage in "${stages[@]}"; do
 	fi
 done
 
-scenario "The executor opens a pull request and nothing has left the machine"
+scenario "The executor opens a pull request, and the operator sees the branch in their checkout and nowhere else"
 # shellcheck disable=SC2329  # invoked through eventually
 pr_count() { api GET "$repo/pulls?state=open" | jq -r 'length'; }
 check "one pull request is open" 1 "$(eventually 120 1 pr_count)"
 pr="$(api GET "$repo/pulls?state=open" | jq -r '.[0].number')"
 head_branch="$(api GET "$repo/pulls/$pr" | jq -r '.head.ref')"
 check "its branch is in a role's namespace" yes "$(printf '%s\n' "${head_branch%%/*}" | grep -qxF -f <(jq -r '.declaration.roles | keys[]' "$(spec_json)") && echo yes || echo no)"
-## The origin is what up filed on the machine, and it is asked from there:
-## a file:// origin of the machine's own is not a path on this host.
-origin="$(sshm cat /var/lib/nixcage/origin 2>/dev/null)"
-check "origin has no branch of that name yet" absent \
-	"$(sshm git ls-remote --heads "$origin" "$head_branch" 2>/dev/null | grep -q . && echo present || echo absent)"
+## The origin is the operator's checkout on this host (ADR-067 point 5):
+## the branch reaches it by the operator's own fetch under the factory's
+## name, and its own branch and tree stay as they were.
+origin="$(onhost "cat '$STATE/origin'" 2>/dev/null)"
+checkout_head="$(git -C "$origin" rev-parse HEAD)"
+checkout_status="$(git -C "$origin" status --porcelain)"
+bash fabriek -f "$F" fetch >/dev/null 2>&1
+check "the checkout carries the branch under fabriek/$F/" present \
+	"$(git -C "$origin" rev-parse --verify --quiet "refs/heads/fabriek/$F/$head_branch" >/dev/null && echo present || echo absent)"
+check "the checkout has no branch of that bare name" absent \
+	"$(git -C "$origin" rev-parse --verify --quiet "refs/heads/$head_branch" >/dev/null && echo present || echo absent)"
 
-scenario "The operator merges and mirrors, and the record travels"
+scenario "The operator merges and mirrors, and the record travels into the checkout"
 given "the pull request $pr"
 when "the operator merges it in Forgejo"
 check "the merge is accepted" 200 \
-	"$(sshm "curl -s -o /dev/null -w '%{http_code}' -X POST -H \"Authorization: token \$(cat /var/lib/nixcage/forge/operator-token)\" -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
-when "the operator runs fabriek factory mirror"
+	"$(onhost "curl -s -o /dev/null -w '%{http_code}' -X POST -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" -H 'Content-Type: application/json' -d '{\"Do\":\"merge\"}' $forge$repo/pulls/$pr/merge" 2>/dev/null)"
+when "the operator runs fabriek mirror"
 bash fabriek -f "$F" mirror >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"
-main_origin="$(sshm git ls-remote "$origin" refs/heads/main 2>/dev/null | cut -f1)"
-check "origin's main is Forgejo's main" "$main_forge" "$main_origin"
-check "origin carries refs/fabriek/record" present \
-	"$(sshm git ls-remote "$origin" refs/fabriek/record 2>/dev/null | grep -q . && echo present || echo absent)"
+main_checkout="$(git -C "$origin" rev-parse --verify --quiet "refs/heads/fabriek/$F/main")"
+check "the checkout's fabriek/$F/main is Forgejo's main" "$main_forge" "$main_checkout"
+check "the checkout carries refs/fabriek/$F/record" present \
+	"$(git -C "$origin" rev-parse --verify --quiet "refs/fabriek/$F/record" >/dev/null && echo present || echo absent)"
+check "the checkout's own branch has not moved" "$checkout_head" "$(git -C "$origin" rev-parse HEAD)"
+check "the checkout's working tree is as the operator left it" "$checkout_status" "$(git -C "$origin" status --porcelain)"
 
 scenario "Spend was counted and the soft limit is the executor's"
 given "the spend the proxy counted for this journey"
-total="$(sshm "curl -s http://$proxy/status" | jq -r '[.[]] | add // 0')"
+total="$(onhost "curl -s http://$proxy/status" | jq -r '[.[]] | add // 0')"
 check "the proxy counted tokens" yes "$([ "${total:-0}" -gt 0 ] && echo yes || echo no)"
 when "the operator reads the executor's board on the relay"
 check "the executor is routing" true \

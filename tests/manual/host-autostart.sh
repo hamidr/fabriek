@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-## ADR-048's one claim that needs a NixOS host and so cannot be a bats test:
-## a factory declared with autoStart is running after boot, the CLI by hand
-## and the unit are the same program on the same state, and the CLI reads
-## the file the module rendered when the person has none of their own.
+## ADR-048's one claim that needs a NixOS host and so cannot be a bats test,
+## now the primary proof (ADR-067): a factory declared with autoStart is
+## running after boot, the CLI by hand and the unit are the same program on
+## the same state, and the CLI reads the file the module rendered when the
+## person has none of their own.
 ##
 ## Runs on a NixOS host whose configuration carries, for a factory named
 ## by F (default acme):
@@ -47,9 +48,9 @@ check "the factory is registered there by the module, not by a hand" "$F" \
 scenario "A factory with autoStart is running after boot (ADR-048 point 3)"
 when "the host has booted and nobody has run fabriek up"
 check "the unit is active" "active" "$(systemctl is-active "fabriek-$F")"
-check "its machines live under /var/lib/fabriek" "/var/lib/fabriek/machines" \
-	"$(systemctl show "fabriek-$F" -p Environment --value | tr ' ' '\n' | sed -n 's/^FABRIEK_MACHINES=//p')"
-check "fabriek ps by hand sees the machine the unit started" "running" "$(ps_state)"
+check "the unit runs in the factory's slice" "fabriek-$F.slice" "$(systemctl show "fabriek-$F" -p Slice --value)"
+check "the factory's executor is active in it" "active" "$(systemctl is-active "fabriek-$F-executor")"
+check "fabriek ps by hand sees the factory the unit started" "running" "$(ps_state)"
 
 scenario "The unit and a hand are the same program on the same state"
 when "the unit is stopped"
