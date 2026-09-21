@@ -147,7 +147,10 @@ let
 in
 {
   imports = [
+    ./host/state.nix
     ./host/bridge.nix
+    ./host/bus.nix
+    ./host/board.nix
     ./host/floor.nix
   ];
 

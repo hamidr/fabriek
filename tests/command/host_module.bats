@@ -184,3 +184,60 @@ fb-1
 /var/lib/fabriek/widgets
 set"
 }
+
+# The factory's own state is a dataset under nixcage's pool, asked for
+# through the primitive, before anything of the factory writes there; the
+# record's is a dataset inside it with a default bound render tightens.
+@test "each factory's state and its record are datasets asked for through the storage primitive, in its slice" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ state = c.systemd.services.fabriek-acme-state.script; record = c.systemd.services.fabriek-acme-record.script;
+		   slice = c.systemd.services.fabriek-acme-record.serviceConfig.Slice;
+		   after = c.systemd.services.fabriek-acme-record.requires; sliceUnit = c.systemd.slices ? fabriek-acme; }'
+	assert_success
+	local units="$output"
+	run jq -r .state <<<"$units"
+	assert_output --partial 'nixcage-container storage ensure'
+	assert_output --partial '/var/lib/nixcage/fabriek/acme 0'
+	run jq -r .record <<<"$units"
+	assert_output --partial 'storage ensure'
+	assert_output --partial '/var/lib/nixcage/fabriek/acme/forgejo "$(id -u forgejo)" 4096M'
+	assert_output --partial 'systemd-tmpfiles --create --prefix=/var/lib/nixcage/fabriek/acme/forgejo'
+	run jq -c '[.slice, .after, .sliceUnit]' <<<"$units"
+	assert_output '["fabriek-acme.slice",["fabriek-acme-state.service"],true]'
+}
+
+@test "each factory's bus is Valkey on its own bridge with no persistence, and the ACL is the machine program's for that factory" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ start = c.systemd.services.fabriek-widgets-bus.serviceConfig.ExecStart;
+		   acl = c.systemd.services.fabriek-widgets-bus-acl.script;
+		   env = c.systemd.services.fabriek-widgets-bus-acl.serviceConfig.EnvironmentFile;
+		   slice = c.systemd.services.fabriek-widgets-bus.serviceConfig.Slice; }'
+	assert_success
+	local units="$output"
+	run jq -r .start <<<"$units"
+	assert_output --partial 'valkey-server'
+	assert_output --partial '--bind 10.77.1.1 --port 6379'
+	assert_output --partial '--save ""'
+	run jq -c '[.acl, .env, .slice]' <<<"$units"
+	assert_output '["fabriek-container bus-acl","/etc/fabriek/factories/widgets.env","fabriek-widgets.slice"]'
+}
+
+# Forgejo's NixOS module is one instance; the board is a unit of ours per
+# factory, on the factory's bridge, working in the record's dataset, its
+# secrets generated there on first start and read back by name.
+@test "each factory's board is a Forgejo of its own on its bridge, in the record's dataset, with nothing federated or mailed" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ ini = c.services.fabriek.boards.widgets.settings;
+		   unit = { inherit (c.systemd.services.fabriek-widgets-board) serviceConfig environment requires preStart; };
+		   wrapper = map (p: p.name) (builtins.filter (p: p.name == "forgejo") c.environment.systemPackages); }'
+	assert_success
+	local out="$output"
+	run jq -c '[.ini.server.HTTP_ADDR, .ini.server.HTTP_PORT, .ini.server.ROOT_URL, .ini.server.DISABLE_SSH, .ini.service.DISABLE_REGISTRATION, .ini.security.INSTALL_LOCK, .ini.federation.ENABLED, .ini.mailer.ENABLED, .ini.DEFAULT.WORK_PATH, .ini.database.DB_TYPE]' <<<"$out"
+	assert_output '["10.77.1.1",3000,"http://10.77.1.1:3000/",true,true,true,false,false,"/var/lib/nixcage/fabriek/widgets/forgejo","sqlite3"]'
+	run jq -c '[.unit.serviceConfig.User, .unit.serviceConfig.Slice, .unit.environment.FORGEJO_WORK_DIR, (.unit.serviceConfig.ExecStart | test("forgejo.* web")), .unit.requires, .wrapper]' <<<"$out"
+	assert_output '["forgejo","fabriek-widgets.slice","/var/lib/nixcage/fabriek/widgets/forgejo",true,["fabriek-widgets-record.service"],["forgejo"]]'
+	run jq -r .unit.preStart <<<"$out"
+	assert_output --partial 'generate secret SECRET_KEY'
+	assert_output --partial 'generate secret INTERNAL_TOKEN'
+	assert_output --partial 'environment-to-ini'
+}
