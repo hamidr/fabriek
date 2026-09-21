@@ -1,13 +1,13 @@
 ---
 id: ADR-057
 title: The machine is built once as an appliance, and a factory arrives as TOML at start
-status: implemented
+status: superseded
 date: 2026-09-15
-status_date: 2026-09-16
+status_date: 2026-09-21
 summary: one image per fabriek; the factory, caps and endpoints arrive as TOML credentials at boot; the daemon builds profiles
 depends_on: [ADR-019, ADR-020, ADR-025, ADR-032, ADR-037, ADR-042]
 supersedes: [ADR-040, ADR-041]
-superseded_by: []
+superseded_by: [ADR-067]
 ---
 
 ## Context

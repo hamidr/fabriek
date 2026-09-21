@@ -1,13 +1,13 @@
 ---
 id: ADR-063
 title: A person beside the unit reaches the machine with their own key, which the host names as an operator's
-status: implemented
+status: superseded
 date: 2026-09-16
-status_date: 2026-09-16
+status_date: 2026-09-21
 summary: the host lists operator public keys, the machine accepts them, and a hand without the unit key uses its own
 depends_on: [ADR-019, ADR-048, ADR-057]
 supersedes: []
-superseded_by: []
+superseded_by: [ADR-067]
 ---
 
 ## Context

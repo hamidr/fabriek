@@ -1,13 +1,13 @@
 ---
 id: ADR-019
 title: fabriek builds and runs one NixOS VM per factory, on every platform
-status: accepted
+status: superseded
 date: 2026-09-06
-status_date: 2026-09-06
+status_date: 2026-09-21
 summary: fabriek owns a per-factory microVM on Linux and macOS alike, with nixcage caging roles inside it
 depends_on: [ADR-010, ADR-011, ADR-017]
 supersedes: [ADR-018]
-superseded_by: []
+superseded_by: [ADR-067]
 ---
 
 ## Context
