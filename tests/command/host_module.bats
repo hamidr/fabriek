@@ -59,15 +59,16 @@ host_eval() {
 	assert_output '[8,"/srv/acme","x-api-key","claude-opus-5"]'
 }
 
-@test "a factory with autoStart gets a unit that brings its machine up at boot and down at stop, as root, under /var/lib" {
+@test "a factory with autoStart gets a unit that brings it up at boot and down at stop, in its slice, from its facts" {
 	run host_eval 'factories.acme = { path = "/srv/acme"; autoStart = true; }; factories.widgets.path = "/srv/widgets";' \
 		'{ start = c.systemd.services.fabriek-acme.serviceConfig.ExecStart; stop = c.systemd.services.fabriek-acme.serviceConfig.ExecStop;
 		   type = c.systemd.services.fabriek-acme.serviceConfig.Type; env = c.systemd.services.fabriek-acme.environment;
+		   facts = c.systemd.services.fabriek-acme.serviceConfig.EnvironmentFile; slice = c.systemd.services.fabriek-acme.serviceConfig.Slice;
 		   wanted = c.systemd.services.fabriek-acme.wantedBy; widgets = c.systemd.services ? fabriek-widgets; }'
 	assert_success
 	local unit="$output"
-	run jq -c '[(.start | test("/bin/fabriek up acme$")), (.stop | test("/bin/fabriek down acme$")), .type, .env.FABRIEK_CONFIG, .env.FABRIEK_MACHINES, .wanted, .widgets]' <<<"$unit"
-	assert_output '[true,true,"oneshot","/etc/fabriek/config.toml","/var/lib/fabriek/machines",["multi-user.target"],false]'
+	run jq -c '[(.start | test("/bin/fabriek-container factory-up acme$")), (.stop | test("/bin/fabriek-container factory-down acme$")), .type, .env.FABRIEK_CONFIG, .facts, .slice, .wanted, .widgets]' <<<"$unit"
+	assert_output '[true,true,"oneshot","/etc/fabriek/config.toml","/etc/fabriek/factories/acme.env","fabriek-acme.slice",["multi-user.target"],false]'
 	# The unit reads the operator's checkout as root, which git refuses as
 	# dubious unless that one directory is declared safe to it (measured
 	# 2026-09-16: "has no origin" on the first boot of the pc).
@@ -129,23 +130,6 @@ host_eval() {
 	assert_output "backend-1,backend-2,reviewer"
 }
 
-# ADR-063 point 1: the host's operators, by their public keys, as the CLI
-# reads them.
-@test "the module renders the operators' keys" {
-	run host_eval 'factories.acme.path = "/srv/acme"; operatorKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc" ];' \
-		'c.environment.etc."fabriek/config.toml".text'
-	assert_success
-	local text
-	text="$(jq -r . <<<"$output")"
-	source "$FABRIEK_ROOT/modules/names.sh"
-	source "$FABRIEK_ROOT/modules/schema.sh"
-	source "$FABRIEK_ROOT/modules/resources.sh"
-	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
-	source "$FABRIEK_ROOT/modules/operator-config.sh"
-	printf '%s\n' "$text" >"$TEST_TEMP_DIR/config.toml"
-	run fabriek_operator_keys "$TEST_TEMP_DIR/config.toml"
-	assert_output "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"
-}
 
 # ADR-067: a factory is declared on the host and its services are NixOS
 # configuration. Every name the machine had as a constant is a function of

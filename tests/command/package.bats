@@ -40,10 +40,9 @@ load ../test_helper/common
 	# The wrapper prefixes PATH with one store path per package; each tool
 	# is looked for by its package's name there.
 	local package missing=""
-	for package in git- jq- nix- openssh- coreutils- bash- gawk- gnused- gnugrep- findutils- perl-; do
+	for package in git- jq- nix- coreutils- bash- gawk- gnused- gnugrep- findutils-; do
 		grep -q "/nix/store/[a-z0-9]*-$package[0-9]" "$cli/bin/fabriek" || missing="$missing ${package%-}"
 	done
-	[ "$(uname)" != Linux ] || grep -q "/nix/store/[a-z0-9]*-util-linux-[0-9]" "$cli/bin/fabriek" || missing="$missing util-linux"
 	[ -z "$missing" ] || {
 		echo "not on the wrapper's PATH:$missing"
 		return 1

@@ -21,8 +21,8 @@ let
     }/* $out/
   '';
 
-  ## The machine program, on the machine the cages are on. It calls
-  ## nixcage-container, which is on the same machine and installed by nixcage's
+  ## The machine program, on the host the cages are on (ADR-067). It calls
+  ## nixcage-container, which is on the same host and installed by nixcage's
   ## own module, so nothing is pinned here beyond what runs beside it.
   container = pkgs.stdenv.mkDerivation {
     pname = "fabriek-container";
@@ -57,7 +57,7 @@ let
               jq
               ## Preparing the forge and speaking to the executor: the
               ## forge's API, the bus, and the forge's own CLI on the
-              ## machine's path (machine/board.nix wraps it).
+              ## host's path (host/board.nix wraps it).
               curl
               valkey
               ## up holds a lock on the factory's directory for its whole
@@ -70,9 +70,9 @@ let
     '';
   };
 
-  ## What an operator types. Its only dependency is the nixcage CLI, which
-  ## carries a command to the machine the cages are on, and which the operator
-  ## has installed already because it is what declares their cages.
+  ## What an operator types. It reaches the machine program on this host
+  ## through sudo (ADR-067), and reads the operator's config and checkout
+  ## itself.
   cli = pkgs.stdenv.mkDerivation {
     pname = "fabriek";
     version = "1.0.0";
@@ -86,43 +86,30 @@ let
         --replace-fail '@lib@' '${lib'}' \
         --replace-fail '@self@' '${self}'
       chmod +x $out/bin/fabriek
-      ## The TUI types its commands at this program by path (console).
       wrapProgram $out/bin/fabriek \
-        --set-default FABRIEK_CLI $out/bin/fabriek \
         --prefix PATH : ${
           pkgs.lib.makeBinPath (
             with pkgs;
             [
               coreutils
-              ## What the shell modules reach for beside coreutils: awk and
-              ## sed over the runner's files, grep, xargs for the machine's
-              ## argv, setsid to detach the runner and perl where setsid
-              ## is absent. A unit on a NixOS host has no PATH but this one
-              ## (measured 2026-09-16: "awk: command not found" from the
-              ## pc's unit).
-              ## bash by name: the share daemons' wrappers are run as text
-              ## under a bash the runner's directory does not name.
+              ## What the shell modules reach for beside coreutils. A unit
+              ## on a NixOS host has no PATH but this one (measured
+              ## 2026-09-16: "awk: command not found" from a unit).
               bash
               gawk
               gnused
               gnugrep
               findutils
-              perl
               jq
-              ## The operator's checkout is read with git: its origin, its
-              ## pin, its declaration at the commit (ADR-020, ADR-032).
+              ## The operator's checkout is read with git: its pin, its
+              ## declaration at the commit, and the factory's branches
+              ## fetched into it (ADR-020, ADR-067).
               git
               ## The operator's config is TOML and nix parses it, which is one
               ## dependency rather than two: nix is already what reads a
               ## repository's declaration (ADR-020).
               nix
-              ## A key per factory's machine, made here because fabriek owns
-              ## the way into a machine it built (ADR-019).
-              openssh
-              ## The TUI (ADR-039 point 3), which factory console execs.
-              (import ../factory { inherit pkgs; }).package
             ]
-            ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.util-linux
           )
         }
     '';

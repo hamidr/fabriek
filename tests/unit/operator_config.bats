@@ -561,25 +561,3 @@ TOML
 	refute_output --partial "Permission denied"
 }
 
-# ADR-063 point 1: the host names its operators by their public keys, one
-# authorized_keys line each.
-@test "operator keys are read as authorized_keys lines, and a line that is not one is refused" {
-	cat >"$CONFIG" <<'TOML'
-operatorKeys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc", "ssh-rsa AAAAB3NzaC1yc2E me@laptop"]
-
-[factories.acme]
-path = "/home/me/Src/acme"
-TOML
-	run fabriek_operator_keys "$CONFIG"
-	assert_success
-	assert_line --index 0 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"
-	assert_line --index 1 "ssh-rsa AAAAB3NzaC1yc2E me@laptop"
-	printf 'operatorKeys = ["not a key"]\n\n[factories.acme]\npath = "/x"\n' >"$CONFIG"
-	run fabriek_operator_config "$CONFIG"
-	assert_failure
-	assert_output --partial "operator key 0: is not a public key line"
-	printf 'operatorKeys = ["ssh-ed25519 AAAA\\nssh-ed25519 BBBB"]\n\n[factories.acme]\npath = "/x"\n' >"$CONFIG"
-	run fabriek_operator_config "$CONFIG"
-	assert_failure
-	assert_output --partial "operator key 0: is not a public key line"
-}

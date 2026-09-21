@@ -74,7 +74,6 @@ let
         factories = lib.mapAttrs (_: factoryTable) cfg.factories;
         credentials = lib.mapAttrs (_: c: { inherit (c) header file; }) cfg.credentials;
         catalogues = cfg.catalogues;
-        operatorKeys = cfg.operatorKeys;
       }
       // lib.optionalAttrs (cfg.models != { }) { inherit (cfg) models; }
       // lib.optionalAttrs (cfg.specialists != { }) {
@@ -345,12 +344,6 @@ in
       default = [ ];
       description = "Catalogue directories of the operator's own, with fabriek's layout.";
     };
-    operatorKeys = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = lib.literalExpression "config.users.users.me.openssh.authorizedKeys.keys";
-      description = "Public keys of the people who work the factories here; the machine admits them beside the unit's own (ADR-063).";
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -385,35 +378,40 @@ in
       }
     ];
 
-    ## One unit per factory asked for: the same program a person runs, on
-    ## the same file and the same state, so `fabriek ps` sees both.
+    ## One unit per factory asked for at boot: the same program a person
+    ## runs, on the same file, so `fabriek ps` sees both. up runs as root
+    ## here and needs no sudo; the checkout is the operator's and git
+    ## refuses a directory another uid owns unless told, for this one
+    ## path, that it is safe.
     systemd.services = lib.mapAttrs' (
       name: f:
       lib.nameValuePair "fabriek-${name}" {
-        description = "The machine the factory ${name} runs in";
+        description = "The factory ${name}, brought up at boot";
         wantedBy = [ "multi-user.target" ];
         after = [
           "network-online.target"
           "nix-daemon.service"
+          "fabriek-${name}-state.service"
         ];
         wants = [ "network-online.target" ];
         environment = {
           FABRIEK_CONFIG = "/etc/fabriek/config.toml";
-          FABRIEK_MACHINES = "/var/lib/fabriek/machines";
-          ## The checkout is the operator's and the unit is root: git
-          ## refuses a directory another uid owns unless told, for this
-          ## one path, that it is safe. Read only: the origin and the pin.
           GIT_CONFIG_COUNT = "1";
           GIT_CONFIG_KEY_0 = "safe.directory";
           GIT_CONFIG_VALUE_0 = f.path;
         };
-        path = [ pkgs.nix ];
+        path = [
+          pkgs.nix
+          pkgs.fabriek-container
+          "/run/current-system/sw"
+        ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          ExecStart = "${cfg.package}/bin/fabriek up ${name}";
-          ExecStop = "${cfg.package}/bin/fabriek down ${name}";
-          StateDirectory = "fabriek";
+          EnvironmentFile = "/etc/fabriek/factories/${name}.env";
+          ExecStart = "${pkgs.fabriek-container}/bin/fabriek-container factory-up ${name}";
+          ExecStop = "${pkgs.fabriek-container}/bin/fabriek-container factory-down ${name}";
+          Slice = "fabriek-${name}.slice";
         };
       }
     ) autoStarted;

@@ -1,23 +1,22 @@
 # shellcheck shell=bash
-## The spec a factory's machine is built from (ADR-040).
+## The clamped spec a factory is rendered from (ADR-040, ADR-067).
 ##
-## Composed where the build runs and not where the operator types: the
-## machine flake hands this two files, the declaration as the repository's own
-## flake evaluated it and the local facts only the operator's host knows, and
-## takes back one JSON document or a refusal naming what was wrong. Validation
-## and the clamp are the same functions the operator's side used to run at
-## every command, so a bad declaration now fails a build rather than the first
-## verb that needed it.
+## Composed where render runs, on the host: two files, the declaration as
+## the checkout committed it and the local facts the operator's config
+## carries (the caps, which header carries which endpoint's credential,
+## the models), and back one JSON document or a refusal naming what was
+## wrong. Validation and the clamp are the same functions check runs, so
+## a bad declaration fails up rather than the first verb that needed it.
 ##
 ## Sourced by store path, beside names.sh, sizes.sh, schema.sh, resources.sh
 ## and repo-declaration.sh, whose functions this relies on.
 
 ## fabriek_machine_spec <declaration.json> <local.json>
 ##
-## local.json carries factory, system, hostSystem, sshPort, authorizedKey, the
-## operator's caps, and which header carries which endpoint's credential. The
-## credential itself is never here: a spec is built, logged and written beside
-## the machine, and a secret in one would be a secret in all three (ADR-025).
+## local.json carries factory, hostSystem, the operator's caps, and which
+## header carries which endpoint's credential. The credential itself is
+## never here: a spec is written under the factory's directory, and a
+## secret in one would be a secret on disk (ADR-025).
 fabriek_machine_spec() {
 	local declaration_file="$1" local_file="$2"
 	local declaration caps

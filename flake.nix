@@ -12,13 +12,6 @@
       url = "github:hamidr/nixcage";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    ## The machine a factory runs in is fabriek' now, so what builds one is
-    ## an input of ours rather than something reached through nixcage
-    ## (ADR-019).
-    microvm = {
-      url = "github:astro/microvm.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
@@ -47,20 +40,11 @@
             ## The TypeScript half: executor, extension, decider, relay, TUI.
             factory = factory.package;
           }
-          ## The machine program runs on the machine the cages are on, which on
-          ## macOS is the VM and never this one. It is not offered here at
-          ## all: it needs setfacl, and acl does not build on darwin.
+          ## The machine program runs on the host the cages are on, which is
+          ## a NixOS host (ADR-067). It is not offered on darwin at all: it
+          ## needs setfacl, and acl does not build there.
           // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             fabriek-container = fabriek.container;
-          }
-          ## The appliance: the runner for this host, around a machine of the
-          ## host's architecture on Linux (ADR-057 point 1).
-          // {
-            machine =
-              (inputs.self.lib.appliance {
-                system = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-linux";
-                hostSystem = pkgs.stdenv.hostPlatform.system;
-              }).runner;
           };
 
           devShells.default = pkgs.mkShell {
@@ -132,17 +116,5 @@
       ## What a role can be: the shipped catalogue and a repository's own,
       ## composed into one derivation per role (ADR-042).
       flake.lib.catalogue = import ./modules/catalogue.nix { inherit (inputs) self; };
-
-      ## The one machine every factory runs in, per guest and host system
-      ## (ADR-057). The operator builds or fetches it once; fabriek up hands
-      ## it a factory at boot.
-      flake.lib.appliance = import ./modules/appliance.nix {
-        inherit (inputs)
-          nixpkgs
-          microvm
-          nixcage
-          self
-          ;
-      };
     };
 }
