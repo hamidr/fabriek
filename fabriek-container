@@ -50,6 +50,24 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/operator.sh"
 # shellcheck source=modules/probes.sh
 . "$FABRIEK_LIB/probes.sh"
+# shellcheck source=modules/operator-config.sh
+. "$FABRIEK_LIB/operator-config.sh"
+# shellcheck source=modules/credential.sh
+. "$FABRIEK_LIB/credential.sh"
+# shellcheck source=modules/factory-up.sh
+. "$FABRIEK_LIB/factory-up.sh"
+
+# The factory this program acts for (ADR-067): named in the environment by
+# the CLI and by every unit, and its facts, the file the host module wrote
+# for it, loaded here so that one program serves every factory on the host.
+# A test that sets the facts itself names no file and keeps its own.
+FABRIEK_FACTORIES="${FABRIEK_FACTORIES:-/etc/fabriek/factories}"
+if [ -n "${FABRIEK_FACTORY:-}" ] && [ -f "$FABRIEK_FACTORIES/$FABRIEK_FACTORY.env" ]; then
+	set -a
+	# shellcheck disable=SC1090  # the host's file for the factory named
+	. "$FABRIEK_FACTORIES/$FABRIEK_FACTORY.env"
+	set +a
+fi
 
 # The clones, the worktrees, the keys, the tasks. This is the directory nixcage
 # mounts its pool at, and it stays there: the storage primitive can only name a
@@ -122,6 +140,9 @@ usage: fabriek-container
   role-stop <factory> <role> [--now]
   role-transcript <factory> <role> [<session>] [--text]
   factory-mirror <factory>
+  factory-up [--update] <factory>
+  factory-down <factory>
+  factory-status <factory>
   factory-watch <factory> [--from <id>] [--stream <name>]...
   role-steer <factory> <role> <text>
   factory-send <factory> <json>
@@ -413,7 +434,7 @@ cmd_role_worktree() {
 ## What the machine was handed at boot (ADR-057 point 3), and where render
 ## puts what it makes of it. Overridable so the suite can hand a machine a
 ## credential of its own.
-FABRIEK_CREDENTIAL="${FABRIEK_CREDENTIAL:-/run/credentials/@system/fabriek.toml}"
+FABRIEK_CREDENTIAL="${FABRIEK_CREDENTIAL:-$FABRIEK_ETC/fabriek.toml}"
 
 ## The repository at the pin: cloned once as the factory's own clone
 ## (ADR-032), fetched so the pin is there, and the declaration read from
@@ -542,7 +563,7 @@ cmd_factory_render() {
 	render_files "$spec" "$clone" "$rev"
 	render_machine "$spec"
 	render_profiles "$clone" "$rev"
-	systemctl restart fabriek-egress-credentials.service
+	systemctl restart "fabriek-$factory-egress-credentials.service"
 	systemctl reload-or-restart nginx.service
 	jq -r '.[]' "$FABRIEK_ETC/notes.json"
 	rm -f "$credential" "$declaration" "$local_file" "$spec"
@@ -593,7 +614,7 @@ cmd_factory_prepare() {
 		fabriek_bus_ensure_password "$STATE_DIR" "$user" ||
 			die "could not make a bus password for $user"
 	done < <(fabriek_bus_users "$declaration")
-	systemctl restart fabriek-bus-acl.service
+	systemctl restart "fabriek-$factory-bus-acl.service"
 
 	local base owner="operator"
 	base="http://$(jq -r .forgejo "$FABRIEK_ETC/bridge.json")/api/v1"
@@ -672,9 +693,9 @@ cmd_factory_prepare() {
 	## ones (models/vm-lifecycle.qnt).
 	mkdir -p "$(fabriek_run_dir)"
 	: >"$(fabriek_run_dir)/prepared.new" && mv "$(fabriek_run_dir)/prepared.new" "$(fabriek_run_dir)/prepared"
-	systemctl restart fabriek-executor.service
-	## The probes read the declaration to name a uid's role and exit clean
-	## without one, which is not a failure their unit restarts on.
+	systemctl restart "fabriek-$factory-executor.service"
+	## The probes read every factory's declaration to name a cgroup's role
+	## and skip one without, which is not a failure their unit restarts on.
 	systemctl restart fabriek-probes.service
 	echo "$factory: prepared"
 }
@@ -836,6 +857,88 @@ cmd_factory_mirror() {
 	echo "$factory: mirror requested"
 }
 
+## Whether the factory named is the one this program was given facts
+## for. A factory the host does not declare has no units to start.
+factory_declared() {
+	local factory="$1"
+	[ "$factory" = "${FABRIEK_FACTORY:-}" ] && [ -f "$FABRIEK_FACTORIES/$factory.env" ]
+}
+
+## fabriek up on the host (ADR-067, models/factory-lifecycle.qnt): under a
+## lock on the factory's directory held for the whole run, so the unit at
+## boot and a hand never render at once and the pin never moves under an
+## up in flight: the credential written for this pin, the units started,
+## the checkout cloned and rendered, the model credentials filed, the
+## forge and the bus prepared, the mark written last.
+cmd_factory_up() {
+	local update="" factory="" arg
+	for arg in "$@"; do
+		case "$arg" in
+		-u | --update) update=1 ;;
+		-*) die "usage: fabriek-container factory-up [--update] <factory>" ;;
+		*) factory="$arg" ;;
+		esac
+	done
+	[ -n "$factory" ] || die "usage: fabriek-container factory-up [--update] <factory>"
+	fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+	factory_declared "$factory" || die "$factory is not declared on this host; a factory is services.fabriek.factories.<name>"
+
+	mkdir -p "$FABRIEK_ETC"
+	exec 8>"$FABRIEK_ETC/up.lock"
+	flock -w "${FABRIEK_UP_LOCK_WAIT:-600}" 8 ||
+		die "another up holds $factory; waited ${FABRIEK_UP_LOCK_WAIT:-600}s for it"
+
+	local path
+	path="$(fabriek_up_credential "$factory" "$FABRIEK_ETC" "$update" "$FABRIEK_SYSTEM")" || exit 1
+
+	local -a units=()
+	local unit
+	while IFS= read -r unit; do units+=("$unit"); done < <(fabriek_up_units "$factory")
+	systemctl start "${units[@]}" || die "could not start $factory's units"
+
+	cmd_factory_render
+	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
+	cmd_factory_prepare "$factory" "$path"
+}
+
+## fabriek down: refused while a role's cage runs, since ADR-017 exists
+## because a factory was ended rather than stopped; then the executor,
+## then the units in reverse, and the mark gone so nothing starts on a
+## factory that is not prepared. The datasets stay.
+cmd_factory_down() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-down <factory>"
+	factory_declared "$factory" || die "$factory is not declared on this host"
+	if [ -f "$FABRIEK_ETC/declaration.json" ]; then
+		local role
+		while IFS= read -r role; do
+			if nixcage-container status "$factory-$role" >/dev/null 2>&1; then
+				die "$factory's role $role is still running; stop it first, or fabriek stop $role"
+			fi
+		done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
+	fi
+	systemctl stop "fabriek-$factory-executor.service" || true
+	rm -f "$(fabriek_run_dir)/prepared"
+	local -a units=()
+	local unit
+	while IFS= read -r unit; do units=("$unit" "${units[@]}"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$\|-record\.service$')
+	systemctl stop "${units[@]}" || true
+	echo "$factory has stopped"
+}
+
+## What a factory is doing: running at its pin once prepared, stopped
+## otherwise. Read off the mark and the rendered rev, which is what the
+## executor's own condition reads.
+cmd_factory_status() {
+	local factory="${1:-}"
+	[ -n "$factory" ] || die "usage: fabriek-container factory-status <factory>"
+	if [ -f "$(fabriek_run_dir)/prepared" ] && [ -f "$FABRIEK_ETC/rev" ]; then
+		echo "$factory: running at $(cat "$FABRIEK_ETC/rev")"
+	else
+		echo "$factory: stopped"
+	fi
+}
+
 main() {
 	local cmd="${1:-}"
 	shift || true
@@ -850,6 +953,9 @@ main() {
 	role-stop) cmd_role_stop "$@" ;;
 	role-transcript) cmd_role_transcript "$@" ;;
 	factory-mirror) cmd_factory_mirror "$@" ;;
+	factory-up) cmd_factory_up "$@" ;;
+	factory-down) cmd_factory_down "$@" ;;
+	factory-status) cmd_factory_status "$@" ;;
 	factory-watch) cmd_factory_watch "$@" ;;
 	factory-board) cmd_factory_board "$@" ;;
 	probes-publish) cmd_probes_publish "$@" ;;

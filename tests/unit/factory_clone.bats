@@ -33,12 +33,16 @@ teardown() {
 	assert_failure
 }
 
-@test "the clone never shares object files with the repository it came from" {
+# ADR-067 point 5: the source is the operator's checkout on this host, and
+# git's local clone hardlinks its objects; --no-hardlinks would copy them
+# and --shared would borrow them, and neither is asked for.
+@test "the clone is a local clone of the checkout, objects hardlinked and nothing borrowed" {
 	run fabriek_factory_clone_args /srv/acme "$STATE/factories/acme"
 	assert_success
-	assert_output --partial "--no-hardlinks"
-	assert_output --partial "/srv/acme"
-	assert_output --partial "$STATE/factories/acme"
+	refute_output --partial "--no-hardlinks"
+	refute_output --partial "--shared"
+	assert_line --index 0 "/srv/acme"
+	assert_line --index 1 "$STATE/factories/acme"
 }
 
 @test "the clone's own tree sits on a branch no role could ever hold" {

@@ -60,6 +60,9 @@ let
               ## machine's path (machine/board.nix wraps it).
               curl
               valkey
+              ## up holds a lock on the factory's directory for its whole
+              ## run (ADR-067, models/factory-lifecycle.qnt).
+              util-linux
               "/run/current-system/sw"
             ]
           )

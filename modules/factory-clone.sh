@@ -30,14 +30,12 @@ fabriek_factory_shared_branch() {
 	echo "main"
 }
 
-## The source is a remote the machine can reach rather than a path on the
-## operator's host (ADR-032), so git has nothing local to hardlink from and
-## --no-hardlinks costs nothing. It stays because it is free and because the
-## day somebody points a factory at a path on the machine itself, hardlinked
-## objects and a chown would rewrite that repository's ownership.
+## The source is the operator's checkout, a path on this host (ADR-067
+## point 5), so git clones it as a local path: objects hardlinked, never
+## copied and never borrowed through alternates, which a rebase and a gc
+## on the operator's side would prune from under the clone.
 fabriek_factory_clone_args() {
 	local repo="$1" path="$2"
-	echo "--no-hardlinks"
 	echo "$repo"
 	echo "$path"
 }

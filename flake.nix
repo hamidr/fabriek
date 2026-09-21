@@ -86,6 +86,9 @@
               valkey
               curl
               (if stdenv.hostPlatform.isDarwin then gitea else forgejo)
+              ## up's lock is flock(1): util-linux's on Linux, and on a Mac
+              ## the one package that ports it.
+              (if stdenv.hostPlatform.isDarwin then flock else util-linux)
             ];
 
             BATS_LIB_PATH = "${pkgs.bats.libraries.bats-support}/share/bats:${pkgs.bats.libraries.bats-assert}/share/bats";

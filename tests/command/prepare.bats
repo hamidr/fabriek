@@ -22,7 +22,7 @@ setup() {
 	export PATH STATE
 	RUN="$TEST_TEMP_DIR/run"
 	mkdir -p "$RUN"
-	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
+	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY=acme
 	# Where a push of main to the forge lands here: a bare repository, so no
 	# test waits on an address that is not on this host.
 	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
@@ -70,7 +70,7 @@ teardown() {
 		[ "$(stat -c %a "$STATE/bus/$user")" = 400 ]
 	done
 	run cat "$FORGE/systemctl-calls"
-	assert_output --partial "restart fabriek-bus-acl"
+	assert_output --partial "restart fabriek-acme-bus-acl"
 }
 
 # The executor starts every session, and a session started before its
@@ -84,7 +84,7 @@ teardown() {
 	[ -f "$RUN/prepared" ]
 	[ ! -e "$STATE/prepared" ]
 	run cat "$FORGE/systemctl-calls"
-	assert_output --partial "restart fabriek-executor"
+	assert_output --partial "restart fabriek-acme-executor"
 	# The probes exit clean before a declaration and are restarted on
 	# failure only, so without this a fresh boot has no probes (measured
 	# 2026-09-16: "no factory prepared yet", then silence).

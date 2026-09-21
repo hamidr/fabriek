@@ -25,7 +25,7 @@ setup() {
 	REAL_NIX="$(command -v nix)"
 	PATH="$STUB_DIR:$PATH"
 	export PATH STATE
-	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN"
+	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY=acme
 	export FABRIEK_BRIDGE=fabriek0 FABRIEK_BRIDGE_HOST=10.77.0.1 FABRIEK_PROXY_PORT=8118 \
 		FABRIEK_FORGEJO_PORT=3000 FABRIEK_VALKEY_PORT=6379
 	export FABRIEK_FLOOR="$TEST_TEMP_DIR/floor" FABRIEK_SELF="$TEST_TEMP_DIR/self" FABRIEK_NIXPKGS="$TEST_TEMP_DIR/nixpkgs" FABRIEK_SYSTEM=aarch64-linux
@@ -171,7 +171,7 @@ teardown() {
 	run cat "$ETC/model.json"
 	assert_output '{"model":"claude-opus-5","provider":"anthropic"}'
 	run cat "$CALLS/systemctl"
-	assert_line --partial 'restart fabriek-egress-credentials'
+	assert_line --partial 'restart fabriek-acme-egress-credentials'
 	assert_line --partial 'reload-or-restart nginx'
 }
 
