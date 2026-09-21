@@ -188,7 +188,7 @@ The machine (`modules/machine/default.nix` and `modules/machine/`):
   and nothing else of the store (nixcage ADR-014).
 - `executor.nix`: the `fabriek-executor` unit, as root, restarted always,
   waiting on `/run/fabriek/prepared`, which prepare writes last and per
-  boot (`models/vm-lifecycle.qnt` found the mark on the pool outliving
+  boot (`models/factory-lifecycle.qnt` found the mark on the pool outliving
   its credentials).
 
 Egress for the machine's own processes is still by uid (ADR-025's chain):
@@ -334,7 +334,7 @@ a password the machine set fresh on the operator's account
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
 nix develop --command bats --recursive tests/       # 376 scenarios, minutes
 nix build .#factory                                  # 136 scenarios
-quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 nix develop --command tests/system/journey.sh        # the factory on this host
 FABRIEK_PROOF_DIR=... tests/manual/isolation.sh    # needs a machine

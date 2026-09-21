@@ -243,7 +243,7 @@ nix build .#factory
 nix develop --command bats tests/command/catalogue.bats   # the catalogue, built for real
 nix develop --command tests/system/journey.sh   # the whole factory on this host, no model
 docmeta-check docs && docmeta-tracker --check docs
-quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 ```
 

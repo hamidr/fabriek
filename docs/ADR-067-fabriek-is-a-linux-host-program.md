@@ -1,7 +1,7 @@
 ---
 id: ADR-067
 title: fabriek is a Linux-host program, a factory is a set of service instances on it, and a role's kernel boundary is nixcage's
-status: proposed
+status: implementing
 date: 2026-09-21
 status_date: 2026-09-21
 summary: no machine per factory; factories declared on a NixOS host; enter --substrate per role; the operator fetches the clone
@@ -74,8 +74,9 @@ bridge address and an njs dictionary and a ceiling per factory; one
 bpftrace reader that publishes each event to the bus of the factory its uid
 belongs to. Every service listens on a bridge and on no host port; the
 operator reaches the board at the bridge address. `fabriek up` starts the
-slice, clones, renders and prepares; `down` stops the slice and keeps the
-datasets.
+slice, clones, renders and prepares, under a flock on the state directory
+held for its whole run, and `-u` moves the pin under that lock; `down`
+stops the slice and keeps the datasets.
 
 **3. Every constant becomes a function of the factory name.** The cage and
 the uid principal are `<name>-<role>`; `fabriek_role_name_ok` checks the sum
@@ -170,8 +171,12 @@ with the machine's states replaced: absent, declared (rebuilt in), started
 the declaration moved under a running factory), stopping. `up` interleaves
 with `fabriek-<name>.service` at boot and with a manual `down`, and can
 fail after the clone or after the units are up. `models/vm-lifecycle.qnt`
-becomes `models/factory-lifecycle.qnt` with its five invariants kept, run
-before the implementation of point 2.
+becomes `models/factory-lifecycle.qnt` with its five invariants kept and a
+sixth, one `up` at a time, run before the implementation of point 2. Run
+2026-09-21 with two callers (the unit and a hand): without the lock the
+prepared mark is written for a pin one profile no longer carries, in 60
+steps; with it, no violation in 10000 traces of 60 steps, and every
+witness reached.
 
 ADR-047 keeps its grammar and loses its transport section; ADR-048's unit
 per factory is now the slice per factory; ADR-032, ADR-036 and ADR-064 are

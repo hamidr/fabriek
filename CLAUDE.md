@@ -145,7 +145,7 @@ A change to what a role session is shows up there as a diff.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
   `specialist.sh` is ADR-042's; `lib.sh` is what they share.
-- `models/vm-lifecycle.qnt`: the machine's lifecycle; `models/tdd-guard.qnt`:
+- `models/factory-lifecycle.qnt`: a factory's lifecycle on its host; `models/tdd-guard.qnt`:
   the loop's test-first guard (ADR-044).
 - `examples/factory-project/`: a repository worked by a factory.
 - `docs/`: ADRs, PRDs, the generated TRACKER.md, `architecture.md`,
@@ -193,7 +193,7 @@ Documents have their own checks:
 ```bash
 docmeta-check docs                   # frontmatter is valid
 docmeta-tracker docs                 # regenerate docs/TRACKER.md, never by hand
-quint run models/vm-lifecycle.qnt --invariant=allInvariants --max-steps=60
+quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 ```
 
