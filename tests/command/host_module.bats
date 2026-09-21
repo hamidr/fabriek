@@ -241,3 +241,106 @@ set"
 	assert_output --partial 'generate secret INTERNAL_TOKEN'
 	assert_output --partial 'environment-to-ini'
 }
+
+# One nginx on the host, a server per factory on its bridge, a dictionary
+# and a ceiling per factory (ADR-067 point 2). The locations are render's
+# to write under the factory's directory; before render there are none.
+@test "the proxy is one nginx with a server, a spend dictionary and an include per factory" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ enable = c.services.nginx.enable; user = c.services.nginx.user;
+		   modules = map (m: m.name) c.services.nginx.additionalModules;
+		   common = c.services.nginx.commonHttpConfig;
+		   listen = (builtins.head c.services.nginx.virtualHosts.fabriek-widgets.listen);
+		   extra = c.services.nginx.virtualHosts.fabriek-widgets.extraConfig;
+		   js = c.environment.etc."fabriek/spend.js".text; }'
+	assert_success
+	local out="$output"
+	run jq -c '[.enable, .user, (.modules | any(test("njs"))), .listen.addr, .listen.port]' <<<"$out"
+	assert_output '[true,"fabriek-egress",true,"10.77.1.1",8118]'
+	run jq -r .common <<<"$out"
+	assert_output --partial 'js_shared_dict_zone zone=spend_acme:256k type=number;'
+	assert_output --partial 'js_shared_dict_zone zone=spend_widgets:256k type=number;'
+	assert_output --partial 'js_set $spend_over'
+	run jq -r .extra <<<"$out"
+	assert_output --partial 'set $spend_zone spend_widgets;'
+	assert_output --partial 'set $spend_ceiling 0;'
+	assert_output --partial 'location = /status'
+	assert_output --partial 'include /var/lib/fabriek/widgets/proxy/*.conf;'
+	refute_output --partial 'proxy_pass'
+	run jq -r .js <<<"$out"
+	assert_output --partial 'r.variables.spend_zone'
+}
+
+@test "each factory's credential headers are composed from the endpoints render wrote for it, under a run directory of its own" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ script = c.systemd.services.fabriek-acme-egress-credentials.script;
+		   before = c.systemd.services.fabriek-acme-egress-credentials.before;
+		   uid = c.users.users.fabriek-egress.uid; }'
+	assert_success
+	local out="$output"
+	run jq -r .script <<<"$out"
+	assert_output --partial 'endpoints=/var/lib/fabriek/acme/endpoints.json'
+	assert_output --partial '[ -f "$endpoints" ] || exit 0'
+	assert_output --partial '/run/fabriek-egress/acme'
+	assert_output --partial '/var/lib/nixcage/fabriek/acme/egress/$host'
+	refute_output --partial 'api.anthropic.com'
+	run jq -c '[.before, .uid]' <<<"$out"
+	assert_output '[["nginx.service"],500]'
+}
+
+# ADR-037 on a host: a cage's only interface is its factory's bridge, and
+# the host forwards nothing from or to one, whatever docker or a VPN has
+# set ip_forward to. A drop in this chain holds beside any other table's
+# accept, which is nftables' rule for base chains.
+@test "the host forwards nothing from or to a factory's bridge" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ on = c.networking.nftables.enable; content = c.networking.nftables.tables.fabriek.content; }'
+	assert_success
+	local out="$output"
+	run jq -r .on <<<"$out"
+	assert_output true
+	run jq -r .content <<<"$out"
+	assert_output --partial 'hook forward'
+	assert_output --partial 'iifname "fb-*" drop'
+	assert_output --partial 'oifname "fb-*" drop'
+}
+
+@test "each factory's executor waits for a mark up writes per start, under /run, and reads the factory's facts" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ cond = c.systemd.services.fabriek-widgets-executor.unitConfig.ConditionPathExists;
+		   env = c.systemd.services.fabriek-widgets-executor.serviceConfig.EnvironmentFile;
+		   slice = c.systemd.services.fabriek-widgets-executor.serviceConfig.Slice;
+		   after = c.systemd.services.fabriek-widgets-executor.after;
+		   start = c.systemd.services.fabriek-widgets-executor.serviceConfig.ExecStart; }'
+	assert_success
+	local out="$output"
+	run jq -c '[.cond, .env, .slice, (.after | contains(["fabriek-widgets-bus-acl.service","fabriek-widgets-board.service"])), (.start | test("executor/main.js$"))]' <<<"$out"
+	assert_output '["/run/fabriek/widgets/prepared","/etc/fabriek/factories/widgets.env","fabriek-widgets.slice",true,true]'
+}
+
+# One reader for the host: the kernel is one, so the probes are one, and
+# the machine program names the factory and the role each cgroup belongs
+# to from every factory's facts.
+@test "the probes are one unit on the host, going through the machine program over every factory's facts" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ script = c.systemd.services.fabriek-probes.script; env = c.systemd.services.fabriek-probes.environment.FABRIEK_FACTORIES;
+		   bt = c.environment.etc."fabriek/probes.bt".text; per = c.systemd.services ? fabriek-acme-probes; }'
+	assert_success
+	local out="$output"
+	run jq -r .script <<<"$out"
+	assert_output --partial 'bpftrace'
+	assert_output --partial '| fabriek-container probes-publish'
+	run jq -c '[.env, (.bt | test("exec cgroup=%d uid=%d")), .per]' <<<"$out"
+	assert_output '["/etc/fabriek/factories",true,false]'
+}
+
+# ADR-067 point 1: the CLI reaches the machine program through sudo, for
+# one program and one group, never wheel-wide.
+@test "a member of the fabriek group runs the machine program as root without a password, and nothing else" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ rules = c.security.sudo.extraRules; group = c.users.groups ? fabriek; }'
+	assert_success
+	local out="$output"
+	run jq -c '[.group, (.rules | map(select(.groups == ["fabriek"])) | .[0].commands | map([.command, .options]))]' <<<"$out"
+	assert_output '[true,[["/run/current-system/sw/bin/fabriek-container",["NOPASSWD","SETENV"]]]]'
+}

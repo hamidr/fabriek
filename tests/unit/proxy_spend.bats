@@ -9,3 +9,10 @@ load ../test_helper/common
 	run node --test "$FABRIEK_ROOT/modules/machine/spend.test.mjs"
 	assert_success
 }
+
+# ADR-067: one nginx for every factory on the host, a dictionary per
+# factory named by the server block.
+@test "the host's counting filter passes the same scenarios and keeps two factories' spend apart" {
+	run node --test "$FABRIEK_ROOT/modules/host/spend.test.mjs"
+	assert_success
+}

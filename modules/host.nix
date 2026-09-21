@@ -151,7 +151,10 @@ in
     ./host/bridge.nix
     ./host/bus.nix
     ./host/board.nix
+    ./host/proxy.nix
+    ./host/probes.nix
     ./host/floor.nix
+    ./host/executor.nix
   ];
 
   options.services.fabriek = {
@@ -356,7 +359,30 @@ in
     // lib.mapAttrs' (
       name: p: lib.nameValuePair "fabriek/factories/${name}.env" { text = facts name p; }
     ) plan;
-    environment.systemPackages = [ cfg.package ];
+    environment.systemPackages = [
+      cfg.package
+      pkgs.git
+      pkgs.fabriek-container
+    ];
+
+    ## The CLI reaches the machine program as root through sudo, for this
+    ## one program and this one group (ADR-067 point 1); SETENV so the
+    ## factory's facts pass. A person beside the unit is a member.
+    users.groups.fabriek = { };
+    security.sudo.extraRules = [
+      {
+        groups = [ "fabriek" ];
+        commands = [
+          {
+            command = "/run/current-system/sw/bin/fabriek-container";
+            options = [
+              "NOPASSWD"
+              "SETENV"
+            ];
+          }
+        ];
+      }
+    ];
 
     ## One unit per factory asked for: the same program a person runs, on
     ## the same file and the same state, so `fabriek ps` sees both.
