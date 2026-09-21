@@ -57,10 +57,10 @@ check "fabriek ps by hand sees the factory the unit started" "running" "$(ps_sta
 
 scenario "The unit and a hand are the same program on the same state"
 when "the unit is stopped"
-systemctl stop "fabriek-$F"
+sudo systemctl stop "fabriek-"
 check "fabriek ps sees it down" "stopped" "$(ps_state)"
 when "the unit is started again"
-systemctl start "fabriek-$F"
+sudo systemctl start "fabriek-"
 check "fabriek ps sees it up" "running" "$(ps_state)"
 check "and the unit agrees" "active" "$(systemctl is-active "fabriek-$F")"
 
