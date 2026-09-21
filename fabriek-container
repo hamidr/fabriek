@@ -929,23 +929,38 @@ cmd_factory_up() {
 ## because a factory was ended rather than stopped; then the executor,
 ## then the units in reverse, and the mark gone so nothing starts on a
 ## factory that is not prepared. The datasets stay.
+## The first of the factory's declared roles whose cage runs, and failure
+## when none does.
+factory_role_running() {
+	local factory="$1" role
+	while IFS= read -r role; do
+		if nixcage-container status "$factory-$role" >/dev/null 2>&1; then
+			echo "$role"
+			return 0
+		fi
+	done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
+	return 1
+}
+
 cmd_factory_down() {
 	local factory="${1:-}"
 	[ -n "$factory" ] || die "usage: fabriek-container factory-down <factory>"
 	factory_declared "$factory" || die "$factory is not declared on this host"
 	## The executor starts a session for every role and they end with it,
-	## so it goes first. A cage still running after that is one a hand
-	## entered outside the executor, and that is reported, never forced
-	## (PRD-004): the executor stays down and the rest stays up until the
-	## hand is out and down is asked again.
+	## so it goes first. Their scopes go a moment after the unit does
+	## (seen 2026-09-21: the unit stopped at .231, a cage still there at
+	## .260), so the roles are given that moment. A cage still running
+	## after it is one a hand entered outside the executor, and that is
+	## reported, never forced (PRD-004): the executor stays down and the
+	## rest stays up until the hand is out and down is asked again.
 	systemctl stop "fabriek-$factory-executor.service" || true
 	if [ -f "$FABRIEK_ETC/declaration.json" ]; then
-		local role
-		while IFS= read -r role; do
-			if nixcage-container status "$factory-$role" >/dev/null 2>&1; then
-				die "$factory's role $role is still running; stop it first, or fabriek stop $role"
-			fi
-		done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
+		local running="" _i
+		for _i in $(seq 0 "${FABRIEK_DOWN_GRACE:-10}"); do
+			[ "$_i" = 0 ] || sleep 1
+			running="$(factory_role_running "$factory")" || break
+		done
+		[ -z "$running" ] || die "$factory's role $running is still running; stop it first, or fabriek stop $running"
 	fi
 	rm -f "$(fabriek_run_dir)/prepared"
 	local -a units=()
