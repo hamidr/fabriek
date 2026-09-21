@@ -173,7 +173,7 @@ host_eval() {
 	text="$(jq -r . <<<"$output")"
 	run grep -c '^FABRIEK_[A-Z_]*=' <<<"$text"
 	assert_output "$(grep -c . <<<"$text")"
-	run bash -c "set -a; . <(printf '%s\n' \"\$1\"); printf '%s\n' \"\$FABRIEK_FACTORY\" \"\$FABRIEK_BRIDGE\" \"\$FABRIEK_BRIDGE_HOST\" \"\$FABRIEK_PROXY_PORT\" \"\$FABRIEK_FORGEJO_PORT\" \"\$FABRIEK_VALKEY_PORT\" \"\$FABRIEK_STATE\" \"\$FABRIEK_ETC\" \"\${FABRIEK_FLOOR:+set}\"" _ "$text"
+	run bash -c "set -a; . <(printf '%s\n' \"\$1\"); printf '%s\n' \"\$FABRIEK_FACTORY\" \"\$FABRIEK_BRIDGE\" \"\$FABRIEK_BRIDGE_HOST\" \"\$FABRIEK_PROXY_PORT\" \"\$FABRIEK_FORGEJO_PORT\" \"\$FABRIEK_VALKEY_PORT\" \"\$FABRIEK_STATE\" \"\$FABRIEK_ETC\" \"\$FABRIEK_RUN\" \"\${FABRIEK_FLOOR:+set}\"" _ "$text"
 	assert_output "widgets
 fb-1
 10.77.1.1
@@ -182,6 +182,7 @@ fb-1
 6379
 /var/lib/nixcage/fabriek/widgets
 /var/lib/fabriek/widgets
+/run/fabriek/widgets
 set"
 }
 

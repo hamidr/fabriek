@@ -118,6 +118,7 @@ let
         FABRIEK_VALKEY_PORT = toString cfg.ports.valkey;
         FABRIEK_STATE = p.state;
         FABRIEK_ETC = p.etc;
+        FABRIEK_RUN = "/run/fabriek/${name}";
         FABRIEK_FLOOR = "${cfg.floor}";
         ## What render evaluates a role's profile from: this repository and
         ## the nixpkgs it pins, and the system the profile is built for.

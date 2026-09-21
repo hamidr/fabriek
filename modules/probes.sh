@@ -10,6 +10,9 @@
 ## user, which may write this stream and nothing else, so the third source
 ## stays independent of every role.
 ##
+## One reader serves every factory on the host (ADR-067): a cage is named
+## <factory>-<role>, and the line goes to that factory's bus.
+##
 ## Sourced by store path into fabriek-container beside names.sh and bus.sh.
 
 ## The table's age before a cgroup nobody owns makes it be asked again, in
@@ -34,54 +37,97 @@ fabriek_probes_cgroup_id() {
 	return 0
 }
 
-## fabriek_probes_publish <state> <plan.json> <declaration.json>
-## Reads bpftrace's lines on stdin until it closes. Before the probes user
-## has a password the lines go to stdout, which is the unit's journal.
-fabriek_probes_publish() {
-	local state="$1" plan="$2" declaration="$3"
-	local password host port
-	password="$(fabriek_bus_dir "$state")/probes"
-	host="$(jq -r '.valkey | split(":")[0]' "$plan")"
-	port="$(jq -r '.valkey | split(":")[1]' "$plan")"
-	local -a roles=()
-	local r
-	while IFS= read -r r; do roles+=("$r"); done < <(jq -r '.roles | keys[]' "$declaration")
-	roles+=("$FABRIEK_DECIDER")
+## The factories on this host, from the facts files the host module
+## wrote: one line per factory, its name, its state directory and its
+## rendered directory, tab-separated. A facts file names both; a factory
+## with no declaration rendered yet has no cages and is skipped.
+##
+## fabriek_probes_factories <facts-dir>
+fabriek_probes_factories() {
+	local dir="$1" file name state etc
+	for file in "$dir"/*.env; do
+		[ -f "$file" ] || continue
+		name="$(sed -n 's/^FABRIEK_FACTORY=//p' "$file")"
+		state="$(sed -n 's/^FABRIEK_STATE=//p' "$file")"
+		etc="$(sed -n 's/^FABRIEK_ETC=//p' "$file")"
+		[ -n "$name" ] && [ -f "$etc/declaration.json" ] || continue
+		printf '%s\t%s\t%s\n' "$name" "$state" "$etc"
+	done
+}
 
-	local -A role_of=()
+## fabriek_probes_publish <facts-dir>
+## Reads bpftrace's lines on stdin until it closes. Each line goes to the
+## bus of the factory whose cage the cgroup is; a line no cage owns, and a
+## line for a factory whose probes user has no password yet, go to stdout,
+## which is the unit's journal.
+fabriek_probes_publish() {
+	local facts="$1"
+	local -A role_of=() factory_of=()
 	local asked=0
-	local line cgroup role now
+	local line cgroup role factory now
 	while IFS= read -r line; do
 		cgroup="${line#* cgroup=}"
 		cgroup="${cgroup%% *}"
 		now="$(date +%s)"
 		if [ -z "${role_of[$cgroup]+x}" ] && [ $((now - asked)) -ge "$FABRIEK_PROBES_REFRESH" ]; then
 			role_of=()
-			for r in "${roles[@]}"; do
-				local status path id
-				status="$(nixcage-container status "$r" 2>/dev/null)" || continue
-				case "$status" in
-				running\ *)
-					read -r _ _ path <<<"$status"
-					while IFS= read -r id; do
-						[ -n "$id" ] && role_of[$id]="$r"
-					done < <(fabriek_probes_cgroup_id "$path")
-					;;
-				esac
-			done
+			factory_of=()
+			fabriek_probes_ask "$facts" role_of factory_of
 			asked="$now"
 		fi
 		role="${role_of[$cgroup]:-}"
-		if [ -s "$password" ]; then
-			## The password reaches valkey-cli through its environment rather
-			## than its arguments, which /proc shows to every uid on the machine.
-			VALKEYCLI_AUTH="$(cat "$password")" valkey-cli -h "$host" -p "$port" \
-				--user probes --no-auth-warning \
-				XADD probes MAXLEN '~' "$FABRIEK_PROBES_CAP" '*' cgroup "$cgroup" role "$role" event "$line" >/dev/null
+		factory="${factory_of[$cgroup]:-}"
+		if [ -n "$factory" ] && [ -s "$(fabriek_probes_password "$facts" "$factory")" ]; then
+			fabriek_probes_send "$facts" "$factory" "$cgroup" "$role" "$line"
 		else
 			printf '%s\n' "$line"
 		fi
 	done
+}
+
+## Every declared role's cage of every rendered factory, asked of nixcage
+## for its scope, into the two tables named: cgroup id to role and to
+## factory.
+fabriek_probes_ask() {
+	local facts="$1"
+	# shellcheck disable=SC2034  # written through the namerefs
+	local -n roles_out="$2" factories_out="$3"
+	local name state etc r status path id
+	while IFS=$'\t' read -r name state etc; do
+		[ -n "$name" ] || continue
+		while IFS= read -r r; do
+			status="$(nixcage-container status "$name-$r" 2>/dev/null)" || continue
+			case "$status" in
+			running\ *)
+				read -r _ _ path <<<"$status"
+				while IFS= read -r id; do
+					[ -n "$id" ] || continue
+					roles_out["$id"]="$r"
+					factories_out["$id"]="$name"
+				done < <(fabriek_probes_cgroup_id "$path")
+				;;
+			esac
+		done < <(jq -r '.roles | keys[]' "$etc/declaration.json"; printf '%s\n' "$FABRIEK_DECIDER")
+	done < <(fabriek_probes_factories "$facts")
+}
+
+fabriek_probes_password() {
+	local facts="$1" factory="$2" state
+	state="$(sed -n 's/^FABRIEK_STATE=//p' "$facts/$factory.env")"
+	printf '%s\n' "$(fabriek_bus_dir "$state")/probes"
+}
+
+## One entry on the factory's probes stream, as its probes user. The
+## password reaches valkey-cli through its environment rather than its
+## arguments, which /proc shows to every uid on the host.
+fabriek_probes_send() {
+	local facts="$1" factory="$2" cgroup="$3" role="$4" line="$5" etc host port
+	etc="$(sed -n 's/^FABRIEK_ETC=//p' "$facts/$factory.env")"
+	host="$(jq -r '.valkey | split(":")[0]' "$etc/bridge.json")"
+	port="$(jq -r '.valkey | split(":")[1]' "$etc/bridge.json")"
+	VALKEYCLI_AUTH="$(cat "$(fabriek_probes_password "$facts" "$factory")")" valkey-cli -h "$host" -p "$port" \
+		--user probes --no-auth-warning \
+		XADD probes MAXLEN '~' "$FABRIEK_PROBES_CAP" '*' cgroup "$cgroup" role "$role" event "$line" >/dev/null
 }
 
 ## How many entries the stream keeps (roadmap 2.2): the operator watches it

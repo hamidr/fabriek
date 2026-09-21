@@ -844,10 +844,9 @@ cmd_bus_acl() {
 
 ## The kernel's lines, from bpftrace on stdin, onto the bus with the role
 ## each uid belongs to (ADR-038 point 3).
+## One reader for the host, over every factory's facts (ADR-067).
 cmd_probes_publish() {
-	local declaration
-	declaration="$(prepared_declaration "${1:-}")" || exit 0
-	fabriek_probes_publish "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$declaration"
+	fabriek_probes_publish "$FABRIEK_FACTORIES"
 }
 
 cmd_factory_mirror() {
