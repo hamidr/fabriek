@@ -90,7 +90,6 @@ fabriek_probes_publish() {
 ## factory.
 fabriek_probes_ask() {
 	local facts="$1"
-	# shellcheck disable=SC2034  # written through the namerefs
 	local -n roles_out="$2" factories_out="$3"
 	local name state etc r status path id
 	while IFS=$'\t' read -r name state etc; do
@@ -102,7 +101,9 @@ fabriek_probes_ask() {
 				read -r _ _ path <<<"$status"
 				while IFS= read -r id; do
 					[ -n "$id" ] || continue
+					# shellcheck disable=SC2034  # the caller's tables, by nameref
 					roles_out["$id"]="$r"
+					# shellcheck disable=SC2034
 					factories_out["$id"]="$name"
 				done < <(fabriek_probes_cgroup_id "$path")
 				;;
