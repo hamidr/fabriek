@@ -329,3 +329,25 @@ set"
 	run jq -c '[.group, (.rules | map(select(.groups == ["fabriek"])) | .[0].commands | map([.command, .options]))]' <<<"$out"
 	assert_output '[true,[["/run/current-system/sw/bin/fabriek-container",["NOPASSWD","SETENV"]]]]'
 }
+
+# The boundary between render and the host: the path the unit writes a
+# credential to is the path the location render wrote includes. Each side
+# is asserted alone above; this is the two agreeing.
+@test "the credential the unit writes lands where the rendered location includes it" {
+	run host_eval 'factories.acme = { path = "/srv/acme"; resources.egress = [ "api.anthropic.com" ]; };' \
+		'c.systemd.services.fabriek-acme-egress-credentials.script'
+	assert_success
+	local script="$output"
+	# shellcheck source=../../modules/names.sh
+	source "$FABRIEK_ROOT/modules/names.sh"
+	# shellcheck source=../../modules/factory-render.sh
+	source "$FABRIEK_ROOT/modules/factory-render.sh"
+	local decl="$TEST_TEMP_DIR/declaration.json"
+	echo '{ "name": "acme", "roles": {}, "resources": { "egress": [ "api.anthropic.com" ] } }' >"$decl"
+	local included
+	included="$(fabriek_render_proxy "$decl" | sed -n 's/^ *include \(.*\);$/\1/p')"
+	[ -n "$included" ]
+	local written
+	written="$(jq -r . <<<"$script" | sed -n 's/^ *conf=\(.*\)$/\1/p' | sed 's/\$host/api.anthropic.com/')"
+	[ "$included" = "$written" ]
+}

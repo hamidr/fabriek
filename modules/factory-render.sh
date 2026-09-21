@@ -38,11 +38,15 @@ fabriek_render_bridge_plan() {
 
 ## The proxy's configuration for one factory: the token ceiling and a
 ## location per allowed endpoint, each counting what passes and refusing at
-## the ceiling. Included by the vhost the image carries. Zero is no ceiling.
+## the ceiling. Included by the factory's server on the host. Zero is no
+## ceiling. The credential header comes from the file the factory's own
+## egress-credentials unit writes under its name (host/proxy.nix), so two
+## factories allowing one endpoint never read each other's.
 ##
 ## fabriek_render_proxy <declaration.json>
 fabriek_render_proxy() {
-	local declaration="$1" host
+	local declaration="$1" host factory
+	factory="$(jq -r .name "$declaration")"
 	printf "set \$spend_ceiling %s;\n" "$(jq -r '.resources.tokens // 0' "$declaration")"
 	while IFS= read -r host; do
 		[ -n "$host" ] || continue
@@ -57,7 +61,7 @@ location /$host/ {
   proxy_buffering off;
   proxy_set_header Accept-Encoding "";
   js_body_filter spend.count;
-  include /run/fabriek-egress/$host.conf;
+  include /run/fabriek-egress/$factory/$host.conf;
 }
 CONF
 	done < <(jq -r '.resources.egress // [] | .[]' "$declaration")

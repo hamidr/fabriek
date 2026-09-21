@@ -47,7 +47,7 @@ teardown() {
 	assert_line --index 0 'set $spend_ceiling 500000;'
 	assert_output --partial 'location /api.anthropic.com/ {'
 	assert_output --partial 'proxy_pass https://api.anthropic.com/;'
-	assert_output --partial 'include /run/fabriek-egress/api.anthropic.com.conf;'
+	assert_output --partial 'include /run/fabriek-egress/acme/api.anthropic.com.conf;'
 	assert_output --partial 'location /api.deepseek.com/ {'
 	assert_output --partial 'js_body_filter spend.count;'
 	assert_output --partial 'return 429;'
@@ -131,4 +131,15 @@ teardown() {
 	assert_output 'decider loop'
 	run cat "$out/models.json"
 	assert_output '{"providers":{}}'
+}
+
+# Two factories on one host each have an egress-credentials unit writing
+# under /run/fabriek-egress/<factory>/; a location including the flat path
+# reads nothing on a host with one factory and the wrong factory's header on
+# a host with two.
+@test "a location includes the credential the factory's own unit writes, never another factory's" {
+	run fabriek_render_proxy "$DECL"
+	assert_success
+	refute_output --partial 'include /run/fabriek-egress/api.anthropic.com.conf;'
+	assert_output --partial 'include /run/fabriek-egress/acme/api.anthropic.com.conf;'
 }
