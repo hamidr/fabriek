@@ -933,6 +933,12 @@ cmd_factory_down() {
 	local factory="${1:-}"
 	[ -n "$factory" ] || die "usage: fabriek-container factory-down <factory>"
 	factory_declared "$factory" || die "$factory is not declared on this host"
+	## The executor starts a session for every role and they end with it,
+	## so it goes first. A cage still running after that is one a hand
+	## entered outside the executor, and that is reported, never forced
+	## (PRD-004): the executor stays down and the rest stays up until the
+	## hand is out and down is asked again.
+	systemctl stop "fabriek-$factory-executor.service" || true
 	if [ -f "$FABRIEK_ETC/declaration.json" ]; then
 		local role
 		while IFS= read -r role; do
@@ -941,7 +947,6 @@ cmd_factory_down() {
 			fi
 		done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
 	fi
-	systemctl stop "fabriek-$factory-executor.service" || true
 	rm -f "$(fabriek_run_dir)/prepared"
 	local -a units=()
 	local unit

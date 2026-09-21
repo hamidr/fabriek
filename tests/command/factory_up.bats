@@ -244,7 +244,35 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	[ -d "$STATE/factories/acme" ]
 }
 
-@test "down is refused while a role's cage runs, and stops nothing" {
+# The executor starts a session for every role and its sessions end with
+# it, so the cages down finds while the executor is up are the executor's
+# own and no reason to refuse; the stub takes them down as the unit does.
+# A cage still there after that is one a hand entered outside the executor,
+# and that is reported rather than forced (PRD-004).
+executor_owns_cages() {
+	cat >"$STUB_DIR/systemctl" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS/systemctl"
+case "\$*" in "stop fabriek-acme-executor.service") rm -f "$CALLS"/running-acme-* ;; esac
+EOF
+	chmod +x "$STUB_DIR/systemctl"
+}
+
+@test "down stops the executor first, and its sessions go with it" {
+	run_fabriek_container factory-up acme
+	assert_success
+	: >"$CALLS/systemctl"
+	executor_owns_cages
+	touch "$CALLS/running-acme-builder"
+	run_fabriek_container factory-down acme
+	assert_success
+	assert_output --partial "acme has stopped"
+	[ ! -e "$RUN/prepared" ]
+	run head -1 "$CALLS/systemctl"
+	assert_output "stop fabriek-acme-executor.service"
+}
+
+@test "down is refused while a cage the executor did not own still runs, and stops nothing more" {
 	run_fabriek_container factory-up acme
 	assert_success
 	: >"$CALLS/systemctl"
@@ -254,7 +282,7 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	assert_output --partial "builder is still running"
 	[ -f "$RUN/prepared" ]
 	run cat "$CALLS/systemctl"
-	assert_output ""
+	assert_output "stop fabriek-acme-executor.service"
 }
 
 @test "status answers running once prepared, stopped after down, and never started before either" {
