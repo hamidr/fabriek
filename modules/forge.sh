@@ -216,7 +216,10 @@ fabriek_forge_git_url() {
 ## and the operator's mirror both need it there, and the forge's copy starts
 ## empty. Pushed from a clone of origin made for the purpose, with the
 ## operator's token through a credential helper that reads the file, so the
-## token is in no argument and no remote URL.
+## token is in no argument and no remote URL. The origin is the operator's
+## checkout and this runs as root, so the clone names it safe the way the
+## factory's own clone does (fabriek_factory_git_args, factory-clone.sh,
+## sourced beside this).
 ##
 ## fabriek_forge_ensure_main <base> <token-file> <owner> <name> <origin> <git-url>
 fabriek_forge_ensure_main() {
@@ -224,8 +227,13 @@ fabriek_forge_ensure_main() {
 	fabriek_forge_api "$base" "$token" GET "/repos/$owner/$name/branches/main" >/dev/null 2>&1 && return 0
 	local tmp status=0
 	tmp="$(mktemp -d)"
+	local -a git_args=()
+	local arg
+	while IFS= read -r arg; do
+		git_args+=("$arg")
+	done < <(fabriek_factory_git_args "$origin")
 	## git's own words are kept: what went wrong is what the log should say.
-	if GIT_TERMINAL_PROMPT=0 git clone -q --bare --branch main --single-branch "$origin" "$tmp/origin.git"; then
+	if GIT_TERMINAL_PROMPT=0 git "${git_args[@]}" clone -q --bare --branch main --single-branch "$origin" "$tmp/origin.git"; then
 		local attempt
 		for attempt in 1 2 3 4 5; do
 			status=0

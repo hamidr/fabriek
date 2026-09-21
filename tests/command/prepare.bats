@@ -347,3 +347,30 @@ memory: reviewer"
 	FABRIEK_FORGE_GIT_URL="$TEST_TEMP_DIR/nowhere" run_fabriek_container factory-prepare acme "$origin"
 	assert_success
 }
+
+# The origin is the operator's checkout and prepare runs as root (ADR-067
+# point 5); git refuses a local clone of a repository another uid owns.
+# GIT_TEST_ASSUME_DIFFERENT_OWNER makes every repository foreign, and the
+# global config here trusts what the machine makes itself and not origin.
+@test "main is put on the forge from an origin the machine does not own" {
+	local origin="$TEST_TEMP_DIR/origin" forge_git="$TEST_TEMP_DIR/forge.git" work="$TEST_TEMP_DIR/w"
+	git init -q --bare -b main "$origin"
+	git init -q --bare -b main "$forge_git"
+	git init -q -b main "$work"
+	echo hi >"$work/README"
+	git -C "$work" add README
+	git -C "$work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
+	git -C "$work" push -q "$origin" main
+	export TMPDIR="$TEST_TEMP_DIR/mktemp"
+	mkdir -p "$TMPDIR"
+	export GIT_CONFIG_GLOBAL="$TEST_TEMP_DIR/gitconfig"
+	git config --global --add safe.directory "$TMPDIR/*"
+	git config --global --add safe.directory "$STATE/*"
+	git config --global --add safe.directory "$forge_git"
+	export GIT_TEST_ASSUME_DIFFERENT_OWNER=1
+	FABRIEK_FORGE_GIT_URL="$forge_git" run_fabriek_container factory-prepare acme "$origin"
+	assert_success
+	refute_output --partial "dubious"
+	run git -C "$forge_git" rev-parse --verify --quiet refs/heads/main
+	assert_success
+}
