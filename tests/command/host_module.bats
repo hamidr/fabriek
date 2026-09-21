@@ -16,13 +16,15 @@ teardown() {
 }
 
 ## A NixOS configuration with the module and the options given, and one
-## attribute of its config as JSON.
+## attribute of its config as JSON. nixcage's host module is beside it, as
+## it is on a host (ADR-067 point 1): the floor adds to its packages.
 host_eval() {
 	nix eval --json --impure --expr "
 	  let flake = builtins.getFlake \"path:$FABRIEK_ROOT\";
 	      c = (flake.inputs.nixpkgs.lib.nixosSystem {
 	        system = \"$MACHINE\";
 	        modules = [
+	          flake.inputs.nixcage.nixosModules.host
 	          flake.nixosModules.host
 	          { boot.loader.grub.enable = false; fileSystems.\"/\" = { device = \"none\"; fsType = \"tmpfs\"; }; system.stateVersion = \"25.05\"; nixpkgs.overlays = [ flake.overlays.default ]; }
 	          { services.fabriek = { enable = true; $1 }; }
@@ -143,4 +145,42 @@ host_eval() {
 	printf '%s\n' "$text" >"$TEST_TEMP_DIR/config.toml"
 	run fabriek_operator_keys "$TEST_TEMP_DIR/config.toml"
 	assert_output "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGt4Q3fL4G7y8n2u9qS0mR1x7Hf2VfR7c1aFf4QZ1F2K me@pc"
+}
+
+# ADR-067: a factory is declared on the host and its services are NixOS
+# configuration. Every name the machine had as a constant is a function of
+# the factory's name here, and the bridge's index is the factory's position
+# among the declared names, so two factories never share a subnet.
+@test "each declared factory gets a bridge of its own at .1, indexed in name order, usable before its first cage" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ acme = c.networking.interfaces.fb-0.ipv4.addresses; widgets = c.networking.interfaces.fb-1.ipv4.addresses;
+		   carrier = c.systemd.network.networks."40-fb-0".networkConfig.ConfigureWithoutCarrier;
+		   nonlocal = c.boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind";
+		   ports = c.networking.firewall.interfaces.fb-1.allowedTCPPorts; }'
+	assert_success
+	run jq -c '[.acme, .widgets, .carrier, .nonlocal, .ports]' <<<"$output"
+	assert_output '[[{"address":"10.77.0.1","prefixLength":24}],[{"address":"10.77.1.1","prefixLength":24}],true,1,[3000,6379,8118]]'
+}
+
+# What the machine program is told through the environment, per factory
+# now: one file under /etc the units load and the CLI hands to
+# fabriek-container for the factory named.
+@test "each factory has a facts file under /etc naming its bridge, its state, its rendered directory and the floor" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'c.environment.etc."fabriek/factories/widgets.env".text'
+	assert_success
+	local text
+	text="$(jq -r . <<<"$output")"
+	run grep -c '^FABRIEK_[A-Z_]*=' <<<"$text"
+	assert_output "$(grep -c . <<<"$text")"
+	run bash -c "set -a; . <(printf '%s\n' \"\$1\"); printf '%s\n' \"\$FABRIEK_FACTORY\" \"\$FABRIEK_BRIDGE\" \"\$FABRIEK_BRIDGE_HOST\" \"\$FABRIEK_PROXY_PORT\" \"\$FABRIEK_FORGEJO_PORT\" \"\$FABRIEK_VALKEY_PORT\" \"\$FABRIEK_STATE\" \"\$FABRIEK_ETC\" \"\${FABRIEK_FLOOR:+set}\"" _ "$text"
+	assert_output "widgets
+fb-1
+10.77.1.1
+8118
+3000
+6379
+/var/lib/nixcage/fabriek/widgets
+/var/lib/fabriek/widgets
+set"
 }

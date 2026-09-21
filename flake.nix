@@ -112,11 +112,19 @@
             pkgs = final;
             inherit (inputs) self;
           }).container;
+        ## The TypeScript half, for the loop the floor carries (ADR-035)
+        ## and the executor, the decider and the relay beside it.
+        fabriek-factory = (import ./factory { pkgs = final; }).package;
+        ## The language-server extension every role's pi directory loads
+        ## (ADR-043), and the codegraph tools beside it (ADR-049).
+        pi-lsp = import ./modules/pi-lsp { pkgs = final; };
+        pi-codegraph = import ./modules/pi-codegraph { pkgs = final; };
       };
 
-      ## A NixOS host declares its factories: the operator's file and a unit
-      ## per auto-started factory (ADR-048).
-      flake.nixosModules.host = import ./modules/host.nix;
+      ## A NixOS host declares its factories: the operator's file, and per
+      ## factory its services (ADR-048, ADR-067). The repository and the
+      ## nixpkgs it pins are what render evaluates a role's profile from.
+      flake.nixosModules.host = import ./modules/host.nix { inherit (inputs) self nixpkgs; };
 
       ## What a role can be: the shipped catalogue and a repository's own,
       ## composed into one derivation per role (ADR-042).

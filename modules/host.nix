@@ -3,6 +3,7 @@
 ## host, and a unit per factory asked to start at boot. The module writes
 ## the file and the CLI reads it; nothing here checks what the CLI's own
 ## schema checks, so the two cannot drift.
+{ self, nixpkgs }:
 {
   config,
   lib,
@@ -86,6 +87,47 @@ let
   );
   autoStarted = lib.filterAttrs (_: f: f.autoStart) cfg.factories;
 
+  ## Every name the machine had as a constant, as a function of the
+  ## factory's name (ADR-067 point 3). The index is the factory's position
+  ## among the declared names.
+  plan = lib.listToAttrs (
+    lib.imap0 (
+      idx: name:
+      lib.nameValuePair name {
+        inherit idx;
+        bridge = "fb-${toString idx}";
+        host = "10.77.${toString idx}.1";
+        state = "/var/lib/nixcage/fabriek/${name}";
+        etc = "/var/lib/fabriek/${name}";
+      }
+    ) (lib.attrNames cfg.factories)
+  );
+
+  ## What the machine program is told through the environment, per
+  ## factory: the units load it and the CLI hands it to fabriek-container
+  ## for the factory named.
+  facts =
+    name: p:
+    lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (k: v: "${k}=${v}") {
+        FABRIEK_FACTORY = name;
+        FABRIEK_BRIDGE = p.bridge;
+        FABRIEK_BRIDGE_HOST = p.host;
+        FABRIEK_PROXY_PORT = toString cfg.ports.egress;
+        FABRIEK_FORGEJO_PORT = toString cfg.ports.forgejo;
+        FABRIEK_VALKEY_PORT = toString cfg.ports.valkey;
+        FABRIEK_STATE = p.state;
+        FABRIEK_ETC = p.etc;
+        FABRIEK_FLOOR = "${cfg.floor}";
+        ## What render evaluates a role's profile from: this repository and
+        ## the nixpkgs it pins, and the system the profile is built for.
+        FABRIEK_SELF = "${self}";
+        FABRIEK_NIXPKGS = "${nixpkgs}";
+        FABRIEK_SYSTEM = pkgs.stdenv.hostPlatform.system;
+      }
+    )
+    + "\n";
+
   ## The declaration's own shape (fabriek.toml, ADR-058), as options: what
   ## the CLI's schema checks is checked there, so these are loose on
   ## purpose and refuse only what Nix itself cannot render.
@@ -104,8 +146,38 @@ let
   textOrPath = lib.types.either lib.types.str lib.types.path;
 in
 {
+  imports = [
+    ./host/bridge.nix
+    ./host/floor.nix
+  ];
+
   options.services.fabriek = {
     enable = lib.mkEnableOption "fabriek, a factory of named roles per repository, on this host";
+
+    ## Read-only: what the other files of this module key on.
+    plan = lib.mkOption {
+      type = lib.types.attrsOf lib.types.attrs;
+      readOnly = true;
+      default = plan;
+      description = "Per factory, the bridge, the address, the state and the rendered directory.";
+    };
+    ports = {
+      forgejo = lib.mkOption {
+        type = lib.types.port;
+        default = 3000;
+        description = "Where on a factory's bridge its board answers.";
+      };
+      valkey = lib.mkOption {
+        type = lib.types.port;
+        default = 6379;
+        description = "Where on a factory's bridge its bus answers.";
+      };
+      egress = lib.mkOption {
+        type = lib.types.port;
+        default = 8118;
+        description = "Where on a factory's bridge a role's agent finds the proxy.";
+      };
+    };
 
     package = lib.mkOption {
       type = lib.types.package;
@@ -275,7 +347,12 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    environment.etc."fabriek/config.toml".text = rendered;
+    environment.etc = {
+      "fabriek/config.toml".text = rendered;
+    }
+    // lib.mapAttrs' (
+      name: p: lib.nameValuePair "fabriek/factories/${name}.env" { text = facts name p; }
+    ) plan;
     environment.systemPackages = [ cfg.package ];
 
     ## One unit per factory asked for: the same program a person runs, on
