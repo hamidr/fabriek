@@ -40,14 +40,19 @@ fabriek_factory_clone_args() {
 	echo "$path"
 }
 
-## A role's worktree belongs to the role, and the supervisor is root, so git
-## refuses to touch it until it is named as trustworthy. Without this the
-## failure reads as "detected dubious ownership" rather than as a permission
-## problem.
+## The operator's checkout belongs to the operator, and the supervisor that
+## clones it is root, so git refuses to read it until it is named as
+## trustworthy. Without this the failure reads as "detected dubious
+## ownership" rather than as a permission problem. A local clone checks the
+## gitdir it opens, which is the path itself for a bare repository and a
+## directory under it otherwise, so both are named; a fetch from a local
+## remote checks nothing and needs none of this.
 fabriek_factory_git_args() {
 	local path="$1"
 	echo "-c"
 	echo "safe.directory=$path"
+	echo "-c"
+	echo "safe.directory=$path/*"
 }
 
 ## Create the factory's clone if it has none, and leave its own tree on a
@@ -62,12 +67,15 @@ fabriek_factory_clone_ensure() {
 
 	if [ ! -d "$path" ]; then
 		mkdir -p "$(dirname "$path")"
-		local -a args=()
+		local -a git_args=() args=()
 		local arg
+		while IFS= read -r arg; do
+			git_args+=("$arg")
+		done < <(fabriek_factory_git_args "$repo")
 		while IFS= read -r arg; do
 			args+=("$arg")
 		done < <(fabriek_factory_clone_args "$repo" "$path")
-		git clone --quiet "${args[@]}" || return 1
+		git "${git_args[@]}" clone --quiet "${args[@]}" || return 1
 
 		## A clone can succeed and check out nothing: an origin whose HEAD
 		## names a branch it does not have leaves HEAD unborn, and so does an

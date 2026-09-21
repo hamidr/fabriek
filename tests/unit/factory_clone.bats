@@ -58,10 +58,11 @@ teardown() {
 	refute_output "master"
 }
 
-@test "git is told a role's worktree is trustworthy, since the supervisor does not own it" {
-	run fabriek_factory_git_args "$STATE/factories/acme"
+@test "git is told the operator's checkout is trustworthy, since the supervisor does not own it" {
+	run fabriek_factory_git_args /srv/acme
 	assert_success
-	assert_output --partial "safe.directory=$STATE/factories/acme"
+	assert_line "safe.directory=/srv/acme"
+	assert_line "safe.directory=/srv/acme/*"
 }
 
 @test "the clone has the shared branch locally, since the operator checks it out nowhere" {
@@ -122,4 +123,35 @@ teardown() {
 
 	# And nothing is left for the next run to trip over.
 	[ ! -d "$STATE/factories/acme" ]
+}
+
+# The operator's checkout is the operator's, and the supervisor that clones
+# it and fetches the pin from it is root (ADR-067 point 5). git refuses a
+# repository another uid owns unless told it is safe, and it checks on the
+# clone and on every fetch. GIT_TEST_ASSUME_DIFFERENT_OWNER makes git treat
+# every repository as foreign; the global config here trusts the state
+# directory, which is the supervisor's own, and nothing else.
+foreign_origin() {
+	local origin="$1"
+	git init -q -b main "$origin"
+	git -C "$origin" config user.name o
+	git -C "$origin" config user.email o@x
+	git -C "$origin" config commit.gpgsign false
+	echo x >"$origin/a.txt"
+	git -C "$origin" add a.txt
+	git -C "$origin" commit -qm one
+	export GIT_CONFIG_GLOBAL="$TEST_TEMP_DIR/gitconfig"
+	git config --global safe.directory "$STATE/*"
+	export GIT_TEST_ASSUME_DIFFERENT_OWNER=1
+}
+
+@test "the operator's checkout is cloned though the supervisor does not own it" {
+	origin="$TEST_TEMP_DIR/origin3"
+	foreign_origin "$origin"
+
+	run fabriek_factory_clone_ensure "$STATE" acme3 "$origin"
+	assert_success
+	refute_output --partial "dubious"
+	run git -C "$STATE/factories/acme3" rev-parse --verify refs/heads/main
+	assert_success
 }
