@@ -17,6 +17,9 @@
 ##   F=acme tests/manual/host-autostart.sh
 set -uo pipefail
 cd "${FABRIEK_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 1
+## The checkout's fabriek, runnable as lib.sh makes it: its modules and
+## itself, where the package would have substituted them.
+export FABRIEK_LIB="$PWD/modules" FABRIEK_SELF="$PWD"
 F="${F:-acme}"
 if [ -n "${FABRIEK_CONFIG:-}" ] || [ -e "$HOME/.config/fabriek/config.toml" ]; then
 	echo "a personal config would win over /etc/fabriek/config.toml; this proof is about the host's" >&2
