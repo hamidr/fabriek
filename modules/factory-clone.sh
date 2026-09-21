@@ -27,7 +27,7 @@ fabriek_factory_clone_branch() {
 ## The branch the factory integrates into and shares with the operator. Named
 ## here rather than assumed at every call site.
 fabriek_factory_shared_branch() {
-	echo "main"
+	fabriek_factory_shared_branch_name
 }
 
 ## The source is the operator's checkout, a path on this host (ADR-067

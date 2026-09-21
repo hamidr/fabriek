@@ -38,7 +38,7 @@ fabriek_operator_config_path() {
 ## The schema, built around the one resources table so that what an operator
 ## may cap and what a factory may ask for cannot drift apart.
 fabriek_operator_config_program() {
-	printf 'def capFields: %s;\n' "$(fabriek_resource_field_names_json)"
+	printf 'def capFields: %s;\n' "$(fabriek_cap_field_names_json)"
 	cat <<'JQ'
 ## A factory's entry is its path, and may be the whole declaration in
 ## fabriek.toml's own words (ADR-061 point 1), which the declaration's

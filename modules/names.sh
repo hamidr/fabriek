@@ -22,12 +22,26 @@ fabriek_name_ok() {
 	[[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]]
 }
 
-## A role's name is also its cage's name, a machine name to nspawn, which
-## takes sixty-four characters. The cage's veth carries a hash of the name
-## (nixcage ADR-013), so no interface name bounds it any more.
+## A role's cage is named <factory>-<role> (ADR-067 point 3), a machine
+## name to nspawn, which takes sixty-four characters; the cage's veth
+## carries a hash of the name (nixcage ADR-013), so no interface name bounds
+## it. The role alone is checked where only the role is known, the sum
+## where the declaration names both.
 FABRIEK_ROLE_NAME_MAX=64
 fabriek_role_name_ok() {
 	fabriek_name_ok "$1" && [ "${#1}" -le "$FABRIEK_ROLE_NAME_MAX" ]
+}
+fabriek_cage_name_ok() {
+	local factory="$1" role="$2"
+	[ $((${#factory} + 1 + ${#role})) -le "$FABRIEK_ROLE_NAME_MAX" ]
+}
+
+## The branch a factory integrates into and shares with the operator, whose
+## name lands beside the roles' under fabriek/<factory>/ in the checkout
+## (ADR-067 point 5), so no role may take it. Named once; factory-clone.sh
+## reads it from here.
+fabriek_factory_shared_branch_name() {
+	echo "main"
 }
 
 ## A devShell name. Wider than the above because it names an attribute of

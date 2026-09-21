@@ -30,6 +30,57 @@ fabriek_resource_fields() {
 		egress set
 }
 
+## What the operator may cap beyond the resources table: the substrate floor
+## (ADR-067 point 4), which is a role's field and not a resource, so the
+## declaration's schema does not read it from here.
+fabriek_cap_field_names_json() {
+	fabriek_resource_field_names_json | jq -c '. + ["substrate"]'
+}
+
+## The substrates a role may run on (nixcage ADR-019), lowest first: the
+## operator's floor raises a role to its own and lowers none.
+fabriek_substrates() {
+	printf '%s\n' nspawn microvm
+}
+
+## A substrate's rank in that order, or a refusal naming where it came from.
+fabriek_substrate_rank() {
+	local value="$1" where="$2" rank=0 s
+	while IFS= read -r s; do
+		[ "$s" = "$value" ] && { printf '%s\n' "$rank"; return 0; }
+		rank=$((rank + 1))
+	done < <(fabriek_substrates)
+	echo "fabriek: $where is not a substrate: $value" >&2
+	return 1
+}
+
+## The floor met against every role (ADR-067 point 4): a role asking for
+## less than the operator's floor, or for nothing, is raised to it and
+## told; one at or above it is left alone. Declaration on standard input,
+## the same declaration out. This is the one field that lives on a role
+## rather than under resources, since a substrate is a fact about one
+## cage.
+fabriek_resources_floor() {
+	local field="$1" caps="$2" declaration floor floor_n role asked asked_n
+	declaration="$(cat)"
+	floor="$(printf '%s' "$caps" | jq -r --arg f "$field" '.[$f] // empty')"
+	if [ -z "$floor" ]; then
+		printf '%s\n' "$declaration"
+		return 0
+	fi
+	floor_n="$(fabriek_substrate_rank "$floor" "the floor for $field")" || return 1
+	while IFS= read -r role; do
+		asked="$(printf '%s' "$declaration" | jq -r --arg r "$role" --arg f "$field" '.roles[$r][$f] // empty')"
+		asked_n=0
+		[ -z "$asked" ] || asked_n="$(fabriek_substrate_rank "$asked" "role $role's $field")" || return 1
+		[ "$asked_n" -lt "$floor_n" ] || continue
+		echo "fabriek: $field: role $role asked for ${asked:-$(fabriek_substrates | head -1)} and this host's floor is $floor; raised to $floor" >&2
+		declaration="$(printf '%s' "$declaration" |
+			jq --arg r "$role" --arg f "$field" --arg v "$floor" '.roles[$r][$f] = $v')"
+	done < <(printf '%s' "$declaration" | jq -r '.roles // {} | keys[]')
+	printf '%s\n' "$declaration"
+}
+
 ## The same table as a JSON array, for the schemas that need to say which keys
 ## they allow.
 fabriek_resource_field_names_json() {
@@ -97,6 +148,7 @@ fabriek_resources_clamp() {
 				'.resources[$f] = $v')"
 	done < <(fabriek_resource_fields)
 
+	declaration="$(printf '%s' "$declaration" | fabriek_resources_floor substrate "$caps")" || return 1
 	printf '%s\n' "$declaration"
 }
 

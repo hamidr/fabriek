@@ -24,7 +24,7 @@ fabriek_declaration_program() {
 	## schema and by the clamp that meets one against the other.
 	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider", "catalogue"]\n'
 	printf '  , decider:   ["policy"]\n'
-	printf '  , role:      ["command", "provides", "shell", "specialists", "replicas"]\n'
+	printf '  , role:      ["command", "provides", "shell", "specialists", "replicas", "substrate"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "verdict"]\n'
 	printf '  , budget:    ["runs"]\n'
@@ -64,6 +64,12 @@ fabriek_declaration_program() {
          (if ($v.shell? // null) == null then []
           elif ($v.shell | type) != "string"
           then ["role \($r): shell must name one devShell of this flake"]
+          else [] end),
+         ## A kernel of its own or the host's (ADR-067 point 4, nixcage
+         ## ADR-019); the operator's floor may raise it, never lower it.
+         (if ($v.substrate? // null) == null then []
+          elif ($v.substrate | type) != "string" or (["nspawn", "microvm"] | index($v.substrate)) == null
+          then ["role \($r): substrate must be nspawn or microvm"]
           else [] end),
          (if ($v.specialists? // null) == null then []
           elif ($v.specialists | type) != "array"
@@ -199,7 +205,8 @@ fabriek_declaration_declared_names() {
 ## instead of them, so one read of a bad declaration names everything wrong
 ## with it.
 fabriek_declaration_check_names() {
-	local declaration="$1" kind where value failed=0
+	local declaration="$1" kind where value failed=0 factory
+	factory="$(printf '%s' "$declaration" | jq -r '.name // ""')"
 	while IFS=$'\t' read -r kind where value; do
 		case "$kind" in
 		shell)
@@ -213,10 +220,14 @@ fabriek_declaration_check_names() {
 		role)
 			if [ "$value" = "$FABRIEK_DECIDER" ]; then
 				echo "fabriek: $where: $value is the machine's own role and cannot be declared" >&2
-			elif fabriek_role_name_ok "$value"; then
-				continue
-			else
+			elif [ "$value" = "$(fabriek_factory_shared_branch_name)" ]; then
+				echo "fabriek: $where: $value is the branch the factory integrates and cannot be a role" >&2
+			elif ! fabriek_role_name_ok "$value"; then
 				echo "fabriek: $where: a role name is at most $FABRIEK_ROLE_NAME_MAX characters of a usable name: $value" >&2
+			elif ! fabriek_cage_name_ok "$factory" "$value"; then
+				echo "fabriek: $where: the cage $factory-$value is $((${#factory} + 1 + ${#value})) characters, and a cage's name is at most $FABRIEK_ROLE_NAME_MAX" >&2
+			else
+				continue
 			fi
 			;;
 		*)

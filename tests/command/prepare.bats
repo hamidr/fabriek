@@ -49,7 +49,7 @@ EOF
 	# them to it, which the suite cannot do for real.
 	cat >"$STUB_DIR/nixcage-container" <<EOF
 #!/usr/bin/env bash
-case "\$2" in builder) echo 60000 ;; reviewer) echo 60064 ;; tester) echo 60128 ;; decider) echo 60192 ;; *) exit 1 ;; esac
+case "\${2#acme-}" in builder) echo 60000 ;; reviewer) echo 60064 ;; tester) echo 60128 ;; decider) echo 60192 ;; *) exit 1 ;; esac
 EOF
 	cat >"$STUB_DIR/chown" <<EOF
 #!/usr/bin/env bash

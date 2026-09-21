@@ -279,3 +279,53 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	run_fabriek_container factory-declared acme
 	assert_output "$REPO/fabriek.toml"
 }
+
+# ADR-067 point 4: nixcage fixes a cage's substrate at its first enter, so
+# a role whose declared substrate changed is removed from nixcage's record
+# and entered anew. rm clears nixcage's record only: the role's dataset,
+# home, key and forge account are the factory's and stay.
+@test "up --update removes the cage of a role whose substrate changed, and no other" {
+	run_fabriek_container factory-up acme
+	assert_success
+	sed -i.bak 's/^\[roles.builder\]$/[roles.builder]\nsubstrate = "microvm"/' "$REPO/fabriek.toml" && rm "$REPO/fabriek.toml.bak"
+	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm kernel
+	: >"$CALLS/nixcage-container"
+	run_fabriek_container factory-up --update acme
+	assert_success
+	assert_output --partial "builder now runs on microvm; its cage is made anew"
+	run grep "^rm " "$CALLS/nixcage-container"
+	assert_output "rm acme-builder"
+	[ -d "$STATE/factories/acme" ]
+}
+
+@test "up --update on an unchanged substrate removes no cage" {
+	run_fabriek_container factory-up acme
+	assert_success
+	: >"$CALLS/nixcage-container"
+	run_fabriek_container factory-up --update acme
+	assert_success
+	run grep -c "^rm " "$CALLS/nixcage-container"
+	assert_output 0
+}
+
+@test "the operator's substrate floor raises every role at up, and says so" {
+	cat >"$FABRIEK_CONFIG" <<TOML
+[caps]
+memory = "16G"
+cores = 8
+egress = ["api.anthropic.com"]
+substrate = "microvm"
+
+[factories.acme]
+path = "$REPO"
+
+[credentials."api.anthropic.com"]
+header = "x-api-key"
+file = "$TEST_TEMP_DIR/anthropic.key"
+TOML
+	run_fabriek_container factory-up acme
+	assert_success
+	assert_output --partial "substrate: role builder asked for nspawn and this host's floor is microvm; raised to microvm"
+	run jq -c '[.roles.builder.substrate, .roles.reviewer.substrate]' "$ETC/declaration.json"
+	assert_output '["microvm","microvm"]'
+}

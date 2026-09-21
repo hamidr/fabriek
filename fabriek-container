@@ -223,8 +223,11 @@ cmd_role_enter() {
 	## cage maps, and loop and agent run as it (ADR-035): one principal, one
 	## number, and every host file the session touches belongs to it, because
 	## ownership is not shifted on the way in.
-	local uid
-	uid="$(nixcage-container uid "$role")" ||
+	## The cage and its uid's principal are <factory>-<role> (ADR-067 point
+	## 3): one host runs several factories, and two roles of one name in
+	## two factories are two cages.
+	local uid cage="$factory-$role"
+	uid="$(nixcage-container uid "$cage")" ||
 		die "could not get a uid for role $role"
 
 	## The clone carries the declaration (ADR-020), so it has to exist before
@@ -260,16 +263,20 @@ cmd_role_enter() {
 	## point 4): the same mounts, processes and home the actor has, with
 	## the command they asked for or the cage's shell. No agent reaches
 	## them there; a hand inside a running actor reads and does not sign.
-	if [ -z "$signing_role" ] && fabriek_cage_running "$role"; then
+	if [ -z "$signing_role" ] && fabriek_cage_running "$cage"; then
 		if [ $# -gt 0 ]; then
-			nixcage-container exec "$role" -- "$@"
+			nixcage-container exec "$cage" -- "$@"
 		else
-			nixcage-container exec "$role"
+			nixcage-container exec "$cage"
 		fi
 		return
 	fi
-	local network cage="$role"
+	local network substrate
 	network="$(fabriek_cage_network "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
+	## A kernel of its own or the host's (ADR-067 point 4): what the role
+	## declared, raised to the operator's floor by the clamp; the decider
+	## runs on the floor. nixcage fixes it at the first enter.
+	substrate="$(fabriek_cage_substrate "$FABRIEK_ETC/declaration.json" "$role")"
 
 	local -a opts=(
 		--uid "$uid"
@@ -277,6 +284,7 @@ cmd_role_enter() {
 		--home "$STATE_DIR/homes/$factory-$role"
 		--network "$network"
 		--no-nix-daemon
+		--substrate "$substrate"
 	)
 
 	## What the cage may take of the machine, set on its scope (nixcage
@@ -398,7 +406,7 @@ cmd_role_worktree() {
 	## The agent's number rather than the block's base: this uid is only ever
 	## an owner, and what opens the repository is the agent (ADR-028).
 	local uid
-	uid="$(nixcage-container uid "$role")" ||
+	uid="$(nixcage-container uid "$factory-$role")" ||
 		die "could not get a uid for role $role"
 
 	## How much a role may hold is the factory's to say; whether that can be
@@ -676,7 +684,7 @@ cmd_factory_prepare() {
 		fabriek_forge_ensure_memory "$base" "$operator" \
 			"$(fabriek_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
 			die "could not open the memory issue for role $role"
-		cage_owns_credentials "$role"
+		cage_owns_credentials "$factory" "$role"
 	done < <(jq -r '.roles | keys[]' "$declaration")
 
 	fabriek_forge_ensure_user "$FABRIEK_DECIDER" "$FABRIEK_DECIDER@$factory.invalid" ||
@@ -685,7 +693,7 @@ cmd_factory_prepare() {
 		die "could not give the decider read on the repository"
 	fabriek_forge_ensure_token "$STATE_DIR" "$FABRIEK_DECIDER" read:issue ||
 		die "could not mint the decider's token"
-	cage_owns_credentials "$FABRIEK_DECIDER"
+	cage_owns_credentials "$factory" "$FABRIEK_DECIDER"
 
 	## The executor starts every session, and a session started before its
 	## credentials are the cage's is one that fails or is deaf, so the
@@ -706,8 +714,8 @@ cmd_factory_prepare() {
 ## bind keeps the host's ownership, so both have to be the cage's uid's. The
 ## decider is a cage like a role's here.
 cage_owns_credentials() {
-	local cage="$1" uid
-	uid="$(nixcage-container uid "$cage")" || die "could not get a uid for $cage"
+	local factory="$1" cage="$2" uid
+	uid="$(nixcage-container uid "$factory-$cage")" || die "could not get a uid for $cage"
 	chown "$uid" "$(fabriek_bus_dir "$STATE_DIR")/$cage" \
 		"$(fabriek_forge_token_path "$STATE_DIR" "$cage")" ||
 		die "could not give $cage its credentials"
@@ -742,7 +750,7 @@ cmd_role_stop() {
 	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop <factory> <role> [--now]"
 	fabriek_role_name_ok "$role" || die "invalid role name: $role"
 	if [ -n "$now" ]; then
-		nixcage-container stop "$role" || exit 1
+		nixcage-container stop "$factory-$role" || exit 1
 		echo "$factory: $role stopped at its scope"
 		return
 	fi
@@ -897,7 +905,22 @@ cmd_factory_up() {
 	while IFS= read -r unit; do units+=("$unit"); done < <(fabriek_up_units "$factory")
 	systemctl start "${units[@]}" || die "could not start $factory's units"
 
+	## What each role ran on before this render, so a changed substrate is
+	## seen (ADR-067 point 4): nixcage fixed it at the cage's first enter,
+	## and only rm lets the next enter choose again.
+	local before="{}"
+	[ -f "$FABRIEK_ETC/declaration.json" ] &&
+		before="$(jq -c '.roles | map_values(.substrate // "nspawn")' "$FABRIEK_ETC/declaration.json")"
 	cmd_factory_render
+	local role now
+	while IFS=$'\t' read -r role now; do
+		[ -n "$role" ] || continue
+		echo "$factory: $role now runs on $now; its cage is made anew"
+		nixcage-container rm "$factory-$role" >/dev/null 2>&1 || true
+	done < <(jq -r --argjson before "$before" '
+		.roles | to_entries[] | .key as $r | (.value.substrate // "nspawn") as $now
+		| select($before[$r] != null and $before[$r] != $now) | "\($r)\t\($now)"' \
+		"$FABRIEK_ETC/declaration.json")
 	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
 	cmd_factory_prepare "$factory" "$path"
 }

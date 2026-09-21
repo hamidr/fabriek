@@ -60,9 +60,10 @@ setup() {
 case "\$1" in
 uid)
 	# A principal's number. A subject is never asked for any more (ADR-035),
-	# so asking for one is answered the way a machine with none would.
+	# so asking for one is answered the way a machine with none would. The
+	# principal is <factory>-<role> (ADR-067 point 3).
 	if [ -n "\$3" ]; then echo "no such subject: \$3" >&2; exit 1; fi
-	echo 60000
+	case "\$2" in acme-*) echo 60000 ;; *) echo "no such principal: \$2" >&2; exit 1 ;; esac
 	;;
 storage)
 	printf '%s\n' "\$*" >>"$STORAGE_CALLS"
@@ -117,7 +118,7 @@ declare_machine() {
 	export FABRIEK_FLOOR="$TEST_TEMP_DIR/store/floor"
 	mkdir -p "$FABRIEK_FLOOR"
 	cat >"$FABRIEK_ETC/bridge.json" <<'JSON'
-{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
+{ "bridge": "fb-0", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "decider": "10.77.0.2" },
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
@@ -174,7 +175,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --substrate nspawn --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:6379 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -182,7 +183,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fabriek-acme:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --auth-sock /tmp/agent.sock builder $STATE/worktrees/acme/builder"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --substrate nspawn --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --auth-sock /tmp/agent.sock acme-builder $STATE/worktrees/acme/builder"
 }
 
 @test "the uid comes from nixcage rather than from a store fabriek keeps" {
@@ -230,7 +231,7 @@ recorded() {
 
 @test "a role the plan does not place gets no session, because it would have no address" {
 	cat >"$FABRIEK_ETC/bridge.json" <<'JSON'
-{ "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24, "cages": { "decider": "10.77.0.2" } }
+{ "bridge": "fb-0", "host": "10.77.0.1", "prefix": 24, "cages": { "decider": "10.77.0.2" } }
 JSON
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_failure
@@ -258,7 +259,7 @@ JSON
 ## its actor runs is put inside that cage rather than beside it (nixcage
 ## ADR-012 point 4), which nixcage answers for from the cage's scope.
 running_cage() {
-	echo 4243 >"$RUNNING/$1"
+	echo 4243 >"$RUNNING/acme-$1"
 }
 
 @test "a person entering a role whose actor is running is put inside that cage, not beside it" {
@@ -266,7 +267,7 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
 	assert_success
 	run recorded
-	assert_output "exec builder"
+	assert_output "exec acme-builder"
 }
 
 @test "a person entering a running role with a command runs it inside the cage" {
@@ -274,7 +275,7 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder git status
 	assert_success
 	run recorded
-	assert_output "exec builder -- git status"
+	assert_output "exec acme-builder -- git status"
 }
 
 @test "a supervised run takes the bridge placement whatever else is running under the role's name" {
@@ -283,7 +284,7 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
 	assert_success
 	run recorded
-	assert_output --partial "--network fabriek-acme:10.77.0.10/24"
+	assert_output --partial "--network fb-0:10.77.0.10/24"
 	refute_output --partial "ns:/proc"
 	refute_output --partial "exec"
 }
@@ -292,7 +293,7 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder ip -o link show
 	assert_success
 	run recorded
-	assert_output --partial " builder $STATE/worktrees/acme/builder ip -o link show"
+	assert_output --partial " acme-builder $STATE/worktrees/acme/builder ip -o link show"
 	refute_output --partial "agent --print"
 }
 
@@ -322,13 +323,13 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --signing-key decider acme decider
 	assert_success
 	run recorded
-	assert_output --partial "--network fabriek-acme:10.77.0.2/24 --no-nix-daemon"
+	assert_output --partial "--network fb-0:10.77.0.2/24 --no-nix-daemon --substrate nspawn"
 	assert_output --partial "--bind $RUN/pi-decider:/run/fabriek/pi --bind-ro $DECIDER_DIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions --setenv PI_OFFLINE=1"
 	assert_output --partial "--bind-ro $STATE/forge/decider-token:/run/fabriek/forge-token"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/declaration.json:/run/fabriek/declaration.json --setenv FABRIEK_DECLARATION=/run/fabriek/declaration.json"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/decider-policy.md:/run/fabriek/policy.md --setenv FABRIEK_POLICY=/run/fabriek/policy.md"
 	assert_output --partial "--setenv FABRIEK_ROLE=decider --setenv FABRIEK_CAPABILITIES= "
-	assert_output --partial " decider $STATE/worktrees/acme/decider pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
+	assert_output --partial " acme-decider $STATE/worktrees/acme/decider pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
 	refute_output --partial NIXCAGE_PATH_PREFIX
 }
 
@@ -345,7 +346,7 @@ JSON
 	run_fabriek_container role-enter --repository "$REPO" --signing-key builder acme builder
 	assert_success
 	run recorded
-	assert_output --partial " builder $STATE/worktrees/acme/builder pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
+	assert_output --partial " acme-builder $STATE/worktrees/acme/builder pi --mode rpc --provider anthropic --model claude-opus-5 --no-approve"
 }
 
 # pi 0.84 locks settings.json, auth.json and models-store.json to read them,
@@ -389,7 +390,7 @@ JSON
 	run_fabriek_container role-enter --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
 	assert_success
 	run recorded
-	assert_output --partial " builder $STATE/worktrees/acme/builder agent --print"
+	assert_output --partial " acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a session with no origin anywhere is refused and told to run up" {
@@ -417,7 +418,7 @@ JSON
 	run recorded
 	refute_output --partial "NIXCAGE_PATH_PREFIX"
 	refute_output --partial "--store-root"
-	assert_output --partial "--no-nix-daemon --auth-sock"
+	assert_output --partial "--no-nix-daemon --substrate nspawn --auth-sock"
 }
 
 
@@ -439,4 +440,16 @@ JSON
 	run recorded
 	refute_output --partial "role-guidance"
 	refute_output --partial "FABRIEK_ROLE_GUIDANCE"
+}
+
+# ADR-067 point 4: a role that asks for a kernel of its own is composed the
+# same way, one flag apart, which nixcage takes to its microVM substrate
+# (nixcage ADR-019). Everything else on the line is the same.
+@test "a role declared microvm reaches nixcage-container with --substrate microvm and nothing else changed" {
+	jq '.roles.builder.substrate = "microvm"' "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/d.new" && mv "$FABRIEK_ETC/d.new" "$FABRIEK_ETC/declaration.json"
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_fabriek_container role-enter --repository "$REPO" --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
+	assert_success
+	run recorded
+	assert_output --partial "--network fb-0:10.77.0.10/24 --no-nix-daemon --substrate microvm --memory 4096M"
 }

@@ -454,3 +454,29 @@ validate_example() {
 		fi
 	done
 }
+
+# ADR-067 point 4: a role may ask for a kernel of its own.
+@test "a role's substrate is nspawn or microvm, and anything else is refused by name" {
+	run validate_with '.roles.backend.substrate = "microvm"'
+	assert_success
+	run validate_with '.roles.backend.substrate = "docker"'
+	assert_failure
+	assert_output --partial "role backend: substrate must be nspawn or microvm"
+}
+
+# ADR-067 point 3: the cage is <factory>-<role>, a machine name to nspawn,
+# so it is the sum that is bounded; and a role's branch lands in the
+# checkout under fabriek/<factory>/, beside main, so main is nobody's role.
+@test "a role whose name with the factory's would not fit a cage's is refused, naming the sum" {
+	local long
+	long="$(printf 'r%.0s' $(seq 1 60))"
+	run validate_with --arg r "$long" '{name, roles: {($r): .roles.backend}}'
+	assert_failure
+	assert_output --partial "the cage acme-$long is 65 characters, and a cage's name is at most 64"
+}
+
+@test "a role named main is refused, because that is the branch the factory integrates" {
+	run validate_with '{name, roles: {"main": .roles.backend}}'
+	assert_failure
+	assert_output --partial "main is the branch the factory integrates and cannot be a role"
+}
