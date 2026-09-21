@@ -216,3 +216,34 @@ checked-out branch's hash and `git status --porcelain` are unchanged
 throughout; `stat -c %h` on a pack the clone shares reads 2, and `git -C
 <clone> count-objects -v` after the clone shows no `size-pack` beyond the
 checkout's.
+
+## Verification
+
+Implemented 2026-09-21 in thirteen commits from `d6b36fd` (the lifecycle
+model) to `ee1f0f7` (the manual proofs), on this Mac, where everything
+but the measurement plan is asserted:
+
+- `models/factory-lifecycle.qnt`: the mutant without the lock violates
+  `runningMeansEveryProfile` within 60 steps; the model finds no
+  violation in 10000 traces of 60 steps and reaches every witness.
+- `tests/command/host_module.bats` evaluates `services.fabriek` with two
+  factories: bridges `fb-0` and `fb-1`, the facts files, the slices and
+  their units, one nginx with a dictionary per factory, the forward
+  chain, the sudoers rule. `factory_up.bats` drives `factory-up` and
+  `factory-down` whole; `up.bats` the CLI's side on a real checkout;
+  `seam.bats` both substrates on the whole line; `probes.bats` one reader
+  over two factories; `resources.bats` and `repo_declaration.bats` the
+  substrate, its floor and the reserved names. 440 of 442 bats scenarios
+  pass; the two that do not predate this ADR (`catalogue_cli.bats`'s
+  restricted-mode path on this Mac, and none else).
+- `factory/`: 185 of 185.
+- `tests/system/journey.sh`: every check, the checkout's refs and its
+  untouched branch and tree among them.
+
+Not yet run: the measurement plan, which needs the NixOS host `pc`. Its
+configuration (`hardware/pc/system/fabriek.nix` in the nixos repository)
+is rewritten for this ADR with two factories, `widgets` declaring
+`substrate = "microvm"`, and evaluates to a system derivation against
+this tree; the rebuild, `tests/manual/host-autostart.sh`,
+`two-factories.sh`, `isolation.sh` and `parity.sh` are the operator's
+next step, after which this ADR is implemented.
