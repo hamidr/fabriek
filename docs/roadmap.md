@@ -1,8 +1,8 @@
 # Roadmap
 
 The steps from the design that ran before the redesign to the one ADR-033
-through ADR-041 and PRD-006 decide; `docs/architecture.md` is what runs
-now. Decision numbers below refer to `REDESIGN-LOG.md`, the working log
+through ADR-041, ADR-067 and PRD-006 decide; `docs/architecture.md` is
+what runs now. Decision numbers below refer to `REDESIGN-LOG.md`, the working log
 those documents superseded and phase 5.4 deleted; it is in the history
 before that commit for anyone who wants the reasoning as it was written.
 
@@ -297,33 +297,26 @@ One package, built through the flake, tests in its own runner.
 - 6.7 `resources.concurrency`. Done 2026-09-15 (ADR-055): the ceiling on
   tasks in flight, held by the executor, told to the decider, and the
   divisor for every cage; absent means the role count.
-- 6.9 ADR-057's measurement plan on a machine: the runtime line takes
-  effect (`MemTotal`, `nproc`, both credentials under
-  `/run/credentials/@system`), a second `up` copies no path, a fresh
-  factory on a Linux host copies no path the host holds, nixcage's
-  closure query answers for a host path through the overlay store, and
-  `ls -R` over a thousand-path closure per share protocol is timed.
-  `tests/manual/isolation.sh` gained the daemon's two probes. Everything
-  else of ADR-057 is asserted on this host by `machine_services.bats`,
-  `render.bats`, `vm_up.bats`, `factory_render.bats` and
-  `credential.bats`. Run 2026-09-16 on a NixOS host: the runtime line
-  takes effect once the shared memory is a second NUMA node, the overlay
-  store answers for a host path once the lower db is a checkpointed
-  snapshot taken at boot, a second `up` and a fresh factory copy nothing,
-  and `ls -R` over the system closure (688 paths, 273868 entries) on
-  virtiofs is 19.6s cold and 12.8s warm; 9p is not timed here. The
-  eleven things the first boot found, their fixes and the numbers are in
-  ADR-057's verification. `isolation.sh` passes whole; its ceiling
-  scenario ran at 15000 tokens once ADR-065 let it reach the limit with
-  its own requests.
-- 6.8 `tests/manual/host-autostart.sh` passes on a NixOS host (ADR-048):
-  the unit active after boot, `fabriek ps` by hand seeing its machine, and
-  both agreeing across a stop and a start. Everything else of ADR-048 is
-  asserted on this host by `host_module.bats`, `operator_config.bats` and
-  `machine.bats`. Not run as of 2026-09-16: it wants `services.fabriek`
-  in this host's own NixOS configuration, a rebuild and a reboot, and no
-  personal config, which is the operator's change to make and not this
-  repository's.
+- 6.9 ADR-057's measurement plan. Closed 2026-09-21 with ADR-057, which
+  ADR-067 supersedes: there is no machine, no runtime line, no overlay
+  store and no share protocol to time. What it measured is in ADR-057's
+  verification, in the history.
+- 6.8 `tests/manual/host-autostart.sh` on a NixOS host (ADR-048). Now the
+  primary proof (ADR-067): the unit active after boot, `fabriek ps` by
+  hand seeing the factory running at its pin, and both agreeing across a
+  stop and a start. Everything else of ADR-048 is asserted on this host by
+  `host_module.bats` and `operator_config.bats`. Not run as of 2026-09-21.
+- 6.10 ADR-067 on a NixOS host, its measurement plan: two factories up
+  with a bridge each and a role of one reaching only its own bus; a cage
+  with no route off the host beside docker's rules; a `microvm` role in
+  its own kernel and the floor's clamp printed; and the checkout carrying
+  the factory's refs with its own branch and tree untouched. Everything
+  else of ADR-067 is asserted on this host by `host_module.bats`,
+  `factory_up.bats`, `up.bats`, `seam.bats`, `probes.bats`,
+  `resources.bats`, `repo_declaration.bats` and `journey.sh`, and the
+  lifecycle by `models/factory-lifecycle.qnt`. Not run as of 2026-09-21:
+  the manual proofs under `tests/manual/` still reach a factory over the
+  machine's ssh and are rewritten against the host first.
 
 ## Where the log's open items landed (its section 6)
 
