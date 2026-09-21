@@ -9,6 +9,7 @@
 # state of what was made, so a second run against them is a real second run.
 
 load ../test_helper/common
+load ../test_helper/stubs
 
 setup() {
 	setup_temp_dir
@@ -39,60 +40,7 @@ JSON
   "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
 JSON
 
-	# The forge's own CLI: users it was asked to make, and tokens it minted.
-	cat >"$STUB_DIR/forgejo" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$FORGE/cli-calls"
-case "\$1 \$2 \$3" in
-"admin user list")
-	# A list that fails once, when asked to: the forge's CLI opens the
-	# database beside the running server and can lose that race.
-	if [ -e "$FORGE/list-fails-once" ]; then rm "$FORGE/list-fails-once"; echo "database is locked" >&2; exit 1; fi
-	cat "$FORGE/users" 2>/dev/null
-	;;
-"admin user create")
-	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
-	if grep -qx "\$u" "$FORGE/users" 2>/dev/null; then echo "Command error: CreateUser: user already exists [name: \$u]" >&2; exit 1; fi
-	echo "\$u" >>"$FORGE/users"
-	;;
-"admin user change-password") ;;
-"admin user generate-access-token")
-	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
-	echo "token-for-\$u"
-	;;
-esac
-EOF
-	# The API. Answers what exists, records what was asked for, and refuses a
-	# token given on the command line, because that is the thing to keep off it.
-	cat >"$STUB_DIR/curl" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$FORGE/api-calls"
-method=GET; url=""; body=""
-while [ \$# -gt 0 ]; do
-	case "\$1" in
-	-X) method="\$2"; shift ;;
-	-d) body="\$2"; shift ;;
-	-H) case "\$2" in Authorization*) echo "token on argv" >>"$FORGE/leaks" ;; esac; shift ;;
-	http*) url="\$1" ;;
-	esac
-	shift
-done
-path="\${url#*/api/v1}"
-case "\$method \$path" in
-"GET /repos/operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
-"GET /repos/operator/acme/branches/main") [ -e "$FORGE/has-main" ] && echo '{"name":"main"}' || { echo '{}'; exit 22; } ;;
-"POST /user/repos") touch "$FORGE/repo"; echo '{"name":"acme"}' ;;
-"PUT /repos/operator/acme/collaborators/"*) echo "\${path##*/}" >>"$FORGE/collaborators" ;;
-"GET /repos/operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs] | to_entries | map({id: (.key + 1), name: .value})' <"$FORGE/labels" || echo '[]' ;;
-"POST /repos/operator/acme/labels") jq -r .name <<<"\$body" >>"$FORGE/labels"; echo '{"id":1}' ;;
-"GET /repos/operator/acme/issues"*) [ -f "$FORGE/issues" ] && jq -Rn '[inputs | fromjson]' <"$FORGE/issues" || echo '[]' ;;
-"POST /repos/operator/acme/issues") n=\$(( \$( [ -f "$FORGE/issues" ] && wc -l <"$FORGE/issues" || echo 0 ) + 1 )); jq -c --argjson n "\$n" '. + {number: \$n, labels: [], user: {login: (.title | sub("memory: "; ""))}}' <<<"\$body" >>"$FORGE/issues"; echo "{\"number\": \$n}" ;;
-"POST /repos/operator/acme/issues/"*"/labels") echo "\$path \$(jq -c .labels <<<"\$body")" >>"$FORGE/labelled" ;;
-"PATCH /repos/operator/acme/issues/"*) echo "\$path \$body" >>"$FORGE/patched" ;;
-"POST /repos/operator/acme/issues/"*"/pin") echo "\$path" >>"$FORGE/pinned" ;;
-*) echo "unstubbed: \$method \$path" >&2; exit 1 ;;
-esac
-EOF
+	stub_forge "$FORGE"
 	cat >"$STUB_DIR/systemctl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$FORGE/systemctl-calls"

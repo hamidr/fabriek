@@ -12,6 +12,7 @@
 # is under test too.
 
 load ../test_helper/common
+load ../test_helper/stubs
 
 setup() {
 	setup_temp_dir
@@ -105,24 +106,7 @@ url = "http://10.0.2.2:8080"
 TOML
 	export FABRIEK_CREDENTIAL="$CRED"
 
-	# nix: build answers with a store path named after the role it was
-	# asked for, and records the line; everything else is the real nix.
-	cat >"$STUB_DIR/nix" <<EOF
-#!/usr/bin/env bash
-if [ "\$1" = build ]; then
-	printf '%s\n' "\$*" >>"$CALLS/nix-build"
-	role="\$(printf '%s\n' "\$*" | sed -n 's/.*role = "\([^"]*\)".*/\1/p')"
-	if [ -e "$CALLS/fail-\$role" ]; then echo "error: role \$role names devShell backend, which the repository does not define" >&2; exit 1; fi
-	out="$TEST_TEMP_DIR/store/fabriek-role-\$role"
-	mkdir -p "\$out/share/fabriek/specialist/skills" "\$out/bin"
-	echo '{}' >"\$out/share/fabriek/specialist/lsp.json"
-	echo '{}' >"\$out/share/fabriek/specialist/tests.json"
-	echo "## \$role" >"\$out/share/fabriek/specialist/APPEND_SYSTEM.md"
-	echo "\$out"
-	exit 0
-fi
-exec "$REAL_NIX" "\$@"
-EOF
+	stub_nix_build "$CALLS" "$REAL_NIX" "$TEST_TEMP_DIR/store"
 	cat >"$STUB_DIR/systemctl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$CALLS/systemctl"
