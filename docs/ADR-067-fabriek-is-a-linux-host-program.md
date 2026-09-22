@@ -1,9 +1,9 @@
 ---
 id: ADR-067
 title: fabriek is a Linux-host program, a factory is a set of service instances on it, and a role's kernel boundary is nixcage's
-status: implementing
+status: implemented
 date: 2026-09-21
-status_date: 2026-09-21
+status_date: 2026-09-22
 summary: no machine per factory; factories declared on a NixOS host; enter --substrate per role; the operator fetches the clone
 depends_on: [ADR-020, ADR-032, ADR-036, ADR-037, ADR-047, ADR-048, ADR-058]
 supersedes: [ADR-019, ADR-057, ADR-063]
@@ -240,13 +240,70 @@ but the measurement plan is asserted:
 - `tests/system/journey.sh`: every check, the checkout's refs and its
   untouched branch and tree among them.
 
-Not yet run: the measurement plan, which needs the NixOS host `pc`. Its
-configuration (`hardware/pc/system/fabriek.nix` in the nixos repository)
-is rewritten for this ADR with two factories, `widgets` declaring
-`substrate = "microvm"`, and evaluates to a system derivation against
-this tree; the rebuild, `tests/manual/host-autostart.sh`,
-`two-factories.sh`, `isolation.sh` and `parity.sh` are the operator's
-next step, after which this ADR is implemented.
+The measurement plan ran on the NixOS host `pc` on 2026-09-22, against
+this tree at `45d07b8` with `hardware/pc/system/fabriek.nix` in the nixos
+repository declaring two factories, `widgets` giving its `backend` role
+`substrate = "microvm"`. Transcripts are under `/tmp/fabriek-proof/`.
+
+- Two factories on one host, `two-factories.sh` (`two-factories.txt`):
+  every check. `example` and `widgets` each hold their slice's units,
+  `fb-0` is up at 10.77.0.1 and `fb-1` at 10.77.1.1, example's architect
+  connects to its own bus and is refused at widgets's, and `down example`
+  leaves widgets's executor active. Idle, with no task filed,
+  `MemoryCurrent` of `fabriek-example.slice` is 454332416 bytes, 433 MiB.
+- No route off the host, `isolation.sh` on `widgets`, run plain and again
+  with docker enabled (`isolation.txt`,
+  `isolation-widgets-forward.txt`): every check. A cage sees `host0` and
+  `lo` and nothing else, resolves nothing, reaches neither 192.168.1.242
+  on another interface of the host nor a peer cage, and reaches the
+  proxy. With `ip_forward` at 1 and docker's FORWARD chain present, the
+  `fabriek` table still drops what comes from or goes to an `fb-*`
+  bridge. Spend moves for the sender alone, a forged source address at
+  reviewer's veth moves nobody's count, the proxy answers 429 at the
+  declared ceiling of 15000 tokens, and the executor holds the decider
+  there and is still running forty-five seconds later.
+- The substrate, in the same run: `reviewer` sees the host's 6.18.49,
+  `backend` a kernel that is not the host's, and nixcage names a
+  `machine-*.scope` for its cage. Gated, not failed: the clamp a floor
+  prints wants `caps.substrate = "microvm"` in the operator's
+  configuration on `pc`, which `pc` does not declare; the clamp itself is
+  asserted by `resources.bats` and `seam.bats`.
+- The checkout, `parity.sh` on `example` (`parity.txt`), which is
+  PRD-006's journey with real models rather than `journey.sh`'s stand-ins
+  and so proves the same refs the harder way: a goal filed with `fabriek
+  file` became issue 8, labelled `design` and assigned with no second
+  command; the five stages each moved on their own with an outcome
+  comment, and the executor closed the issue; the executor opened the
+  pull request, whose branch is in a role's namespace and which the
+  checkout carries under `fabriek/example/` and under no bare name; the
+  operator merged it, and the checkout's own branch and working tree were
+  as the operator left them throughout. The proxy counted tokens and the
+  executor is routing.
+
+That parity run's last three checks failed on the proof and not on the
+host, and `45d07b8` fixes both causes: it wanted exactly one open pull
+request where the decider had legitimately pushed the architect's and the
+manager's branches beside the builder's, and it read the mirror and the
+record at once where `mirror` is asked on the bus, answered when the
+executor next comes round, and reaches the checkout only on the
+operator's next `fetch`. Point 5 was then confirmed by hand on the same
+factory: after `up`, `mirror` and `fetch`, the checkout's
+`fabriek/example/main` is `7f1ed9b8`, which is Forgejo's main, and
+`refs/fabriek/example/record` is present.
+
+The host found what no test on a Mac could, and this tree carries the
+fix for each: a factory's clone and its forge seed named safe to git,
+which a checkout owned by the operator and read as root needs; an nginx
+include per factory rather than one shared name; the state unit started
+before render, since the bus ACL is applied against a running bus; a
+cage's running read from what `nixcage-container status` says and not
+from its exit code; `sudo systemctl` in the proofs, so a unit does not
+ask the operator for a password per call; and the CLI reaching the
+machine program by the sudoers path. A microvm role also found a gap in
+the cage itself, closed upstream by nixcage's ADR-020 (a file asked as a
+bind is staged into a microVM, `exec` reads the session's home from the
+record, and a session without a tty reads a pipe that waits) and pinned
+here by the lock.
 
 Status 2026-09-22: two proposals would change the per-factory services
 this ADR declares, neither accepted yet. ADR-068: one Forgejo per host

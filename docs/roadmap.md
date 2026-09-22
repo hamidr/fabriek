@@ -301,22 +301,23 @@ One package, built through the flake, tests in its own runner.
   ADR-067 supersedes: there is no machine, no runtime line, no overlay
   store and no share protocol to time. What it measured is in ADR-057's
   verification, in the history.
-- 6.8 `tests/manual/host-autostart.sh` on a NixOS host (ADR-048). Now the
-  primary proof (ADR-067): the unit active after boot, `fabriek ps` by
-  hand seeing the factory running at its pin, and both agreeing across a
-  stop and a start. Everything else of ADR-048 is asserted on this host by
-  `host_module.bats` and `operator_config.bats`. Not run as of 2026-09-21.
-- 6.10 ADR-067 on a NixOS host, its measurement plan: two factories up
-  with a bridge each and a role of one reaching only its own bus; a cage
-  with no route off the host beside docker's rules; a `microvm` role in
-  its own kernel and the floor's clamp printed; and the checkout carrying
-  the factory's refs with its own branch and tree untouched. Everything
-  else of ADR-067 is asserted on this host by `host_module.bats`,
-  `factory_up.bats`, `up.bats`, `seam.bats`, `probes.bats`,
-  `resources.bats`, `repo_declaration.bats` and `journey.sh`, and the
-  lifecycle by `models/factory-lifecycle.qnt`. Not run as of 2026-09-21:
-  the manual proofs under `tests/manual/` still reach a factory over the
-  machine's ssh and are rewritten against the host first.
+- 6.8 `tests/manual/host-autostart.sh` on a NixOS host (ADR-048). Done
+  2026-09-22 on `pc`: every check, the unit active after boot in the
+  factory's slice, `fabriek ps` by hand seeing the factory the unit
+  started, and both agreeing across a stop and a start. Everything else
+  of ADR-048 is asserted on this host by `host_module.bats` and
+  `operator_config.bats`.
+- 6.10 ADR-067 on a NixOS host, its measurement plan. Done 2026-09-22 on
+  `pc`, recorded in ADR-067's verification: two factories up with a
+  bridge each and a role of one reaching only its own bus, at 433 MiB a
+  factory idle; a cage with no route off the host, beside docker's rules
+  and with `ip_forward` at 1; a `microvm` role in a kernel of its own;
+  and the checkout carrying the factory's branch, main and record with
+  its own branch and tree untouched, through `parity.sh`'s whole journey
+  with real models. One scenario is gated rather than passed: the floor's
+  clamp wants `caps.substrate = "microvm"` in `pc`'s operator
+  configuration, and the clamp itself is asserted by `resources.bats`
+  and `seam.bats`.
 
 ## Where the log's open items landed (its section 6)
 

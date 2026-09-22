@@ -248,8 +248,9 @@ asks in six verbs. **The relay and the TUI** (`factory/src/relay`,
 
 ### What is not built
 
-`docs/roadmap.md` keeps the list beside each item. The record's comments,
-the TUI's forge-side views, and the proofs on a NixOS host are open.
+`docs/roadmap.md` keeps the list beside each item. The record's comments
+and the TUI's forge-side views are open. ADR-067's measurement plan ran
+on the host on 2026-09-22 and is recorded in its verification.
 
 ## Conventions
 
