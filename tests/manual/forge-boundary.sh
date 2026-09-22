@@ -30,7 +30,12 @@ fact_of() { sed -n "s/^$2=//p" "$FACTS_DIR/$1.env"; }
 onhost_of() {
 	local f="$1"
 	shift
-	sudo env "FABRIEK_FACTORY=$f" "FABRIEK_LIB=$FABRIEK_LIB" bash -c "set -a; . '$FACTS_DIR/$f.env'; set +a; $*"
+	## The host's own path first, as a unit has it: the forge's CLI there is
+	## the wrapper that runs it as the forge's user, and a developer shell
+	## carries the package itself, which refuses to run as root.
+	sudo env "FABRIEK_FACTORY=$f" "FABRIEK_LIB=$FABRIEK_LIB" \
+		"PATH=/run/current-system/sw/bin:$PATH" \
+		bash -c "set -a; . '$FACTS_DIR/$f.env'; set +a; $*"
 }
 state_a="$(fact_of "$A" FABRIEK_STATE)"
 state_b="$(fact_of "$B" FABRIEK_STATE)"
@@ -84,10 +89,16 @@ scenario "An account of one factory sees nothing of the other's"
 given "$B's repository, private, owned by $B-operator"
 check "$B's repository is there" 200 "$(status_as "$owner_b" GET "/repos/$B-operator/$B")"
 when "$A's role asks for it"
-check "the repository answers 404" 404 "$(status_as "$role_token_a" GET "/repos/$B-operator/$B")"
-check "its issues answer 404" 404 "$(status_as "$role_token_a" GET "/repos/$B-operator/$B/issues")"
+## The forge answers 404 where the account cannot see the repository and
+## 403 where the token's own scopes do not reach the endpoint; both are a
+## refusal with nothing of the other factory in them, which is what the
+## boundary is.
+refused() { case "$1" in 403 | 404) echo refused ;; *) echo "$1" ;; esac; }
+check "the repository is refused" refused "$(refused "$(status_as "$role_token_a" GET "/repos/$B-operator/$B")")"
+check "its issues are refused" refused "$(refused "$(status_as "$role_token_a" GET "/repos/$B-operator/$B/issues")")"
 when "$A's owner asks for it"
-check "the repository answers 404" 404 "$(status_as "$owner_a" GET "/repos/$B-operator/$B")"
+check "the repository answers 404, since the owner may ask and may not see" 404 \
+	"$(status_as "$owner_a" GET "/repos/$B-operator/$B")"
 when "$A's owner lists what it may reach"
 check "it is $A's repository and nothing else" "$A-operator/$A" \
 	"$(body_as "$owner_a" GET /user/repos | jq -r '[.[].full_name] | sort | join(",")')"
@@ -108,11 +119,15 @@ for _i in $(seq 1 10); do
 	pid_b=$!
 	wait "$pid_a" || locked=1
 	wait "$pid_b" || locked=1
+	## Prepare restarts the factory's bus-acl unit, and systemd refuses a
+	## unit started too often in a row; a pause between pairs keeps that
+	## rate limit out of a measurement about the forge's database.
+	sleep 12
 done
 check "every prepare succeeded" 0 "$locked"
 check "no prepare met a locked database" 0 "$(grep -c 'database is locked' "$prepare_log")"
 check "each account exists once" yes \
-	"$(sudo forgejo admin user list 2>/dev/null | awk 'NR > 1 { print $2 }' |
+	"$(sudo /run/current-system/sw/bin/forgejo admin user list 2>/dev/null | awk 'NR > 1 { print $2 }' |
 		sort | uniq -d | grep -q . && echo no || echo yes)"
 
 scenario "One factory goes down and comes back to the board it had"
