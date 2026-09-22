@@ -1,7 +1,7 @@
 ---
 id: ADR-068
 title: One Forgejo on the host, and an owner account per factory
-status: proposed
+status: implemented
 date: 2026-09-22
 status_date: 2026-09-22
 summary: the board is one instance per host; a factory's repository is owned by a per-factory account that is not an admin
@@ -137,8 +137,8 @@ documents note it in their status.
 ## Measurement
 
 Each gate runs against the Forgejo the host pins, on a NixOS host with two
-factories declared, and is recorded in this document's status before it
-moves to accepted.
+factories declared. What each answered is in the verification below; two
+are amended there, in the words the forge actually uses.
 
 1. Owner without admin. As `a-operator` (not an admin), with the
    `write:issue` token of `a-dev`: create the repository, the labels,
@@ -163,4 +163,79 @@ moves to accepted.
 5. Down and up. `fabriek down a`; `b`'s executor keeps running; `fabriek
    up a` finds `a`'s board with every issue and label it had
    (`tests/manual/stop-and-start.sh`).
-6. The seam. `tests/command/seam.bats` unchanged: no enter line moves.
+6. The seam. `tests/command/seam.bats`: the enter line changes in
+   `FABRIEK_REPOSITORY`'s value alone, since decision 2 renames the
+   repository's owner, or not at all.
+
+## Verification
+
+Implemented 2026-09-22 in six commits from `46234c2` (one Forgejo for the
+host) to `478173b` (the proof as a unit runs it), on the NixOS host `pc`
+with the factories `example` and `widgets` declared.
+
+On this host, by the suites:
+
+- `tests/command/host_module.bats`: two factories evaluate to one
+  `fabriek-forge` unit in no factory's slice, on the dataset
+  `/var/lib/nixcage/fabriek-forge` asked for through the storage
+  primitive at the host's `recordQuota`, with no `-record` or `-board`
+  unit for either; the forge binds `0.0.0.0` with `ROOT_URL` on
+  loopback, its port open on `fb-0`, `fb-1` and nowhere else; and the
+  `forgejo` wrapper names the work directory rather than reading
+  `FABRIEK_STATE`.
+- `tests/command/prepare.bats`: the owner account is made without
+  `--admin`, the repository is created on `/user/repos` as that account,
+  its token is scope `all` on it, a role's account is `<factory>-<role>`
+  with a `write:issue` token keyed by the bare role, and a token the
+  forge refuses is minted again under a name the account has not used.
+- `tests/unit/forge.bats`: every CLI call is made under a flock on
+  `cli.lock` beside the forge's state and no API call is.
+- `tests/unit/repo_declaration.bats`: a declaration carrying
+  `resources.recordQuota` is refused by name.
+- `tests/system/journey.sh`: every check, on the owner `<factory>-operator`
+  and the role accounts, the thread read back as bare roles.
+- `tests/command/seam.bats`: the line moves in `FABRIEK_REPOSITORY`'s
+  value and nowhere else, which is gate 6 as amended.
+
+On the host, `tests/manual/forge-boundary.sh` with `A=example
+B=widgets`, every check (transcript `forge-boundary.txt`):
+
+- Gate 1: the repository is there, private, made by the owner; every
+  stage of the workflow is a label the owner made; the role is a read
+  collaborator under the account it holds; the memory issue was posted
+  by that account and labelled `memory` by the owner; and
+  `GET /api/v1/admin/users` is 403 for the owner and for a role.
+- Gate 2, amended: the forge answers a role's issue-scoped token 403 for
+  `/repos/widgets-operator/widgets` rather than 404, because the token's
+  scopes do not reach that endpoint at all, and 404 where the account
+  simply cannot see the repository, which is what the owner's token
+  gets. Both are a refusal carrying nothing of the other factory, which
+  is what the boundary is; the proof reads them as one. `GET
+  /user/repos` lists `example-operator/example` alone.
+- Gate 3, amended in its method: prepare is the whole of what speaks to
+  the forge's CLI, so ten concurrent pairs of `factory-prepare` are the
+  race this asks for, without ten renders of each factory. Every prepare
+  succeeded, no `database is locked` anywhere, and every account exists
+  once. Paced twelve seconds apart, because prepare restarts the
+  factory's `bus-acl` unit and systemd refuses a unit started too often,
+  which is systemd's rate limit and not the forge's database.
+- Gate 5: `down example` leaves `widgets`'s executor active and the
+  forge serving, deletes neither account nor repository, and `up
+  example` finds the board with the issues and labels it had.
+
+Gate 4, the memory, on this host with both factories up and idle:
+`fabriek-forge.service` is 157016064 bytes, 150 MiB, once for the host.
+A factory's slice no longer holds a Forgejo: `fabriek-example.slice` is
+351588352 bytes against the 454332416 ADR-067 recorded for the same
+factory with its own board inside it, so the slice is about 98 MiB
+lighter and the host pays 150 MiB once instead of that much per factory.
+`fabriek-widgets.slice` is 135176192 bytes, and its microVM role is not
+in it: a machine's scope is `machine.slice`'s, which this ADR does not
+change. Numbers measured once on this host, not promised.
+
+What the host found and the tree carries the fix for: a factory's state
+outlives the instance its tokens were minted on, so prepare drops a token
+the forge answers 401 to and mints again (`2c4d408`); the probe for that
+has to stay inside the token's own scopes, since a role's issue-scoped
+token cannot ask `/user` at all, and a re-mint has to take a free name,
+since the forge has no way to delete an access token (`36a3f31`).

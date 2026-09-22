@@ -305,10 +305,19 @@ bind is staged into a microVM, `exec` reads the session's home from the
 record, and a session without a tty reads a pipe that waits) and pinned
 here by the lock.
 
-Status 2026-09-22: two proposals would change the per-factory services
-this ADR declares, neither accepted yet. ADR-068: one Forgejo per host
-in place of `fabriek-<name>-record` and `fabriek-<name>-board`.
-ADR-069: one NATS server per host, an account per factory, in place of
-`fabriek-<name>-bus` and `fabriek-<name>-bus-acl`. Sharing one Valkey
-between factories was examined under ADR-069 and refused. The units
-stand as built until either moves.
+Status 2026-09-22: ADR-068 is implemented, and with it two of the units
+this ADR declares are gone. `fabriek-<name>-record` and
+`fabriek-<name>-board` are replaced by `fabriek-forge-storage` and
+`fabriek-forge`, one board for the host outside every factory's slice,
+on its own dataset; a factory's slice holds its state, its bus, its
+egress credentials and its executor, and its cost on the host falls with
+the Forgejo that left it. Point 2 is amended in that: a factory's
+services are still NixOS units, and the board is the host's rather than
+the factory's. Everything else of this ADR stands, the measurement
+plan's four claims included.
+
+ADR-069 would take the bus the same way: one NATS server per host, an
+account per factory, in place of `fabriek-<name>-bus` and
+`fabriek-<name>-bus-acl`. Sharing one Valkey between factories was
+examined under ADR-069 and refused. Those two units stand as built
+until it moves.

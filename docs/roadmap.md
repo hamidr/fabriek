@@ -319,6 +319,23 @@ One package, built through the flake, tests in its own runner.
   configuration, and the clamp itself is asserted by `resources.bats`
   and `seam.bats`.
 
+## Phase 7: the host's own services
+
+- 7.1 ADR-068, one Forgejo for the host with an owner account per factory.
+  Done 2026-09-22 on `pc`, recorded in ADR-068's verification: one
+  `fabriek-forge` unit outside every slice at 150 MiB for the host, the
+  repository owned by `<factory>-operator` with no admin token anywhere,
+  a role's account `<factory>-<role>`, every CLI call under a host-wide
+  lock, and `resources.recordQuota` refused. `tests/manual/forge-boundary.sh`
+  is the host proof: the owner does everything prepare does, an account
+  of one factory is refused the other's repository, ten concurrent
+  prepares meet no locked database, and a factory taken down and brought
+  up again finds its board.
+- 7.2 ADR-069, one NATS server for the host with an account per factory.
+  Open. The condition the document set is met (this host runs two
+  factories), and the work is the client in `factory/src/bus` before
+  anything else.
+
 ## Where the log's open items landed (its section 6)
 
 Relay shape: 3.5. Record export format and re-import: 3.3, with re-import
