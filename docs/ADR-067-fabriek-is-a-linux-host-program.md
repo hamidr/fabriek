@@ -316,8 +316,15 @@ services are still NixOS units, and the board is the host's rather than
 the factory's. Everything else of this ADR stands, the measurement
 plan's four claims included.
 
-ADR-069 would take the bus the same way: one NATS server per host, an
-account per factory, in place of `fabriek-<name>-bus` and
-`fabriek-<name>-bus-acl`. Sharing one Valkey between factories was
-examined under ADR-069 and refused. Those two units stand as built
-until it moves.
+ADR-069 is implemented too, and takes the bus the same way: one
+`nats.service` for the host with an account per factory, in place of
+`fabriek-<name>-bus` and `fabriek-<name>-bus-acl`. Sharing one Valkey
+between factories was examined under ADR-069 and refused. What is left
+in a factory's slice is its state, its egress credentials and its
+executor, and `fabriek_up_units` is gone with the units it listed: up
+starts the state unit, renders, and prepares, and down stops the
+executor.
+
+Point 2 is amended twice over, then: a factory's services are still
+NixOS units, and the board and the bus are the host's rather than the
+factory's.

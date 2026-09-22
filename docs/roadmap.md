@@ -332,9 +332,15 @@ One package, built through the flake, tests in its own runner.
   prepares meet no locked database, and a factory taken down and brought
   up again finds its board.
 - 7.2 ADR-069, one NATS server for the host with an account per factory.
-  Open. The condition the document set is met (this host runs two
-  factories), and the work is the client in `factory/src/bus` before
-  anything else.
+  Done 2026-09-22 on `pc`, recorded in ADR-069's verification: one
+  `nats.service` at 22 MiB for the host, a factory an account with its
+  own JetStream memory and no import or export, its users a file prepare
+  renders and the server reads at a reload, and `factory/src/bus` a NATS
+  client of ours with the same six verbs. `tests/manual/bus-account.sh`
+  is the host proof: a factory's streams and subjects are its account's,
+  its users are read again without a restart, a file the server cannot
+  read never reaches it, and an account's memory stops at its bound
+  while the other factory's does not move. Valkey leaves the closure.
 
 ## Where the log's open items landed (its section 6)
 

@@ -72,3 +72,11 @@ and since 2026-09-13 the relay reads on from the last id after the bus
 goes away (`relay/tail.ts`), the TUI starts a watch again when it ends and
 opens on what the bus still holds (`tui/watch.ts`), which is the reconnect
 scenario above, on fakes.
+
+Status 2026-09-22: ADR-069 is implemented, and point 2's relay reads the
+factory's account on the host's one nats-server, as the executor's user
+of that account. What it reads on from after the bus goes away is still
+the last id it held; an id now carries the stream's creation time, so one
+from before a restart is not read as a neighbour of one from after, and
+the relay takes the stream from its start instead of skipping what it
+never saw.

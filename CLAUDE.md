@@ -79,8 +79,8 @@ A change to what a role session is shows up there as a diff.
   scripted stand-ins for pi (`src/fake-actor`, `src/fake-decider`), so the
   vocabulary (`src/vocabulary.ts`), the bus messages (`src/messages.ts`) and
   the thread's attempt lines (`src/thread.ts`) are defined once. `src/bus`
-  and `src/forge` are the two adapters (RESP over a socket, Forgejo over
-  HTTP); `src/declaration.ts` reads the declaration the build put on the
+  and `src/forge` are the two adapters (NATS with JetStream over a socket,
+  Forgejo over HTTP); `src/declaration.ts` reads the declaration the build put on the
   host. No runtime dependency and no npm: built with `tsc`, tested
   with node's own runner, pi's types linked in from the pi in the closure
   (`factory/default.nix`).
@@ -115,7 +115,8 @@ A change to what a role session is shows up there as a diff.
   filed for the proxy);
   `machine-plan.sh` reads the plan and the profiles render put under the
   factory's directory and composes the actor's part of a session; `forge.sh` and
-  `bus.sh` prepare the forge and the bus once and confirm them after;
+  `bus.sh` prepare the factory's accounts on the host's forge and its
+  users on the host's bus, once and again without changing anything;
   `operator.sh` writes the operator stream; `probes.sh` writes the kernel's
   lines to the bus with the role each uid belongs to; `role-worktree.sh`, `signing.sh`,
   `factory-clone.sh`, `factory-config.sh` are a role's worktree, key, clone
@@ -129,10 +130,12 @@ A change to what a role session is shows up there as a diff.
   `services.fabriek` on a NixOS host (ADR-048, ADR-067): the operator's
   `config.toml` rendered to `/etc`, read by the CLI when no personal file
   exists; per declared factory a bridge `fb-<idx>`, a facts file under
-  `/etc/fabriek/factories/`, a slice with its state, bus, record, board,
-  egress credentials and executor units (`state.nix`, `bridge.nix`,
-  `bus.nix`, `board.nix`, `executor.nix`), and with `autoStart` a unit
-  that runs `factory-up` at boot; once on the host, nginx with a server
+  `/etc/fabriek/factories/`, a slice with its state, egress credentials
+  and executor units (`state.nix`, `bridge.nix`, `executor.nix`), and
+  with `autoStart` a unit that runs `factory-up` at boot; once on the
+  host, one Forgejo whose accounts keep the factories apart (`board.nix`,
+  ADR-068), one nats-server with an account per factory (`bus.nix`,
+  ADR-069), nginx with a server
   and a spend dictionary per factory and a forward chain that drops
   anything from or to a factory's bridge (`proxy.nix`, `spend.js`, driven
   by `spend.test.mjs` through `tests/unit/proxy_spend.bats`), one bpftrace
@@ -147,11 +150,12 @@ A change to what a role session is shows up there as a diff.
 - `modules/package.nix`: the two programs, wrapped with the module directory
   they source and the tools they run.
 - `tests/system/journey.sh`: the whole factory on this host with no cage
-  and no model: Valkey and a forge for real on localhost, the real machine
-  program, executor and relay, and the scripted actor and decider
+  and no model: a nats-server and a forge for real on localhost, the real
+  machine program, executor and relay, and the scripted actor and decider
   (`factory/src/fake-actor`, `factory/src/fake-decider`) where the cages
   would run pi. PRD-006's journey from a filed goal to a mirrored record,
-  with the refusals along the way and the bus ACL asked with DRYRUN.
+  with the refusals along the way, what a user may not say on the bus
+  asked by saying it, and a restart of the bus in the middle.
 - `tests/manual/`: what cannot be a bats test because it needs a NixOS host.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
@@ -190,9 +194,9 @@ by its compiled path under `factory/dist`.
 `tests/unit/` sources a shell module and calls its functions. `tests/command/`
 drives a program with its dependency stubbed on `PATH`: the CLI tests stub
 `sudo` (`up.bats` with real git on the checkout), `seam.bats` stubs
-`nixcage-container`, `prepare.bats` stubs the forge, `factory_up.bats`
-stubs all of those around `factory-up` whole, `operator.bats`,
-`bus_acl.bats` and `probes.bats` stub `valkey-cli`; `render.bats` stubs
+`nixcage-container`, `prepare.bats` stubs the forge and the bus's tools,
+`factory_up.bats` stubs all of those around `factory-up` whole,
+`operator.bats` and `probes.bats` stub `nats`; `render.bats` stubs
 `nix build` and `systemctl` around the real TOML reader;
 `host_module.bats` evaluates `nixosModules.host` for real with two
 factories declared, and `catalogue.bats` evaluates and builds

@@ -138,12 +138,17 @@ machine's:
   (`/run/fabriek/<name>`), the floor, and what render evaluates a profile
   from. The units load it; the CLI hands it over by naming the factory.
 - A slice `fabriek-<name>.slice` and under it: `fabriek-<name>-state`
-  (the factory's dataset through the storage primitive), `-bus` (Valkey on
-  the bridge, no persistence), `-bus-acl` (the machine program's rules
-  from the password files), `-egress-credentials` (the proxy's header
-  lines for this factory), and `-executor`, waiting on
-  `/run/fabriek/<name>/prepared` (`modules/host/state.nix`, `bus.nix`,
-  `executor.nix`).
+  (the factory's dataset through the storage primitive),
+  `-egress-credentials` (the proxy's header lines for this factory), and
+  `-executor`, waiting on `/run/fabriek/<name>/prepared`
+  (`modules/host/state.nix`, `executor.nix`).
+- Outside every slice, one bus for the host (ADR-069): `nats.service`,
+  JetStream with a memory store and no file store, with an account per
+  factory bounded on memory, connections and subscriptions and with no
+  import or export. A factory's users are `/var/lib/fabriek/<name>/nats-users.conf`,
+  which the configuration at `/var/lib/fabriek/nats.conf` includes and
+  prepare renders; the server reads them again when it is reloaded
+  (`modules/host/bus.nix`, `modules/bus.sh`).
 - Outside every slice, one board for the host (ADR-068):
   `fabriek-forge-storage` (its dataset at `/var/lib/nixcage/fabriek-forge`
   through the storage primitive, bounded by the host's `recordQuota`) and
@@ -372,8 +377,8 @@ with `sudo` stubbed and real git on the checkout; `render.bats` drives
 credential writer.
 
 `tests/system/journey.sh` runs the factory as a system with no cage and no
-model: Valkey and a forge on localhost, `factory-prepare` and `bus-acl` on
-them, the executor with `FABRIEK_SESSION_COMMAND` naming a session that
+model: a nats-server with one account and a forge on localhost, and
+`factory-prepare` on them, the executor with `FABRIEK_SESSION_COMMAND` naming a session that
 runs `fabriek-fake-actor` or `fabriek-fake-decider` where a cage would
 run pi. The scripted actor is the extension's own actor, bus and board
 (`extension/bind.ts`) driven by a script; the scripted decider is the

@@ -108,6 +108,37 @@ when "$B prepares again"
 prepare_b="$(onhost_of "$B" "fabriek-container factory-prepare '$B'" 2>&1)"
 check "$B is prepared" yes "$(grep -q "$B: prepared" <<<"$prepare_b" && echo yes || echo no)"
 
+scenario "An account's memory is its own, and one factory cannot spend another's"
+given "$A's account bounded at the host's build, and $B's beside it"
+## Published in one process, a megabyte at a time, until the account's
+## JetStream memory is gone: what the bound is for is that a factory
+## filling its own bus does not fill anyone else's.
+when "$A publishes past what its account may hold, and waits for each ack"
+## natscli makes each message itself, a hundred kilobytes of random text
+## at a time, so nothing of this size crosses a command line; published to
+## JetStream, so what comes back is the stream's answer and not a publish
+## nobody acknowledged.
+last=""
+for _i in $(seq 1 40); do
+	last="$(as_a executor pub operator --jetstream --count 50 "'{{ Random 100000 100000 }}'" 2>&1 | tail -2)"
+done
+## A stream at the account's bound discards its oldest rather than refusing
+## (every stream here is discard: old), so the publisher is answered and
+## the account stops growing. What the bound is for is that a factory
+## filling its own bus fills nobody else's.
+check "the publisher is answered rather than refused" yes \
+	"$(grep -q "insufficient resources\|resources exceeded" <<<"$last" && echo no || echo yes)"
+check "and the account's memory is at the bound the host set" yes \
+	"$(as_a executor account info | grep -qE "Memory: 128 MiB of 128 MiB" && echo yes || echo no)"
+check "$B's account is not where $A's is" yes \
+	"$(as_b executor account info | grep -qE "Memory: 0 B of 128 MiB|Memory: [0-9.]+ [KM]iB of 128 MiB" && echo yes || echo no)"
+check "$B may still publish on its own account" yes \
+	"$(as_b executor pub operator '{"json":"unbothered"}' | grep -q Published && echo yes || echo no)"
+## The streams go with the factory: brought down and up, the executor
+## makes them again and what was published here is gone.
+bash fabriek down "$A" >/dev/null 2>&1
+bash fabriek up "$A" >/dev/null 2>&1
+
 bash fabriek down "$B"
 bash fabriek down "$A"
 exit "$fail"

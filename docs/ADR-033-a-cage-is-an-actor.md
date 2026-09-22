@@ -100,3 +100,15 @@ refused, a role refused another's control stream and the decider refused
 a mailbox. The journey also found the executor reading the bus from "$"
 after starting its sessions, which lost a fast actor's ready; it reads
 from where each stream is first.
+
+Status 2026-09-22: ADR-069 is implemented, and points 2 and 3 are amended
+to name NATS and the account. The bus is one nats-server for the host and
+a factory is an account in it with its own JetStream memory; a stream is
+a JetStream memory stream, an entry's id is the stream's creation time
+and its sequence, and who may say what is a user's publish and subscribe
+permissions rather than a Valkey ACL. Attribution is still the server's
+and not the message's: a role may publish its own control, findings and
+events subjects and pull its own mailbox, and nothing else. There is no
+`ACL DRYRUN` on this bus, so what a user may not do is asked in
+`tests/system/journey.sh` by doing it as that user and reading the
+server's refusal.
