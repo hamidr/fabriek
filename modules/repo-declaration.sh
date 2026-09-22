@@ -166,8 +166,6 @@ fabriek_declaration_program() {
           then ["resources: memory must be a size"] else [] end),
          (if ((.roleQuota? // "1G") | type) != "string"
           then ["resources: roleQuota must be a size"] else [] end),
-         (if ((.recordQuota? // "1G") | type) != "string"
-          then ["resources: recordQuota must be a size"] else [] end),
          (if ((.tokens? // 1) | type) != "number"
           then ["resources: tokens must be a number"] else [] end),
          (if (.egress? // null) == null then []

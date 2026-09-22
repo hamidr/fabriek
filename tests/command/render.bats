@@ -3,8 +3,8 @@
 # handed (ADR-057 points 3 to 5, 7): reads fabriek.toml, fetches the
 # repository at the pin, reads its declaration, clamps it against the caps,
 # writes what the services include under the state directory, fills the
-# bridge's set, tightens the record's bound, builds a profile per role with
-# the machine's daemon and composes its pi directory, and writes
+# bridge's set, builds a profile per role with the machine's daemon and
+# composes its pi directory, and writes
 # profiles.json. Then the services that include any of it are reloaded.
 #
 # nix build, systemctl and nixcage-container are stubbed; nix eval is
@@ -61,7 +61,6 @@ needs = "review"
 [resources]
 memory = "4G"
 cores = 2
-recordQuota = "3G"
 tokens = 500000
 egress = ["api.anthropic.com", "api.openai.com"]
 
@@ -91,7 +90,6 @@ rev = "$REV"
 [caps]
 memory = "16G"
 cores = 8
-recordQuota = "8G"
 tokens = 1000000
 egress = ["api.anthropic.com"]
 
@@ -182,13 +180,6 @@ teardown() {
 	run cat "$CALLS/systemctl"
 	assert_line --partial 'restart fabriek-acme-egress-credentials'
 	assert_line --partial 'reload-or-restart nginx'
-}
-
-@test "the record's bound is tightened to what the factory asked and the operator allowed" {
-	run_fabriek_container factory-render
-	assert_success
-	run grep "storage ensure" "$CALLS/nixcage-container"
-	assert_output "storage ensure $STATE/forgejo 993 3072M"
 }
 
 @test "the decider's policy is read from the pin and its directory composed from the floor" {

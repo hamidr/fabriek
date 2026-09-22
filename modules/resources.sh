@@ -22,7 +22,6 @@ fabriek_resource_fields() {
 		memory size \
 		cores count \
 		roleQuota size \
-		recordQuota size \
 		tokens count \
 		concurrency count \
 		taskAttempts count \

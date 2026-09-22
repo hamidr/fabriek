@@ -19,7 +19,7 @@ setup() {
 { "name": "acme",
   "roles": { "builder": { "command": ["claude"], "provides": ["build"], "shell": "backend" } },
   "workflows": { "ship": { "stages": [ { "needs": "build" } ] } },
-  "resources": { "memory": "4G", "cores": 12, "recordQuota": "2G",
+  "resources": { "memory": "4G", "cores": 12,
                  "egress": ["api.anthropic.com", "api.openai.com"] } }
 JSON
 	cat >"$LOCAL" <<'JSON'
@@ -48,10 +48,9 @@ spec() { fabriek_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 }
 
 @test "when the factory asks for more than the operator allows, the spec carries the ceiling, in MiB" {
-	run jq -r '.cpus, .mem, .recordQuota' <<<"$(spec)"
+	run jq -r '.cpus, .mem' <<<"$(spec)"
 	assert_line --index 0 8
 	assert_line --index 1 4096
-	assert_line --index 2 2048
 }
 
 @test "egress is what the operator allowed, and a header only for an endpoint that has a credential" {
@@ -86,10 +85,10 @@ spec() { fabriek_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 	assert_output --partial review
 }
 
-@test "a machine told nothing about memory or the ledger gets no number, and keeps its own defaults" {
-	jq 'del(.resources.memory, .resources.recordQuota)' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
-	run jq -c '[has("mem"), has("recordQuota")]' <<<"$(spec)"
-	assert_output '[false,false]'
+@test "a cage told nothing about memory gets no number, and keeps its own default" {
+	jq 'del(.resources.memory)' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
+	run jq -c '[has("mem")]' <<<"$(spec)"
+	assert_output '[false]'
 }
 
 @test "what the clamp changed rides in the spec, because a build's log is not where an operator looks" {

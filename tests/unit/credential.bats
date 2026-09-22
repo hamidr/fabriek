@@ -16,7 +16,7 @@ setup() {
 	source "$FABRIEK_ROOT/modules/credential.sh"
 	CONFIG="$TEST_TEMP_DIR/config.json"
 	cat >"$CONFIG" <<'JSON'
-{ "caps": { "memory": "16G", "cores": 8, "recordQuota": "8G", "tokens": 1000000, "egress": ["api.anthropic.com"] },
+{ "caps": { "memory": "16G", "cores": 8, "tokens": 1000000, "egress": ["api.anthropic.com"] },
   "factories": { "acme": { "path": "/home/me/Src/acme" } },
   "credentials": { "api.anthropic.com": { "header": "x-api-key", "file": "/run/secrets/anthropic" } },
   "models": { "api.anthropic.com": "claude-opus-5" },
@@ -35,7 +35,7 @@ teardown() {
 	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
 	assert_success
 	run jq -cS . <<<"$output"
-	assert_output '{"caps":{"cores":8,"egress":["api.anthropic.com"],"memory":"16G","recordQuota":"8G","tokens":1000000},"catalogues":[],"credentials":{"api.anthropic.com":"x-api-key"},"embedder":{"url":"http://127.0.0.1:8080"},"factory":{"hostSystem":"x86_64-linux","name":"acme"},"models":{"api.anthropic.com":"claude-opus-5"},"pin":{"rev":"3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0"},"repository":{"path":"/home/me/Src/acme","remote":"git+file:///home/me/Src/acme"},"skills":{},"specialists":{}}'
+	assert_output '{"caps":{"cores":8,"egress":["api.anthropic.com"],"memory":"16G","tokens":1000000},"catalogues":[],"credentials":{"api.anthropic.com":"x-api-key"},"embedder":{"url":"http://127.0.0.1:8080"},"factory":{"hostSystem":"x86_64-linux","name":"acme"},"models":{"api.anthropic.com":"claude-opus-5"},"pin":{"rev":"3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0"},"repository":{"path":"/home/me/Src/acme","remote":"git+file:///home/me/Src/acme"},"skills":{},"specialists":{}}'
 	run grep -c "/run/secrets" "$TEST_TEMP_DIR/fabriek.toml"
 	assert_output 0
 }

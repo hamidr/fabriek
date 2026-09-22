@@ -489,19 +489,6 @@ render_files() {
 	fabriek_render_decider_dir "$FABRIEK_FLOOR" "$models" "$FABRIEK_ETC/pi-decider"
 }
 
-## The record's bound, asked of the storage primitive again with the
-## clamped number (ADR-036). The bridge's rules are nixcage's (ADR-064):
-## a cage's port is pinned to its address where its veth is made, so the
-## plan feeds no ruleset here.
-render_machine() {
-	local spec="$1" quota
-	quota="$(jq -r '.recordQuota // empty' "$spec")"
-	if [ -n "$quota" ]; then
-		nixcage-container storage ensure "$STATE_DIR/forgejo" "$(id -u forgejo)" "${quota}M" >/dev/null ||
-			die "could not bound the record at ${quota}M"
-	fi
-}
-
 ## A profile per role, built by the daemon at the pin and linked beside a pi
 ## directory composed from the floor (ADR-057 point 5); then profiles.json,
 ## which is the run's identity with the image and the credential (point 7).
@@ -571,7 +558,6 @@ cmd_factory_render() {
 	printf '%s\n' "$declared_json" >"$FABRIEK_ETC/declared.json"
 	printf '%s\n' "$catalogues_list" >"$FABRIEK_ETC/catalogues"
 	render_files "$spec" "$clone" "$rev"
-	render_machine "$spec"
 	render_profiles "$clone" "$rev"
 	systemctl restart "fabriek-$factory-egress-credentials.service"
 	systemctl reload-or-restart nginx.service

@@ -125,6 +125,15 @@ validate_with() {
 	assert_output --partial "kernelModules"
 }
 
+# ADR-068 point 8: the record is on the host's dataset, bounded by the
+# host, so a factory no longer asks for a size of its own. A key that is
+# accepted and does nothing is worse than one refused.
+@test "a declaration carrying resources.recordQuota is refused, naming it" {
+	run validate_with '.resources.recordQuota = "2G"'
+	assert_failure
+	assert_output --partial "recordQuota"
+}
+
 # ADR-020 point 1: the repository doing the declaring is the repository worked,
 # so there is nothing left for it to point at. A declaration still carrying the
 # old field is refused rather than silently obeyed.

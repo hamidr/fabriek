@@ -12,7 +12,7 @@ setup() {
 	source "$FABRIEK_ROOT/modules/resources.sh"
 	CAPS="$TEST_TEMP_DIR/caps.json"
 	cat >"$CAPS" <<'JSON'
-{ "memory": "16G", "cores": 8, "roleQuota": "50G", "recordQuota": "8G", "concurrency": 4 }
+{ "memory": "16G", "cores": 8, "roleQuota": "50G", "concurrency": 4 }
 JSON
 }
 
@@ -138,7 +138,7 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run fabriek_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","recordQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
+	assert_output '["memory","cores","roleQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
 }
 
 # Egress is a permission rather than a size, and it is in the same table so
@@ -202,21 +202,6 @@ JSON
 	[ "$status" -ne 0 ]
 }
 
-# ADR-027 point 8. A ledger with no bound fills the pool and takes every
-# worktree with it, so what a ledger may cost is declared and capped the way
-# every other bound here is rather than being a number in a module.
-@test "a factory that wants more ledger than the host allows gets the host's" {
-	run clamped '{ "recordQuota": "64G" }'
-	assert_success
-	assert_output --partial '"recordQuota":"8G"'
-}
-
-@test "a factory that asks for less ledger than it may have keeps what it asked" {
-	run clamped '{ "recordQuota": "2G" }'
-	assert_success
-	assert_output --partial '"recordQuota":"2G"'
-}
-
 # ADR-067 point 4: a role's substrate is nspawn unless it asks for a kernel
 # of its own; the operator's floor raises every role to microvm and lowers
 # none. A floor, not a ceiling: the one field where the operator asks for
@@ -251,5 +236,5 @@ JSON
 
 @test "the operator may cap the substrate floor beside the resources, and a declaration may not name it under resources" {
 	run fabriek_cap_field_names_json
-	assert_output '["memory","cores","roleQuota","recordQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress","substrate"]'
+	assert_output '["memory","cores","roleQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress","substrate"]'
 }
