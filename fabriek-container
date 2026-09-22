@@ -471,7 +471,7 @@ render_files() {
 		mv "$FABRIEK_ETC/declaration.json.new" "$FABRIEK_ETC/declaration.json"
 	printf '%s\n' "$rev" >"$FABRIEK_ETC/rev"
 	jq -c .notes "$spec" >"$FABRIEK_ETC/notes.json"
-	fabriek_render_bridge_plan "$FABRIEK_ETC/declaration.json" "$FABRIEK_BRIDGE" \
+	fabriek_render_bridge_plan "$FABRIEK_ETC/declaration.json" "$FABRIEK_BRIDGE" "$FABRIEK_BRIDGE_HOST" \
 		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_VALKEY_PORT" >"$FABRIEK_ETC/bridge.json"
 	fabriek_render_proxy "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/proxy/endpoints.conf"
 	jq -cS '{ credentials: (.egressHeaders // {}), models: (.egressModels // {}), embedder: .embedder }' "$spec" \

@@ -26,7 +26,7 @@ teardown() {
 }
 
 @test "the bridge plan puts the machine at .1, the decider at .2 and the roles from .10 in name order" {
-	run fabriek_render_bridge_plan "$DECL" fabriek0 8118 3000 6379
+	run fabriek_render_bridge_plan "$DECL" fabriek0 10.77.0.1 8118 3000 6379
 	assert_success
 	run jq -c '[.bridge, .host, .prefix, .cages, .proxy, .forgejo, .valkey]' <<<"$output"
 	assert_output '["fabriek0","10.77.0.1",24,{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"},"10.77.0.1:8118","10.77.0.1:3000","10.77.0.1:6379"]'
@@ -142,4 +142,16 @@ teardown() {
 	assert_success
 	refute_output --partial 'include /run/fabriek-egress/api.anthropic.com.conf;'
 	assert_output --partial 'include /run/fabriek-egress/acme/api.anthropic.com.conf;'
+}
+
+# Each factory on a host has a bridge of its own with its own net (ADR-067
+# point 3), and the host writes the bridge's address in the facts. Found on
+# pc 2026-09-22: the second factory's plan named the first's net, so both
+# factories' services and cages were planned on one bridge and the second's
+# bus ACL hit the first's bus.
+@test "the bridge plan is laid on the bridge's own net, taken from the address the host gave it" {
+	run fabriek_render_bridge_plan "$DECL" fb-1 10.77.1.1 8118 3000 6379
+	assert_success
+	run jq -c '[.bridge, .host, .cages.decider, .cages.builder, .valkey]' <<<"$output"
+	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.10","10.77.1.1:6379"]'
 }

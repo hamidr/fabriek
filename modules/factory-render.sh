@@ -16,16 +16,17 @@
 ## The bridge plan: the machine at .1, the decider at .2, a role's cage at
 ## .10 onward in name order, and where the three services answer. One copy,
 ## for the executor that starts sessions and the rules below, so the two
-## cannot disagree.
+## cannot disagree. The net is the bridge's own, from the address the host
+## gave it (ADR-067 point 3): each factory has a bridge, and a plan laid
+## on a fixed net put every factory on the first's (seen 2026-09-22).
 ##
-## fabriek_render_bridge_plan <declaration.json> <bridge> <proxyPort> <forgejoPort> <valkeyPort>
+## fabriek_render_bridge_plan <declaration.json> <bridge> <host> <proxyPort> <forgejoPort> <valkeyPort>
 fabriek_render_bridge_plan() {
-	local declaration="$1" bridge="$2" proxy_port="$3" forgejo_port="$4" valkey_port="$5"
+	local declaration="$1" bridge="$2" host="$3" proxy_port="$4" forgejo_port="$5" valkey_port="$6"
 	## -S: keys in name order, as the build's toJSON wrote them, so the set
 	## below and the executor's reading of the plan meet what they met.
-	jq -cS --arg bridge "$bridge" --arg proxy "$proxy_port" --arg forgejo "$forgejo_port" --arg valkey "$valkey_port" '
-	  "10.77.0" as $net
-	  | (.roles | keys) as $roles
+	jq -cS --arg bridge "$bridge" --arg net "${host%.*}" --arg proxy "$proxy_port" --arg forgejo "$forgejo_port" --arg valkey "$valkey_port" '
+	  (.roles | keys) as $roles
 	  | { bridge: $bridge,
 	      host: "\($net).1",
 	      prefix: 24,

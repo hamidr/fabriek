@@ -159,6 +159,15 @@ teardown() {
 	assert_failure
 }
 
+# The facts the host wrote name the bridge and its address (ADR-067 point
+# 3); a second factory's plan is on its own net and not the first's.
+@test "the bridge plan is laid on the net of the bridge the facts name" {
+	FABRIEK_BRIDGE=fb-1 FABRIEK_BRIDGE_HOST=10.77.1.1 run_fabriek_container factory-render
+	assert_success
+	run jq -c '[.bridge, .host, .cages.decider, .valkey]' "$ETC/bridge.json"
+	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.1:6379"]'
+}
+
 @test "the proxy's ceiling and locations, the endpoints and the model are written, and nginx reloaded after the headers" {
 	run_fabriek_container factory-render
 	assert_success
