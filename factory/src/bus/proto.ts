@@ -169,3 +169,7 @@ export function pubLine(subject: string, payload: string, reply?: string): strin
 export function subLine(subject: string, sid: string): string {
   return `SUB ${subject} ${sid}${CRLF}`;
 }
+
+export function unsubLine(sid: string): string {
+  return `UNSUB ${sid}${CRLF}`;
+}

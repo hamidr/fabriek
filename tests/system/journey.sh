@@ -61,8 +61,11 @@ cleanup() {
 }
 trap cleanup EXIT
 pkill -f "$DIST/" 2>/dev/null
-pkill -f "valkey-server 127.0.0.1:183" 2>/dev/null
-pkill -f "$FORGE/app.ini" 2>/dev/null
+## A run before this one may have left its server behind under another
+## scratch directory; only this user's are ended, so the host's own forge
+## and bus are untouched.
+pkill -u "$(id -u)" -f "nats.conf" 2>/dev/null
+pkill -u "$(id -u)" -f "app.ini" 2>/dev/null
 
 ## A port nothing listens on.
 free_port() {
@@ -72,8 +75,8 @@ free_port() {
 	done
 	return 1
 }
-VALKEY_PORT="$(free_port)"
-FORGE_PORT="$((VALKEY_PORT + 1))"
+BUS_PORT="$(free_port)"
+FORGE_PORT="$((BUS_PORT + 1))"
 
 ## The declaration and the plan a build would have put on the machine.
 cat >"$ETC/declaration.json" <<JSON
@@ -81,19 +84,19 @@ cat >"$ETC/declaration.json" <<JSON
   "roles": { "builder": { "command": ["pi"], "provides": ["build"] },
              "reviewer": { "command": ["pi"], "provides": ["review"] } },
   "workflows": { "ship": { "stages": [ { "needs": "build" }, { "needs": "review" } ] } },
-  "resources": { "taskAttempts": 2 } }
+  "resources": { "taskAttempts": 3 } }
 JSON
 cat >"$ETC/bridge.json" <<JSON
 { "bridge": "fabriek-$F", "host": "127.0.0.1", "prefix": 24,
   "cages": { "builder": "127.0.0.10", "reviewer": "127.0.0.11", "decider": "127.0.0.2" },
-  "proxy": "127.0.0.1:1", "forgejo": "127.0.0.1:$FORGE_PORT", "valkey": "127.0.0.1:$VALKEY_PORT" }
+  "proxy": "127.0.0.1:1", "forgejo": "127.0.0.1:$FORGE_PORT", "bus": "127.0.0.1:$BUS_PORT" }
 JSON
 
-## What the machine has and this host does not: the uid primitive, whose
-## answer here is this user; systemd, whose restart of the ACL unit is the
-## machine verb itself and whose restart of the executor is this script's;
-## and forgejo as the wrapper the machine installs, over whichever forge
-## the devShell carries.
+## What the host has and this run does not: the uid primitive, whose answer
+## here is this user; systemd, whose reload of the bus is a signal to the
+## server this run started and whose restart of the executor is this
+## script's; and forgejo as the wrapper the host installs, over whichever
+## forge the devShell carries.
 cat >"$BIN/nixcage-container" <<STUB
 #!/usr/bin/env bash
 case "\$1" in uid) id -u ;; *) echo "nixcage-container: \$*: not on this host" >&2; exit 1 ;; esac
@@ -101,7 +104,7 @@ STUB
 cat >"$BIN/systemctl" <<STUB
 #!/usr/bin/env bash
 case "\$*" in
-*fabriek-$F-bus-acl*) exec fabriek-container bus-acl $F ;;
+*"reload nats"*) exec ${NATS_SERVER:-nats-server} --signal reload="$W/nats.pid" ;;
 *) exit 0 ;;
 esac
 STUB
@@ -129,7 +132,28 @@ echo "draft" >"$ORIGIN/NOTES.md"
 CHECKOUT_HEAD="$(git -C "$ORIGIN" rev-parse HEAD)"
 
 scenario "The bus and the forge come up on this host"
-valkey-server --bind 127.0.0.1 --port "$VALKEY_PORT" --save "" --appendonly no --protected-mode no >"$LOG/valkey" 2>&1 &
+## One server with one account, as the host runs it (ADR-069): its
+## configuration includes this factory's users by a path relative to
+## itself, which is the only way nats-server resolves an include.
+mkdir -p "$W/js"
+cat >"$W/nats.conf" <<CONF
+port: $BUS_PORT
+jetstream {
+  store_dir: "$W/js"
+  max_memory_store: 67108864
+  max_file_store: 0
+}
+accounts {
+  $F {
+    jetstream { max_mem: 33554432 }
+    limits { max_connections: 64, max_subscriptions: 512 }
+    include "etc/nats-users.conf"
+  }
+}
+CONF
+: >"$ETC/nats-users.conf"
+export FABRIEK_BUS_CONFIG_DIR="$W"
+nats-server -c "$W/nats.conf" -P "$W/nats.pid" >"$LOG/bus" 2>&1 &
 pids+=($!)
 cat >"$FORGE/app.ini" <<INI
 APP_NAME = fabriek
@@ -163,7 +187,9 @@ forge="http://127.0.0.1:$FORGE_PORT/api/v1"
 # shellcheck disable=SC2329  # invoked through eventually
 forge_up() { curl -s -o /dev/null -w '%{http_code}' "$forge/version"; }
 check "the forge answers" 200 "$(eventually 60 200 forge_up)"
-check "the bus answers" PONG "$(valkey-cli -p "$VALKEY_PORT" ping 2>/dev/null)"
+# shellcheck disable=SC2329  # invoked through eventually
+bus_up() { (exec 3<>"/dev/tcp/127.0.0.1/$BUS_PORT") 2>/dev/null && echo listening || echo silent; }
+check "the bus answers" listening "$(eventually 30 listening bus_up)"
 
 scenario "The machine program prepares the factory on them"
 when "factory-prepare runs as fabriek up would run it"
@@ -177,19 +203,34 @@ repo="/repos/$F-operator/$F"
 check "the repository exists on the forge" "$F" "$(api GET "$repo" | jq -r .name)"
 check "every stage is a label, with the executor's and memory" "assigned,assigning,blocked,build,memory,review" "$(api GET "$repo/labels" | jq -r '[.[].name] | sort | join(",")')"
 check "each role has a memory issue opened as its own account on the forge" "$F-builder,$F-reviewer" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r '[.[].user.login] | sort | join(",")')"
-check "the bus refuses a connection that names nobody" NOAUTH "$(valkey-cli -p "$VALKEY_PORT" ping 2>&1 | grep -o NOAUTH)"
-as_executor() { VALKEYCLI_AUTH="$(cat "$STATE/bus/executor")" valkey-cli -p "$VALKEY_PORT" --user executor --no-auth-warning "$@"; }
-check "the executor may speak" PONG "$(as_executor ping)"
-## Each asked with a well-formed line: DRYRUN checks arity before permission.
-for user in builder reviewer decider probes; do
-	for line in "EVAL x 0" "CONFIG GET x" "ACL LIST" "SCAN 0"; do
-		# shellcheck disable=SC2086  # the line is words on purpose
-		check "$user may not ${line%% *}" "no permissions" "$(as_executor ACL DRYRUN "$user" $line 2>&1 | grep -o 'no permissions' | head -1)"
-	done
-done
-check "a role may not write another's control stream" "no permissions" "$(as_executor ACL DRYRUN builder XADD control:reviewer '*' k v 2>&1 | grep -o 'no permissions')"
-check "a role may write its own" OK "$(as_executor ACL DRYRUN builder XADD control:builder '*' k v 2>&1)"
-check "the decider may not write a mailbox" "no permissions" "$(as_executor ACL DRYRUN decider XADD mailbox:builder '*' k v 2>&1 | grep -o 'no permissions')"
+## There is no DRYRUN on this bus (ADR-069): what a user may not do is
+## asked by doing it as that user and reading the server's refusal. The
+## streams do not exist yet, so a publish that is allowed is answered by
+## nothing at all, and one that is not is answered by the violation.
+as_user() {
+	local who="$1"
+	shift
+	NATS_URL="nats://127.0.0.1:$BUS_PORT" NATS_USER="$F-$who" \
+		NATS_PASSWORD="$(cat "$STATE/bus/$who")" nats "$@" 2>&1
+}
+refusal() { grep -o "Permissions Violation for [A-Za-z]*" <<<"$1" | head -1; }
+## An account with users takes no anonymous connection: before prepare
+## wrote them there were none, and the server let anyone in.
+check "the bus refuses a login it does not know" "Authorization Violation" \
+	"$(NATS_URL="nats://127.0.0.1:$BUS_PORT" NATS_USER=nobody NATS_PASSWORD=nobody nats pub x y 2>&1 | grep -o "Authorization Violation" | head -1)"
+check "the executor may speak" "" "$(refusal "$(as_user executor pub control.builder '{}')")"
+check "a role may say its own control stream" "" "$(refusal "$(as_user builder pub control.builder '{}')")"
+check "a role may not say another's" "Permissions Violation for Publish" "$(refusal "$(as_user builder pub control.reviewer '{}')")"
+check "a role may not say another's mailbox" "Permissions Violation for Publish" "$(refusal "$(as_user builder pub mailbox.reviewer '{}')")"
+# shellcheck disable=SC2016  # a JetStream subject, not a variable
+check "a role may not pull another's mailbox" "Permissions Violation for Publish" \
+	"$(refusal "$(as_user builder pub '$JS.API.CONSUMER.MSG.NEXT.mailbox-reviewer.x' '{}')")"
+check "a role may not hear another's inbox" "Permissions Violation for Subscription" \
+	"$(refusal "$(as_user builder sub "_INBOX.$F-reviewer.>" --count 1)")"
+check "the decider may not say a mailbox" "Permissions Violation for Publish" "$(refusal "$(as_user decider pub mailbox.builder '{}')")"
+check "the decider may ask in its one verb" "" "$(refusal "$(as_user decider pub commands '{}')")"
+check "the probes may not say anything but their own stream" "Permissions Violation for Publish" \
+	"$(refusal "$(as_user probes pub events.builder '{}')")"
 
 scenario "The executor starts with scripted sessions where the cages would be"
 ## The factory's clone, as the first role session would have made it.
@@ -207,7 +248,7 @@ cat >"$BIN/session" <<SESSION
 role="\${@: -1}"
 export FABRIEK_ROLE="\$role"
 export FABRIEK_CAPABILITIES="\$(jq -r --arg r "\$role" '.roles[\$r].provides // [] | join(",")' "$ETC/declaration.json")"
-export FABRIEK_BUS="127.0.0.1:$VALKEY_PORT"
+export FABRIEK_BUS="127.0.0.1:$BUS_PORT"
 export FABRIEK_FORGE="$forge"
 export FABRIEK_REPOSITORY="$F-operator/$F"
 export FABRIEK_BUS_PASSWORD="$STATE/bus/\$role"
@@ -277,12 +318,50 @@ title2="a change that was never committed"
 fabriek-container task-file "$F" ship "$title2" "" >>"$LOG/operator" 2>&1
 title="$title2"
 n2="$(eventually 30 x issue_by_title)"
+## At least one: the script says done without a commit until this check
+## has seen a refusal, and the roles work fast enough that the attempt
+## after it may be refused too (seen 2026-09-22 on nats). Which is why the
+## declaration above allows three attempts: the one after the script
+## changes is the one that moves.
 # shellcheck disable=SC2329  # invoked through eventually
-refused_note() { api GET "$repo/issues/$1/comments" | jq -r '[.[] | select(.body | startswith("not done"))] | length'; }
-check "the executor refuses the done: the branch has no commit since the attempt began, and the thread says so" 1 "$(eventually 90 1 refused_note "$n2")"
+refused_note() {
+	[ "$(api GET "$repo/issues/$1/comments" | jq -r '[.[] | select(.body | startswith("not done"))] | length')" -ge 1 ] && echo yes || echo no
+}
+check "the executor refuses the done: the branch has no commit since the attempt began, and the thread says so" yes "$(eventually 90 yes refused_note "$n2")"
 echo "done" >"$W/outcome.builder"
 check "the decider sends it again to the same role, as attempt 2" yes "$(eventually 90 yes relay_has "\"stream\":\"mailbox:builder\".*\"kind\":\"assignment\",\"issue\":\"$n2\",\"attempt\":\"2\"")"
 check "and this time it moves on" yes "$(eventually 90 yes relay_has "\"stream\":\"mailbox:reviewer\".*\"kind\":\"assignment\",\"issue\":\"$n2\"")"
+
+scenario "The bus is restarted, and the factory comes back to an empty one"
+given "a factory at work on a bus that goes away"
+when "nats-server is ended and started again"
+## Memory streams go with the server, as Valkey's keys did (ADR-069 point
+## 1): what comes back is an empty bus, the executor makes the streams
+## again before it reconciles, and every actor re-announces itself.
+kill "$(cat "$W/nats.pid")" 2>/dev/null
+# shellcheck disable=SC2329  # invoked through eventually
+bus_gone() { (exec 3<>"/dev/tcp/127.0.0.1/$BUS_PORT") 2>/dev/null && echo listening || echo silent; }
+check "the bus is away" silent "$(eventually 30 silent bus_gone)"
+nats-server -c "$W/nats.conf" -P "$W/nats.pid" >>"$LOG/bus" 2>&1 &
+pids+=($!)
+check "the bus answers again" listening "$(eventually 30 listening bus_up)"
+# shellcheck disable=SC2329  # invoked through eventually
+streams_again() {
+	NATS_URL="nats://127.0.0.1:$BUS_PORT" NATS_USER="$F-executor" NATS_PASSWORD="$(cat "$STATE/bus/executor")" \
+		nats stream ls --json 2>/dev/null | jq -r 'if . == null then 0 else length end'
+}
+## Three per principal (its mailbox, its control, its events) for the two
+## roles, the decider and the executor, and four for the factory itself:
+## findings, commands, operator and probes.
+check "the executor makes the account's streams again" 16 "$(eventually 60 16 streams_again)"
+when "a goal is filed on the bus that came back"
+title3="a goal filed after the bus came back"
+fabriek-container task-file "$F" ship "$title3" "" >>"$LOG/operator" 2>&1
+title="$title3"
+n3="$(eventually 60 x issue_by_title)"
+check "the executor opened an issue for it" yes "$([ -n "$n3" ] && [ "$n3" != x ] && echo yes || echo no)"
+check "and a role is sent it, so the roles announced themselves again" yes \
+	"$(eventually 120 yes relay_has "\"kind\":\"assignment\",\"issue\":\"$n3\"")"
 
 scenario "The operator pushes a role's branch and mirrors, and both land where they should"
 check "push opens a pull request for builder/work" "$F: sent" "$(fabriek-container factory-send "$F" '{"verb":"push","role":"builder"}' 2>>"$LOG/operator" | tail -1)"
@@ -311,7 +390,7 @@ if [ "$fail" -eq 0 ]; then echo "journey: every check passed (logs under $LOG)";
 ## For looking around: FABRIEK_JOURNEY_HOLD=1 keeps everything up until
 ## interrupted, with the ports and the state directory printed above.
 if [ -n "${FABRIEK_JOURNEY_HOLD:-}" ]; then
-	echo "holding: bus 127.0.0.1:$VALKEY_PORT, forge $forge, state $STATE; interrupt to end"
+	echo "holding: bus 127.0.0.1:$BUS_PORT, forge $forge, state $STATE; interrupt to end"
 	while sleep 60; do :; done
 fi
 exit "$fail"

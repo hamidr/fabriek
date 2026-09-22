@@ -7,7 +7,7 @@
 // The interface above this file has not moved: the six verbs, and a stream
 // sequence where Valkey's id was.
 import { createConnection, type Socket } from "node:net";
-import { Decoder, connectLine, pubLine, subLine, type Frame, type Message } from "./proto.js";
+import { Decoder, connectLine, pubLine, subLine, unsubLine, type Frame, type Message } from "./proto.js";
 import { place, sequenceOf, idOf, readId } from "./subjects.js";
 
 export interface BusOptions {
@@ -42,7 +42,13 @@ interface Reader {
 }
 
 export class BusClient {
-  private readonly inboxes = new Map<string, Waiting>();
+  /**
+   * Who is waiting for what, by subscription id. A pull's messages arrive
+   * under their own subject and not the inbox they were asked on, so the
+   * subscription is what tells one caller's answers from another's: a
+   * subscription per request, ended with it.
+   */
+  private readonly waiting = new Map<string, Waiting>();
   private readonly decoder = new Decoder();
   private readonly created = new Map<string, number>();
   private readonly readers = new Map<string, Reader>();
@@ -58,8 +64,8 @@ export class BusClient {
     });
     const fail = (why: string) => {
       this.closed = true;
-      for (const [inbox, w] of this.inboxes) {
-        this.inboxes.delete(inbox);
+      for (const [sid, w] of this.waiting) {
+        this.waiting.delete(sid);
         w.fail(new Error(`bus closed: ${why}`));
       }
     };
@@ -73,16 +79,16 @@ export class BusClient {
         this.socket.write("PONG\r\n");
         return;
       case "MSG": {
-        const waiting = this.inboxes.get(frame.subject);
-        if (waiting && waiting.take(frame)) this.inboxes.delete(frame.subject);
+        const w = this.waiting.get(frame.sid);
+        if (w && w.take(frame)) this.end(frame.sid);
         return;
       }
       case "ERR": {
-        // A permissions violation names the subject it was for, and the
-        // caller waiting on that subject is the one owed the error.
+        // A permissions violation names the subject it was for, and every
+        // caller waiting is owed it: the server does not say whose it was.
         const error = new Error(frame.message);
-        for (const [inbox, w] of this.inboxes) {
-          this.inboxes.delete(inbox);
+        for (const [sid, w] of this.waiting) {
+          this.waiting.delete(sid);
           w.fail(error);
         }
         return;
@@ -106,7 +112,6 @@ export class BusClient {
     const client = new BusClient(socket, options.user);
     await client.greeted();
     socket.write(connectLine(options));
-    socket.write(subLine(`_INBOX.${options.user}.>`, "1"));
     await client.roundTrip();
     return client;
   }
@@ -145,9 +150,20 @@ export class BusClient {
     });
   }
 
-  private inbox(): string {
+  /** An inbox of this user's own, and the subscription that hears it. */
+  private listen(w: Waiting): { inbox: string; sid: string } {
     this.counter += 1;
-    return `_INBOX.${this.user}.${this.counter}`;
+    const sid = String(this.counter);
+    const inbox = `_INBOX.${this.user}.${sid}`;
+    this.waiting.set(sid, w);
+    this.socket.write(subLine(inbox, sid));
+    return { inbox, sid };
+  }
+
+  /** The subscription goes with the answer it was made for. */
+  private end(sid: string): void {
+    this.waiting.delete(sid);
+    if (!this.closed) this.socket.write(unsubLine(sid));
   }
 
   /** One request, one reply. */
@@ -157,12 +173,12 @@ export class BusClient {
         reject(new Error("bus closed"));
         return;
       }
-      const inbox = this.inbox();
+      let sid = "";
       const timer = setTimeout(() => {
-        this.inboxes.delete(inbox);
+        this.end(sid);
         reject(new Error(`the bus did not answer ${subject}`));
       }, timeout);
-      this.inboxes.set(inbox, {
+      const listening = this.listen({
         take(message) {
           clearTimeout(timer);
           resolve(message);
@@ -173,7 +189,8 @@ export class BusClient {
           reject(error);
         },
       });
-      this.socket.write(pubLine(subject, payload, inbox));
+      sid = listening.sid;
+      this.socket.write(pubLine(subject, payload, listening.inbox));
     });
   }
 
@@ -188,10 +205,10 @@ export class BusClient {
         reject(new Error("bus closed"));
         return;
       }
-      const inbox = this.inbox();
       const out: Message[] = [];
+      let sid = "";
       const timer = setTimeout(() => {
-        this.inboxes.delete(inbox);
+        this.end(sid);
         resolve(out);
       }, waitMs + REQUEST_MS);
       const done = () => {
@@ -199,8 +216,10 @@ export class BusClient {
         resolve(out);
         return true;
       };
-      this.inboxes.set(inbox, {
+      const listening = this.listen({
         take(message) {
+          // A status message ends the pull: the batch ran out, or the wait
+          // did, and the messages before it are what there was.
           if (message.status !== null) return done();
           out.push(message);
           return out.length >= batch ? done() : false;
@@ -210,8 +229,9 @@ export class BusClient {
           reject(error);
         },
       });
+      sid = listening.sid;
       const body = JSON.stringify({ batch, expires: waitMs * 1_000_000, no_wait: waitMs === 0 });
-      this.socket.write(pubLine(`$JS.API.CONSUMER.MSG.NEXT.${stream}.${consumer}`, body, inbox));
+      this.socket.write(pubLine(`$JS.API.CONSUMER.MSG.NEXT.${stream}.${consumer}`, body, listening.inbox));
     });
   }
 
@@ -295,7 +315,7 @@ export class BusClient {
     try {
       const consumer = await this.readerFor(stream, after);
       const messages = await this.pull(at.stream, consumer, BATCH, block);
-      return this.entries(stream, messages);
+      return this.entries(stream, await this.createdAt(at.stream), messages);
     } catch (e) {
       if (absent(e)) return [];
       throw e;
@@ -322,7 +342,7 @@ export class BusClient {
     try {
       const start = from === "-" ? { deliver_policy: "all" } : await this.startAt(at.stream, from, true);
       const consumer = await this.makeConsumer(at, start);
-      entries = this.entries(stream, await this.pull(at.stream, consumer, count ?? BATCH, 0));
+      entries = this.entries(stream, await this.createdAt(at.stream), await this.pull(at.stream, consumer, count ?? BATCH, 0));
     } catch (e) {
       if (absent(e)) return [];
       throw e;
@@ -394,13 +414,14 @@ export class BusClient {
       ...start,
     };
     if (at.filter) config["filter_subject"] = at.filter;
-    await this.api(`$JS.API.CONSUMER.CREATE.${at.stream}.${name}`, { stream_name: at.stream, name, config });
+    // The request carries the stream and the config, and the consumer's
+    // name is in the config alone: the server refuses a name beside it.
+    await this.api(`$JS.API.CONSUMER.CREATE.${at.stream}.${name}`, { stream_name: at.stream, config });
     return name;
   }
 
-  private entries(name: string, messages: Message[]): Entry[] {
+  private entries(name: string, created: number, messages: Message[]): Entry[] {
     const at = place(name);
-    const created = this.created.get(at.stream) ?? 0;
     const out: Entry[] = [];
     for (const m of messages) {
       const sequence = sequenceOf(m.reply);

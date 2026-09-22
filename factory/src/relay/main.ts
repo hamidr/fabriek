@@ -17,16 +17,16 @@ const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
 async function main(): Promise<void> {
   const declaration = readDeclaration(readFileSync(`${ETC}/declaration.json`, "utf8"));
   const { from, streams } = relayArgs(process.argv.slice(2), streamsFor(Object.keys(declaration.roles)));
-  const plan = JSON.parse(readFileSync(`${ETC}/bridge.json`, "utf8")) as { valkey: string };
-  const [host, port] = plan.valkey.split(":");
+  const plan = JSON.parse(readFileSync(`${ETC}/bridge.json`, "utf8")) as { bus: string };
+  const [host, port] = plan.bus.split(":");
   await tail({
     streams,
     from,
     connect: () =>
       BusClient.connect({
         host: host ?? "127.0.0.1",
-        port: Number(port ?? "6379"),
-        user: "executor",
+        port: Number(port ?? "4222"),
+        user: `${declaration.name}-executor`,
         password: readFileSync(`${STATE}/bus/executor`, "utf8").trim(),
       }),
     write: (line) => process.stdout.write(line + "\n"),

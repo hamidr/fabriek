@@ -30,21 +30,28 @@ let consumers: Map<string, FakeConsumer>;
 let seen: string[];
 let refuse: string[];
 let connected: { user: string; pass: string } | null;
+/** The subscription a client made for each inbox it waits on. */
+let sids: Map<string, string>;
 
 function line(socket: Socket, text: string): void {
   socket.write(text + CRLF);
 }
 
-function deliver(socket: Socket, inbox: string, payload: string, reply?: string): void {
-  // MSG <subject> <sid> [reply-to] <bytes>, which is the order a reader of
-  // a pull goes by: the sequence it was given is on the reply subject.
-  const head = reply ? `${inbox} 1 ${reply}` : `${inbox} 1`;
+/**
+ * MSG <subject> <sid> [reply-to] <bytes>. A pull's messages arrive under
+ * their own subject, as the server sends them, so what tells one caller's
+ * answers from another's is the subscription id.
+ */
+function deliver(socket: Socket, inbox: string, payload: string, reply?: string, subject?: string): void {
+  const sid = sids.get(inbox) ?? "0";
+  const head = reply ? `${subject ?? inbox} ${sid} ${reply}` : `${subject ?? inbox} ${sid}`;
   socket.write(`MSG ${head} ${Buffer.byteLength(payload)}${CRLF}${payload}${CRLF}`);
 }
 
 function status(socket: Socket, inbox: string, code: number, why: string): void {
   const head = `NATS/1.0 ${code} ${why}${CRLF}${CRLF}`;
-  socket.write(`HMSG ${inbox} 1 ${head.length} ${head.length}${CRLF}${head}${CRLF}`);
+  const sid = sids.get(inbox) ?? "0";
+  socket.write(`HMSG ${inbox} ${sid} ${head.length} ${head.length}${CRLF}${head}${CRLF}`);
 }
 
 /** The JetStream API and the subjects a stream captures, as much as this client asks of them. */
@@ -106,7 +113,7 @@ function answer(socket: Socket, subject: string, reply: string | null, payload: 
       if (!entry) continue;
       if (consumer.filter && entry.subject !== consumer.filter) continue;
       const ack = `$JS.ACK.${consumer.stream}.${key.split(".")[1]}.1.${sequence}.${sequence}.0.0`;
-      deliver(socket, reply, entry.payload, ack);
+      deliver(socket, reply, entry.payload, ack, entry.subject);
       sent += 1;
     }
     status(socket, reply, 408, "Request Timeout");
@@ -144,6 +151,10 @@ before(async () => {
           continue;
         }
         buffer = buffer.slice(end + 2);
+        if (verb === "SUB") {
+          const parts = head.split(/\s+/);
+          sids.set(String(parts[1]), String(parts[2]));
+        }
         if (verb === "PING") line(socket, "PONG");
         if (verb === "CONNECT") {
           const json = JSON.parse(head.slice("CONNECT ".length)) as { user: string; pass: string };
@@ -165,6 +176,7 @@ beforeEach(() => {
   seen = [];
   refuse = [];
   connected = null;
+  sids = new Map();
 });
 
 async function client(user = "acme-dev"): Promise<BusClient> {
@@ -208,6 +220,18 @@ describe("a bus client", () => {
     );
     assert.equal(entries[0]?.id, `${CREATED_MS}-2`);
     c.close();
+  });
+
+  it("gives a reader that has published nothing ids carrying the stream's creation time", async () => {
+    const writer = await client("acme-executor");
+    await writer.ensureStream("control-dev", ["control.dev"], 1000);
+    await writer.xadd("control:dev", { kind: "ready" }, 1000);
+    // A second client, which has asked the stream nothing before now.
+    const reader = await client("acme-reviewer");
+    const entries = await reader.xread("control:dev", "0-0", 10);
+    assert.equal(entries[0]?.id, `${CREATED_MS}-1`);
+    writer.close();
+    reader.close();
   });
 
   it("reads from the tail when asked for what happens next, and misses what was there before", async () => {
