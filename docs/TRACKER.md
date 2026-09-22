@@ -4,11 +4,11 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-21
+**Generated:** 2026-09-22
 
 **Next PRD number:** 008
 
-**Next ADR number:** 068
+**Next ADR number:** 069
 
 ## PRDs
 
@@ -93,3 +93,4 @@ document, then regenerate.
 | [ADR-065](ADR-065-at-the-ceiling-the-executor-holds-the-decider.md) | At the ceiling the executor holds the decider, and the proof reaches the ceiling itself | implemented | -- | ADR-035, ADR-037 | no decider session is restarted while the proxy refuses; isolation.sh spends its way to the limit itself |  |
 | [ADR-066](ADR-066-a-catalogue-says-so-and-every-specialist-reaches-the-base.md) | A catalogue says so through its default.nix, and every specialist reaches the base | implemented | -- | ADR-042, ADR-061, ADR-062 | a catalogue directory calls fabriek.catalogue at a protocol version; every other specialist extends a shipped one |  |
 | [ADR-067](ADR-067-fabriek-is-a-linux-host-program.md) | fabriek is a Linux-host program, a factory is a set of service instances on it, and a role's kernel boundary is nixcage's | implementing | -- | ADR-020, ADR-032, ADR-036, ADR-037, ADR-047, ADR-048, ADR-058 | no machine per factory; factories declared on a NixOS host; enter --substrate per role; the operator fetches the clone |  |
+| [ADR-068](ADR-068-one-forgejo-on-the-host-and-an-owner-per-factory.md) | One Forgejo on the host, and an owner account per factory | proposed | -- | ADR-036, ADR-037, ADR-047, ADR-048, ADR-067 | the board is one instance per host; a factory's repository is owned by a per-factory account that is not an admin |  |
