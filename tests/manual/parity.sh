@@ -117,9 +117,13 @@ done
 
 scenario "The executor opens a pull request, and the operator sees the branch in their checkout and nowhere else"
 # shellcheck disable=SC2329  # invoked through eventually
-pr_count() { api GET "$repo/pulls?state=open" | jq -r 'length'; }
-check "one pull request is open" 1 "$(eventually 120 1 pr_count)"
-pr="$(api GET "$repo/pulls?state=open" | jq -r '.[0].number')"
+## At least one: the decider may push more than the builder's branch, and
+## which roles it pushes is its judgment, not this proof's (seen
+## 2026-09-22: the architect's and the manager's beside the builder's).
+## The newest is the one the last stage's work is on.
+pr_open() { [ "$(api GET "$repo/pulls?state=open" | jq -r 'length')" -ge 1 ] && echo yes || echo no; }
+check "a pull request is open" yes "$(eventually 120 yes pr_open)"
+pr="$(api GET "$repo/pulls?state=open" | jq -r 'max_by(.number) | .number')"
 head_branch="$(api GET "$repo/pulls/$pr" | jq -r '.head.ref')"
 check "its branch is in a role's namespace" yes "$(printf '%s\n' "${head_branch%%/*}" | grep -qxF -f <(jq -r '.declaration.roles | keys[]' "$(spec_json)") && echo yes || echo no)"
 ## The origin is the operator's checkout on this host (ADR-067 point 5):
@@ -142,7 +146,15 @@ check "the merge is accepted" 200 \
 when "the operator runs fabriek mirror"
 bash fabriek -f "$F" mirror >/dev/null 2>&1
 main_forge="$(api GET "$repo/branches/main" | jq -r '.commit.id')"
-main_checkout="$(git -C "$origin" rev-parse --verify --quiet "refs/heads/fabriek/$F/main")"
+## mirror is asked on the bus and answered by the executor when it next
+## comes round, and the checkout is the operator's own fetch after that
+## (ADR-067 point 5), so both are waited for rather than read at once.
+# shellcheck disable=SC2329  # invoked through eventually
+fetched_main() {
+	bash fabriek -f "$F" fetch >/dev/null 2>&1
+	git -C "$origin" rev-parse --verify --quiet "refs/heads/fabriek/$F/main"
+}
+main_checkout="$(eventually 120 "$main_forge" fetched_main)"
 check "the checkout's fabriek/$F/main is Forgejo's main" "$main_forge" "$main_checkout"
 check "the checkout carries refs/fabriek/$F/record" present \
 	"$(git -C "$origin" rev-parse --verify --quiet "refs/fabriek/$F/record" >/dev/null && echo present || echo absent)"
