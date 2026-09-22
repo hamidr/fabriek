@@ -28,7 +28,14 @@ F="${F:-acme}"
 
 bash fabriek up "$F" || exit 1
 
-roles="$(jq -r '.declaration.roles | keys[]' "$(spec_json)" 2>/dev/null)"
+## The bridge, proxy and forged-source scenarios enter an nspawn cage's
+## network namespace from the host, which a microVM has none of (nixcage
+## ADR-019), so the first role is one on nspawn; the substrate scenario
+## below asks the microVM role its own questions. The second role is any
+## other, since it is only asked for its address and to be unreachable.
+roles="$(jq -r '.declaration.roles | to_entries | sort_by(.key)
+	| (map(select((.value.substrate // "nspawn") == "nspawn")) + map(select(.value.substrate == "microvm")))
+	| .[].key' "$(spec_json)" 2>/dev/null)"
 a="$(printf '%s\n' "$roles" | sed -n 1p)"
 b="$(printf '%s\n' "$roles" | sed -n 2p)"
 if [ -z "$a" ] || [ -z "$b" ]; then
