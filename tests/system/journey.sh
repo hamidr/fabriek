@@ -169,10 +169,10 @@ api() {
 	curl -s -X "$method" -H "Authorization: token $(cat "$STATE/forge/operator-token")" \
 		-H 'Content-Type: application/json' ${body:+-d "$body"} "$forge$path"
 }
-repo="/repos/operator/$F"
+repo="/repos/$F-operator/$F"
 check "the repository exists on the forge" "$F" "$(api GET "$repo" | jq -r .name)"
 check "every stage is a label, with the executor's and memory" "assigned,assigning,blocked,build,memory,review" "$(api GET "$repo/labels" | jq -r '[.[].name] | sort | join(",")')"
-check "each role has a memory issue opened as itself" "builder,reviewer" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r '[.[].user.login] | sort | join(",")')"
+check "each role has a memory issue opened as its own account on the forge" "$F-builder,$F-reviewer" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r '[.[].user.login] | sort | join(",")')"
 check "the bus refuses a connection that names nobody" NOAUTH "$(valkey-cli -p "$VALKEY_PORT" ping 2>&1 | grep -o NOAUTH)"
 as_executor() { VALKEYCLI_AUTH="$(cat "$STATE/bus/executor")" valkey-cli -p "$VALKEY_PORT" --user executor --no-auth-warning "$@"; }
 check "the executor may speak" PONG "$(as_executor ping)"
@@ -205,7 +205,7 @@ export FABRIEK_ROLE="\$role"
 export FABRIEK_CAPABILITIES="\$(jq -r --arg r "\$role" '.roles[\$r].provides // [] | join(",")' "$ETC/declaration.json")"
 export FABRIEK_BUS="127.0.0.1:$VALKEY_PORT"
 export FABRIEK_FORGE="$forge"
-export FABRIEK_REPOSITORY="operator/$F"
+export FABRIEK_REPOSITORY="$F-operator/$F"
 export FABRIEK_BUS_PASSWORD="$STATE/bus/\$role"
 export FABRIEK_FORGE_TOKEN="$STATE/forge/\$role-token"
 export FABRIEK_BASE_BRANCH=main
@@ -249,8 +249,10 @@ check "the reviewer is sent it next, after the builder's done moved it" yes "$(e
 check "and it closes" closed "$(eventually 60 closed state_of "$number")"
 check "the branch builder/work carries the builder's commit" 1 "$(git -C "$CLONE" rev-list --count main..builder/work)"
 ## The forge shows the executor's comments as the operator's, whose token
-## it writes with; the attempt line names where the branch stood.
-thread_of() { api GET "$repo/issues/$1/comments" | jq -r '.[] | "\(.user.login): \(.body | split("\n")[0] | sub(" \\(branch at [0-9a-f]+\\)$"; "") | sub(" \\(branch at none\\)$"; ""))"'; }
+## it writes with; the attempt line names where the branch stood. Every
+## login on the forge carries the factory (ADR-068 point 4), and the bare
+## name is what the thread is read as here.
+thread_of() { api GET "$repo/issues/$1/comments" | jq -r --arg f "$F-" '.[] | "\(.user.login | ltrimstr($f)): \(.body | split("\n")[0] | sub(" \\(branch at [0-9a-f]+\\)$"; "") | sub(" \\(branch at none\\)$"; ""))"'; }
 ## Each outcome is followed by the executor's trace of the attempt, cut
 ## from the role's events and the probes (ADR-051); the probes do not run
 ## here, so the trace names the scripted actor's tool call and no executable.
@@ -262,7 +264,7 @@ reviewer: outcome: done
 operator: trace: attempt 1 of reviewer" "$(thread_of "$number")"
 trace_of() { api GET "$repo/issues/$1/comments" | jq -r '[.[] | select(.body | startswith("trace: attempt 1 of builder"))][0].body'; }
 check "the builder's trace counts the tool it called" "tools: git 1" "$(trace_of "$number" | grep '^tools:')"
-check "the builder's memory was rewritten by the script" "last task: #$number (done)" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r '.[] | select(.user.login == "builder") | .body')"
+check "the builder's memory was rewritten by the script" "last task: #$number (done)" "$(api GET "$repo/issues?state=all&labels=memory&type=issues" | jq -r --arg who "$F-builder" '.[] | select(.user.login == $who) | .body')"
 check "the builder's finding reached its stream" yes "$(grep -q '"stream":"findings:builder"' "$LOG/relay" && echo yes || echo no)"
 
 scenario "A done with no commit is not done, and a failed task is retried by the same role"

@@ -20,6 +20,17 @@ fabriek_forge_token_path() {
 	printf '%s/%s-token\n' "$(fabriek_forge_dir "$state")" "$who"
 }
 
+## The account a factory holds on the host's forge (ADR-068 point 4): one
+## Forgejo serves every factory, so the name carries the factory as the
+## role's cage and its bus user already do. The token file keeps the bare
+## name, since a factory's state holds only its own.
+fabriek_forge_account() {
+	local factory="$1" who="$2"
+	fabriek_name_ok "$factory" || return 1
+	fabriek_name_ok "$who" || return 1
+	printf '%s-%s\n' "$factory" "$who"
+}
+
 ## The forge's own CLI, run as its user, which is the only way an account is
 ## made when registration is off.
 fabriek_forge_admin() {
@@ -55,15 +66,20 @@ fabriek_forge_ensure_user() {
 }
 
 ## A token, once, with exactly the scopes the caller names, kept as a file.
+## The file is keyed by the bare name and the token is the account's: a
+## factory's state holds only its own tokens, and the account it belongs to
+## is the forge's business (ADR-068 point 4).
+##
+## fabriek_forge_ensure_token <state> <key> <account> <scopes>
 fabriek_forge_ensure_token() {
-	local state="$1" who="$2" scopes="$3" file
+	local state="$1" who="$2" account="$3" scopes="$4" file
 	file="$(fabriek_forge_token_path "$state" "$who")" || return 1
 	[ -s "$file" ] && return 0
 	mkdir -p "$(dirname "$file")"
 	chmod 0700 "$(dirname "$file")"
 	local token
 	token="$(fabriek_forge_admin user generate-access-token \
-		--username "$who" --token-name fabriek --scopes "$scopes" --raw)" || return 1
+		--username "$account" --token-name fabriek --scopes "$scopes" --raw)" || return 1
 	(umask 077 && printf '%s\n' "$token" >"$file.new") && mv "$file.new" "$file"
 	chmod 0400 "$file"
 }
@@ -123,11 +139,11 @@ fabriek_forge_ensure_label() {
 ## poster and may rewrite it and nobody else may (ADR-036 point 3). Labelled
 ## and pinned by the operator's token, because a role's cannot label.
 fabriek_forge_ensure_memory() {
-	local base="$1" operator="$2" role_token="$3" owner="$4" name="$5" role="$6"
+	local base="$1" operator="$2" role_token="$3" owner="$4" name="$5" role="$6" account="$7"
 	local number
 	number="$(fabriek_forge_api "$base" "$operator" GET \
 		"/repos/$owner/$name/issues?state=all&labels=memory&type=issues&limit=50" |
-		jq -r --arg r "$role" '.[] | select(.user.login == $r) | .number' | head -1)"
+		jq -r --arg r "$account" '.[] | select(.user.login == $r) | .number' | head -1)"
 	[ -n "$number" ] && return 0
 	number="$(fabriek_forge_api "$base" "$role_token" POST "/repos/$owner/$name/issues" \
 		"$(jq -cn --arg t "memory: $role" '{title: $t, body: ""}')" | jq -r .number)" || return 1

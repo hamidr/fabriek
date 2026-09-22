@@ -155,7 +155,7 @@ export function fromEnvironment(): Pick<BindOptions, "role" | "capabilities" | "
         user: role,
         password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
-    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
+    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", factory: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
     baseBranch: process.env["FABRIEK_BASE_BRANCH"] ?? "main",
   };
 }

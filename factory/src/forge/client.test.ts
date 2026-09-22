@@ -43,25 +43,25 @@ function client(): ForgeClient {
   const dir = mkdtempSync(join(tmpdir(), "forge-"));
   const tokenFile = join(dir, "token");
   writeFileSync(tokenFile, "tok-123\n");
-  return new ForgeClient({ base, owner: "operator", repo: "acme", tokenFile });
+  return new ForgeClient({ base, owner: "acme-operator", repo: "acme", factory: "acme", tokenFile });
 }
 
 describe("a forge client", () => {
   it("sends the token from the file as a header and reads an issue with its labels", async () => {
-    answer = () => [200, { number: 7, title: "Do it", body: "how", labels: [{ name: "build" }], assignees: [{ login: "builder" }] }];
+    answer = () => [200, { number: 7, title: "Do it", body: "how", labels: [{ name: "build" }], assignees: [{ login: "acme-builder" }] }];
     const issue = await client().issue(7);
     assert.deepEqual(issue, { number: 7, title: "Do it", body: "how", labels: ["build"], assignee: "builder" });
     const last = seen.at(-1);
     assert.equal(last?.auth, "token tok-123");
-    assert.equal(last?.path, "/api/v1/repos/operator/acme/issues/7");
+    assert.equal(last?.path, "/api/v1/repos/acme-operator/acme/issues/7");
   });
 
-  it("reads a thread as who said what, oldest first, with the repository owner's words read as the executor's", async () => {
+  it("reads a thread as who said what, oldest first, the owner's words as the executor's and every other login as its bare role", async () => {
     // The executor writes with the operator's token, so the forge shows its
     // comments as the owner's; every reader of a thread looks for the
     // executor by that name. Found on a host: attempts counted zero and a
     // stale outcome was read as fresh, because nothing was ever "executor".
-    answer = () => [200, [{ user: { login: "operator" }, body: "brief", created_at: "2026-09-12T10:00:00Z" }, { user: { login: "builder" }, body: "outcome: done", created_at: "2026-09-12T11:00:00Z" }]];
+    answer = () => [200, [{ user: { login: "acme-operator" }, body: "brief", created_at: "2026-09-12T10:00:00Z" }, { user: { login: "acme-builder" }, body: "outcome: done", created_at: "2026-09-12T11:00:00Z" }]];
     const thread = await client().thread(7);
     assert.deepEqual(thread, [{ by: "executor", body: "brief" }, { by: "builder", body: "outcome: done" }]);
   });
@@ -71,25 +71,25 @@ describe("a forge client", () => {
     await client().comment(7, "outcome: done\n\nall green");
     const last = seen.at(-1);
     assert.equal(last?.method, "POST");
-    assert.equal(last?.path, "/api/v1/repos/operator/acme/issues/7/comments");
+    assert.equal(last?.path, "/api/v1/repos/acme-operator/acme/issues/7/comments");
     assert.deepEqual(last?.body, { body: "outcome: done\n\nall green" });
   });
 
-  it("finds a role's memory issue by label and poster, and rewrites its body", async () => {
+  it("finds a role's memory issue by label and by the account the role posts under, and rewrites its body", async () => {
     answer = (r) =>
-      r.method === "GET" ? [200, [{ number: 3, body: "old", user: { login: "builder" }, labels: [{ name: "memory" }] }]] : [201, { number: 3 }];
+      r.method === "GET" ? [200, [{ number: 3, body: "old", user: { login: "acme-builder" }, labels: [{ name: "memory" }] }]] : [201, { number: 3 }];
     const c = client();
     const memory = await c.memory("builder");
     assert.deepEqual(memory, { number: 3, body: "old" });
     await c.rewriteMemory(3, "new");
     const last = seen.at(-1);
     assert.equal(last?.method, "PATCH");
-    assert.equal(last?.path, "/api/v1/repos/operator/acme/issues/3");
+    assert.equal(last?.path, "/api/v1/repos/acme-operator/acme/issues/3");
     assert.deepEqual(last?.body, { body: "new" });
   });
 
   it("finds the issue a role is blocked on by label and assignee, and none when there is none", async () => {
-    answer = () => [200, [{ number: 9, assignees: [{ login: "builder" }] }, { number: 4, assignees: [{ login: "reviewer" }] }]];
+    answer = () => [200, [{ number: 9, assignees: [{ login: "acme-builder" }] }, { number: 4, assignees: [{ login: "acme-reviewer" }] }]];
     assert.equal(await client().blockedOn("builder"), 9);
     assert.equal(await client().blockedOn("tester"), null);
   });

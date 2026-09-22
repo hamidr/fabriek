@@ -36,12 +36,12 @@ async function main(): Promise<void> {
   const workflow = Object.keys(declaration.workflows)[0];
   if (!workflow) throw new Error("the declaration has no workflow");
   const [busHost, busPort] = plan.valkey.split(":");
-  const repository = `operator/${factory}`;
+  const repository = `${factory}-operator/${factory}`;
   const forgeBase = `http://${plan.forgejo}/api/v1`;
   const operatorToken = `${STATE}/forge/operator-token`;
 
-  const forge = new ForgeClient({ base: forgeBase, owner: "operator", repo: factory, tokenFile: operatorToken });
-  const board = new ForgeBoard(forge, `/repos/${repository}`);
+  const forge = new ForgeClient({ base: forgeBase, owner: `${factory}-operator`, repo: factory, factory, tokenFile: operatorToken });
+  const board = new ForgeBoard(forge, `/repos/${repository}`, factory);
 
   const connect = () =>
     BusClient.connect({

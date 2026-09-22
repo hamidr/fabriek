@@ -24,7 +24,8 @@ share the host's kernel asks for `substrate = "microvm"` and nixcage runs
 its cage in a kernel of its own (nixcage ADR-019).
 
 Nothing a cage does is trusted. A host-provided decider judges, an uncaged
-executor acts, the factory's own forge is the board and the record, its bus
+executor acts, the host's forge holds each factory's board and record
+under an account of its own, its bus
 carries pointers and events, one proxy holds the model credentials and
 counts each factory's spend, and a cage has one address on its factory's
 bridge with no route off the host.
@@ -37,7 +38,7 @@ Six primitives, and nothing else, cross it:
 | --- | --- |
 | `nixcage-container enter [flags] <name> <project> [cmd]` | every role session, `--substrate nspawn\|microvm` per role |
 | `nixcage-container uid <principal>` | a role's uid, allocated once; the principal is `<factory>-<role>` |
-| `nixcage-container storage ensure <path> <uid> [quota]` | a factory's state, a role's worktree and the record's dataset |
+| `nixcage-container storage ensure <path> <uid> [quota]` | a factory's state, a role's worktree and the forge's dataset |
 | `nixcage-container status <name>`, `stop <name>` | whether a cage runs and its scope; `stop -k` |
 | `nixcage-container exec <name> [-- cmd]` | a person entering a role whose actor runs |
 | `nixcage-container rm <name>` | a role whose declared substrate changed, so the next enter may choose again |
@@ -139,13 +140,18 @@ machine's:
 - A slice `fabriek-<name>.slice` and under it: `fabriek-<name>-state`
   (the factory's dataset through the storage primitive), `-bus` (Valkey on
   the bridge, no persistence), `-bus-acl` (the machine program's rules
-  from the password files), `-record` (the record's dataset, bounded) and
-  `-board` (Forgejo as a unit of ours, since the NixOS module is one
-  instance per host: `app.ini` generated, secrets made in the record's
-  dataset on first start, read back through `environment-to-ini`),
-  `-egress-credentials` (the proxy's header lines for this factory), and
-  `-executor`, waiting on `/run/fabriek/<name>/prepared`
-  (`modules/host/state.nix`, `bus.nix`, `board.nix`, `executor.nix`).
+  from the password files), `-egress-credentials` (the proxy's header
+  lines for this factory), and `-executor`, waiting on
+  `/run/fabriek/<name>/prepared` (`modules/host/state.nix`, `bus.nix`,
+  `executor.nix`).
+- Outside every slice, one board for the host (ADR-068):
+  `fabriek-forge-storage` (its dataset at `/var/lib/nixcage/fabriek-forge`
+  through the storage primitive, bounded by the host's `recordQuota`) and
+  `fabriek-forge` (Forgejo as a unit of ours, since the NixOS module is
+  one instance per host: `app.ini` generated, secrets made in that dataset
+  on first start, read back through `environment-to-ini`). It binds every
+  address and the firewall opens its port on the bridges and loopback
+  alone (`modules/host/board.nix`).
 - With `autoStart`, `fabriek-<name>.service`, which runs `factory-up` at
   boot and `factory-down` at stop in the slice.
 
@@ -202,9 +208,11 @@ remote leaves the checkout.
 After render, `up` runs `factory-prepare` (`modules/forge.sh`,
 `modules/bus.sh`). Once and then confirmed: a password
 per bus user and the ACL applied; the operator's account and token; the
-repository `operator/<factory>`; per role an account with read on it, a
-`write:issue` token and a pinned `memory` issue opened as the role; for the
-decider an account and a `read:issue` token; a label per stage's capability
+repository `<factory>-operator/<factory>`, owned by an ordinary account
+and not an admin's (ADR-068); per role an account `<factory>-<role>` with
+read on it, a `write:issue` token and a pinned `memory` issue opened as
+that account; for the decider `<factory>-decider` and a `read:issue`
+token; a label per stage's capability
 plus `blocked` and `memory`. Tokens and passwords are files under the state
 directory, owned by the role's uid, and reach the API as a header read from
 a file.

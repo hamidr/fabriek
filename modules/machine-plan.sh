@@ -242,7 +242,7 @@ fabriek_actor_args() {
 		"--setenv" "FABRIEK_SPECIALISTS=$specialists" \
 		"--setenv" "FABRIEK_BUS=$bus" \
 		"--setenv" "FABRIEK_FORGE=http://$forge/api/v1" \
-		"--setenv" "FABRIEK_REPOSITORY=operator/$factory" \
+		"--setenv" "FABRIEK_REPOSITORY=$factory-operator/$factory" \
 		"--setenv" "FABRIEK_BASE_BRANCH=main" \
 		"--setenv" "FABRIEK_PROXY=$proxy" \
 		"--setenv" "FABRIEK_HOME_HOST=$state/homes/$factory-$role"

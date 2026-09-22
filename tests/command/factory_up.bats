@@ -185,8 +185,8 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	assert_line --partial 'reload-or-restart nginx.service'
 	assert_line --partial 'restart fabriek-acme-bus-acl.service'
 	run cat "$FORGE/users"
-	assert_line operator
-	assert_line builder
+	assert_line acme-operator
+	assert_line acme-builder
 }
 
 @test "up marks the factory prepared under its own run directory, last, and starts the executor on it" {

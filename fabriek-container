@@ -626,11 +626,17 @@ cmd_factory_prepare() {
 	done < <(fabriek_bus_users "$declaration")
 	systemctl restart "fabriek-$factory-bus-acl.service"
 
-	local base owner="operator"
+	## The repository's owner is the factory's own account and not an admin
+	## (ADR-068 points 2 and 3): its token, the executor's, reaches what this
+	## account owns and nothing another account does. Making the account is
+	## the instance's admin's, which is root through the forge's CLI; every
+	## call after it is the owner's.
+	local base owner
+	owner="$(fabriek_forge_account "$factory" operator)" || die "invalid factory name: $factory"
 	base="http://$(jq -r .forgejo "$FABRIEK_ETC/bridge.json")/api/v1"
-	fabriek_forge_ensure_user operator "operator@$factory.invalid" --admin ||
+	fabriek_forge_ensure_user "$owner" "operator@$factory.invalid" ||
 		die "could not make the operator's account"
-	fabriek_forge_ensure_token "$STATE_DIR" operator all ||
+	fabriek_forge_ensure_token "$STATE_DIR" operator "$owner" all ||
 		die "could not mint the operator's token"
 	local operator
 	operator="$(fabriek_forge_token_path "$STATE_DIR" operator)"
@@ -673,25 +679,32 @@ cmd_factory_prepare() {
 		fi
 	fi
 
-	local role
+	## A role's account carries the factory, the name its cage and its bus
+	## user already have (ADR-068 point 4); its token file keeps the bare
+	## role, because a factory's state holds only its own.
+	local role account
 	while IFS= read -r role; do
-		fabriek_forge_ensure_user "$role" "$role@$factory.invalid" ||
+		account="$(fabriek_forge_account "$factory" "$role")" ||
+			die "invalid role name: $role"
+		fabriek_forge_ensure_user "$account" "$role@$factory.invalid" ||
 			die "could not make an account for role $role"
-		fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$role" ||
+		fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$account" ||
 			die "could not give role $role read on the repository"
-		fabriek_forge_ensure_token "$STATE_DIR" "$role" write:issue ||
+		fabriek_forge_ensure_token "$STATE_DIR" "$role" "$account" write:issue ||
 			die "could not mint a token for role $role"
 		fabriek_forge_ensure_memory "$base" "$operator" \
-			"$(fabriek_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" ||
+			"$(fabriek_forge_token_path "$STATE_DIR" "$role")" "$owner" "$factory" "$role" "$account" ||
 			die "could not open the memory issue for role $role"
 		cage_owns_credentials "$factory" "$role"
 	done < <(jq -r '.roles | keys[]' "$declaration")
 
-	fabriek_forge_ensure_user "$FABRIEK_DECIDER" "$FABRIEK_DECIDER@$factory.invalid" ||
+	account="$(fabriek_forge_account "$factory" "$FABRIEK_DECIDER")" ||
+		die "invalid factory name: $factory"
+	fabriek_forge_ensure_user "$account" "$FABRIEK_DECIDER@$factory.invalid" ||
 		die "could not make the decider's account"
-	fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$FABRIEK_DECIDER" ||
+	fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$account" ||
 		die "could not give the decider read on the repository"
-	fabriek_forge_ensure_token "$STATE_DIR" "$FABRIEK_DECIDER" read:issue ||
+	fabriek_forge_ensure_token "$STATE_DIR" "$FABRIEK_DECIDER" "$account" read:issue ||
 		die "could not mint the decider's token"
 	cage_owns_credentials "$factory" "$FABRIEK_DECIDER"
 
@@ -818,7 +831,7 @@ cmd_factory_board() {
 	factory_declaration "$factory" >/dev/null
 	local password
 	password="$(fabriek_secret)"
-	fabriek_forge_admin user change-password --username operator \
+	fabriek_forge_admin user change-password --username "$(fabriek_forge_account "$factory" operator)" \
 		--password "$password" --must-change-password=false >/dev/null 2>&1 ||
 		die "could not set the operator's password on the board"
 	jq -r .forgejo "$FABRIEK_ETC/bridge.json"

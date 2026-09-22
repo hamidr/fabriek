@@ -17,8 +17,8 @@
 ##
 ## What the machine must offer for these to pass, and where each is decided:
 ## Forgejo on the machine with an operator token under the state directory
-## (2.3); a repository operator/<factory> whose labels are the workflow's
-## stages (2.3); the executor as a unit and the decider as a session it
+## (2.3); a repository <factory>-operator/<factory> whose labels are the
+## workflow's stages (2.3); the executor as a unit and the decider as a session it
 ## starts (3.3, 3.4); fabriek task file printing the issue number it
 ## opened (4.1); fabriek factory mirror pushing main and
 ## refs/fabriek/record (3.3).
@@ -39,7 +39,7 @@ api() {
 	onhost "curl -s -X '$method' -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" \
 		-H 'Content-Type: application/json' ${body:+-d '$body'} '$forge$path'"
 }
-repo="/repos/operator/$F"
+repo="/repos/$F-operator/$F"
 # shellcheck disable=SC2329  # invoked through eventually
 labels_of() { api GET "$repo/issues/$1" | jq -r '[.labels[].name] | sort | join(",")'; }
 # shellcheck disable=SC2329  # invoked through eventually
@@ -53,7 +53,7 @@ scenario "The board is on the machine"
 given "a factory whose machine is up"
 when "the operator asks Forgejo for the factory's repository"
 check "Forgejo answers" 200 "$(onhost "curl -s -o /dev/null -w '%{http_code}' $forge/version" 2>/dev/null)"
-check "the repository operator/$F exists" 200 \
+check "the repository $F-operator/$F exists" 200 \
 	"$(onhost "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: token \$(cat $STATE/forge/operator-token)\" $forge$repo" 2>/dev/null)"
 mapfile -t stages < <(jq -r '.declaration.workflows.ship.stages[].needs' "$(spec_json)" 2>/dev/null)
 check "the workflow ship declares at least two stages" yes "$([ "${#stages[@]}" -ge 2 ] && echo yes || echo no)"

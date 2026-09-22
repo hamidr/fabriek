@@ -93,11 +93,15 @@ teardown() {
 	[ "$(tail -1 "$FORGE/chown-calls")" = "60192 $STATE/bus/decider $STATE/forge/decider-token" ]
 }
 
-@test "prepare makes the operator's account and token once, and the repository once" {
+@test "prepare makes the factory's owner account, which is not an admin, and its token and repository once" {
 	run_fabriek_container factory-prepare acme
 	assert_success
 	[ -s "$STATE/forge/operator-token" ]
-	run grep -c "admin user create --admin --username operator" "$FORGE/cli-calls"
+	run grep -c "admin user create --username acme-operator" "$FORGE/cli-calls"
+	assert_output 1
+	run grep -c -- "--admin" "$FORGE/cli-calls"
+	assert_output 0
+	run grep -c "generate-access-token --username acme-operator .*--scopes all" "$FORGE/cli-calls"
 	assert_output 1
 	run grep -c "^POST /user/repos\|POST.*/user/repos" "$FORGE/api-calls"
 	assert_output 1
@@ -107,13 +111,13 @@ teardown() {
 	run_fabriek_container factory-prepare acme
 	assert_success
 	for role in builder reviewer; do
-		[ "$(cat "$STATE/forge/$role-token")" = "token-for-$role" ]
-		run grep -c "generate-access-token --username $role .*--scopes write:issue" "$FORGE/cli-calls"
+		[ "$(cat "$STATE/forge/$role-token")" = "token-for-acme-$role" ]
+		run grep -c "generate-access-token --username acme-$role .*--scopes write:issue" "$FORGE/cli-calls"
 		assert_output 1
 	done
 	run sort "$FORGE/collaborators"
-	assert_output --partial builder
-	assert_output --partial reviewer
+	assert_output --partial acme-builder
+	assert_output --partial acme-reviewer
 	run grep -c '"permission":"read"' "$FORGE/api-calls"
 	assert_output 3
 }
@@ -144,15 +148,15 @@ teardown() {
 	touch "$FORGE/list-fails-once"
 	run_fabriek_container factory-prepare acme
 	assert_success
-	[ "$(grep -c '^builder$' "$FORGE/users")" = 1 ]
+	[ "$(grep -c '^acme-builder$' "$FORGE/users")" = 1 ]
 }
 
 @test "the decider gets an account and a token that can only read" {
 	run_fabriek_container factory-prepare acme
 	assert_success
-	run grep -c "generate-access-token --username decider .*--scopes read:issue" "$FORGE/cli-calls"
+	run grep -c "generate-access-token --username acme-decider .*--scopes read:issue" "$FORGE/cli-calls"
 	assert_output 1
-	[ "$(cat "$STATE/forge/decider-token")" = "token-for-decider" ]
+	[ "$(cat "$STATE/forge/decider-token")" = "token-for-acme-decider" ]
 }
 
 # The decider is a cage like a role's, and its files are bound the same way;
@@ -183,8 +187,8 @@ review"
 	run_fabriek_container factory-prepare acme
 	assert_success
 	run jq -r '.title + " by " + .user.login' "$FORGE/issues"
-	assert_line --index 0 "memory: builder by builder"
-	assert_line --index 1 "memory: reviewer by reviewer"
+	assert_line --index 0 "memory: builder by acme-builder"
+	assert_line --index 1 "memory: reviewer by acme-reviewer"
 	run wc -l <"$FORGE/labelled"
 	assert_output --regexp '^ *2$'
 	run wc -l <"$FORGE/pinned"
@@ -268,7 +272,7 @@ memory: reviewer"
 	run grep -c "issues/1/labels \[4\]" "$FORGE/labelled"
 	assert_output 1
 	run cat "$FORGE/patched"
-	assert_output '/repos/operator/acme/issues/2 {"state":"closed"}'
+	assert_output '/repos/acme-operator/acme/issues/2 {"state":"closed"}'
 }
 
 @test "given a board that already has issues, prepare leaves the record on origin alone" {
@@ -316,7 +320,7 @@ memory: reviewer"
 	assert_line --index 0 "10.77.0.1:3000"
 	local first="${lines[1]}"
 	[ "${#first}" -ge 20 ]
-	run grep -c "user change-password --username operator" "$FORGE/cli-calls"
+	run grep -c "user change-password --username acme-operator" "$FORGE/cli-calls"
 	assert_output 1
 	run_fabriek_container factory-board acme
 	assert_success

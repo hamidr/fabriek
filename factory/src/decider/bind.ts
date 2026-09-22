@@ -17,6 +17,7 @@ import { readDeclaration, type Declaration } from "../declaration.js";
 import { parseMessage } from "../messages.js";
 import { Decider, type IssueView, type Snapshot } from "./core.js";
 import { attemptsAt } from "../thread.js";
+import { roleOf } from "../forge/account.js";
 
 const STREAM_CAP = 1000;
 const STATE_LABELS = new Set(["assigning", "assigned", "blocked", "memory"]);
@@ -57,7 +58,8 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
   let stopped = false;
   let busy = false;
   const ready = new Set<string>();
-  const [owner, repo] = ["operator", o.declaration.name];
+  const factory = o.declaration.name;
+  const [owner, repo] = [`${factory}-operator`, factory];
   const ceiling = o.declaration.resources.tokens;
 
   const core = new Decider({
@@ -82,7 +84,8 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       const thread = await o.forge.thread(r.number);
       const stage = labels.find((l) => !STATE_LABELS.has(l)) ?? null;
       const attempts = stage ? attemptsAt(thread, stage) : 0;
-      const assignee = r.assignees?.[0]?.login ?? null;
+      const login = r.assignees?.[0]?.login;
+      const assignee = login ? roleOf(factory, login) : null;
       const lastOutcome = [...thread].reverse().find((c) => c.by === assignee && c.body.startsWith("outcome:"))?.body ?? null;
       issues.push({
         number: r.number,
@@ -215,6 +218,6 @@ export function fromEnvironment(): Pick<DeciderBindOptions, "declaration" | "pol
         user: "decider",
         password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
-    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
+    forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", factory: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),
   };
 }

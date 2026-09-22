@@ -2,11 +2,14 @@
 // it is needed, so a rotated token is picked up and none is ever held in a
 // long-lived variable; it travels as a header and never on a command line.
 import { readFileSync } from "node:fs";
+import { accountOf, roleOf } from "./account.js";
 
 export interface ForgeOptions {
   base: string;
   owner: string;
   repo: string;
+  /** The factory whose accounts these are (ADR-068 point 4). */
+  factory: string;
   tokenFile: string;
 }
 
@@ -49,13 +52,20 @@ export class ForgeClient {
       "GET",
       `${this.repo}/issues/${n}`,
     );
-    return { number: r.number, title: r.title, body: r.body ?? "", labels: r.labels.map((l) => l.name), assignee: r.assignees?.[0]?.login ?? null };
+    const login = r.assignees?.[0]?.login;
+    return {
+      number: r.number,
+      title: r.title,
+      body: r.body ?? "",
+      labels: r.labels.map((l) => l.name),
+      assignee: login ? roleOf(this.o.factory, login) : null,
+    };
   }
 
   /** Who said what, oldest first. The executor writes with the owner's token, so the owner's words read as the executor's. */
   async thread(n: number): Promise<Comment[]> {
     const r = await this.call<{ user: { login: string }; body: string }[]>("GET", `${this.repo}/issues/${n}/comments`);
-    return r.map((c) => ({ by: c.user.login === this.o.owner ? "executor" : c.user.login, body: c.body }));
+    return r.map((c) => ({ by: c.user.login === this.o.owner ? "executor" : roleOf(this.o.factory, c.user.login), body: c.body }));
   }
 
   async comment(n: number, body: string): Promise<void> {
@@ -68,7 +78,7 @@ export class ForgeClient {
       "GET",
       `${this.repo}/issues?state=all&labels=memory&type=issues&limit=50`,
     );
-    const mine = r.find((i) => i.user.login === role);
+    const mine = r.find((i) => i.user.login === accountOf(this.o.factory, role));
     return mine ? { number: mine.number, body: mine.body ?? "" } : null;
   }
 
@@ -82,7 +92,7 @@ export class ForgeClient {
       "GET",
       `${this.repo}/issues?state=open&labels=blocked&type=issues&limit=50`,
     );
-    const mine = r.find((i) => i.assignees?.some((a) => a.login === role));
+    const mine = r.find((i) => i.assignees?.some((a) => a.login === accountOf(this.o.factory, role)));
     return mine ? mine.number : null;
   }
 }

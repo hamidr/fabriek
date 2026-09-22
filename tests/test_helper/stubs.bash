@@ -62,17 +62,17 @@ while [ \$# -gt 0 ]; do
 done
 path="\${url#*/api/v1}"
 case "\$method \$path" in
-"GET /repos/operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
-"GET /repos/operator/acme/branches/main") [ -e "$FORGE/has-main" ] && echo '{"name":"main"}' || { echo '{}'; exit 22; } ;;
+"GET /repos/acme-operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
+"GET /repos/acme-operator/acme/branches/main") [ -e "$FORGE/has-main" ] && echo '{"name":"main"}' || { echo '{}'; exit 22; } ;;
 "POST /user/repos") touch "$FORGE/repo"; echo '{"name":"acme"}' ;;
-"PUT /repos/operator/acme/collaborators/"*) echo "\${path##*/}" >>"$FORGE/collaborators" ;;
-"GET /repos/operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs] | to_entries | map({id: (.key + 1), name: .value})' <"$FORGE/labels" || echo '[]' ;;
-"POST /repos/operator/acme/labels") jq -r .name <<<"\$body" >>"$FORGE/labels"; echo '{"id":1}' ;;
-"GET /repos/operator/acme/issues"*) [ -f "$FORGE/issues" ] && jq -Rn '[inputs | fromjson]' <"$FORGE/issues" || echo '[]' ;;
-"POST /repos/operator/acme/issues") n=\$(( \$( [ -f "$FORGE/issues" ] && wc -l <"$FORGE/issues" || echo 0 ) + 1 )); jq -c --argjson n "\$n" '. + {number: \$n, labels: [], user: {login: (.title | sub("memory: "; ""))}}' <<<"\$body" >>"$FORGE/issues"; echo "{\"number\": \$n}" ;;
-"POST /repos/operator/acme/issues/"*"/labels") echo "\$path \$(jq -c .labels <<<"\$body")" >>"$FORGE/labelled" ;;
-"PATCH /repos/operator/acme/issues/"*) echo "\$path \$body" >>"$FORGE/patched" ;;
-"POST /repos/operator/acme/issues/"*"/pin") echo "\$path" >>"$FORGE/pinned" ;;
+"PUT /repos/acme-operator/acme/collaborators/"*) echo "\${path##*/}" >>"$FORGE/collaborators" ;;
+"GET /repos/acme-operator/acme/labels") [ -f "$FORGE/labels" ] && jq -Rn '[inputs] | to_entries | map({id: (.key + 1), name: .value})' <"$FORGE/labels" || echo '[]' ;;
+"POST /repos/acme-operator/acme/labels") jq -r .name <<<"\$body" >>"$FORGE/labels"; echo '{"id":1}' ;;
+"GET /repos/acme-operator/acme/issues"*) [ -f "$FORGE/issues" ] && jq -Rn '[inputs | fromjson]' <"$FORGE/issues" || echo '[]' ;;
+"POST /repos/acme-operator/acme/issues") n=\$(( \$( [ -f "$FORGE/issues" ] && wc -l <"$FORGE/issues" || echo 0 ) + 1 )); jq -c --argjson n "\$n" '. + {number: \$n, labels: [], user: {login: ("acme-" + (.title | sub("memory: "; "")))}}' <<<"\$body" >>"$FORGE/issues"; echo "{\"number\": \$n}" ;;
+"POST /repos/acme-operator/acme/issues/"*"/labels") echo "\$path \$(jq -c .labels <<<"\$body")" >>"$FORGE/labelled" ;;
+"PATCH /repos/acme-operator/acme/issues/"*) echo "\$path \$body" >>"$FORGE/patched" ;;
+"POST /repos/acme-operator/acme/issues/"*"/pin") echo "\$path" >>"$FORGE/pinned" ;;
 *) echo "unstubbed: \$method \$path" >&2; exit 1 ;;
 esac
 EOF

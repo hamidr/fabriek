@@ -20,7 +20,7 @@ teardown() {
 @test "factory board prints the board's address on the bridge and the login, and holds nothing open" {
 	run_fabriek -f acme board
 	assert_success
-	assert_line --index 0 'http://10.77.0.1:3000/operator/acme'
+	assert_line --index 0 'http://10.77.0.1:3000/acme-operator/acme'
 	assert_output --partial "operator"
 	assert_output --partial "secret-of-the-day"
 	refute_output --partial "tunnel"

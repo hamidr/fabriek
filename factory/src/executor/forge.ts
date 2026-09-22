@@ -3,6 +3,7 @@
 // ids are looked up once per name; a label the forge lacks is a build or a
 // prepare that did not run, and is reported as such.
 import { ForgeClient, type Comment } from "../forge/client.js";
+import { accountOf, roleOf } from "../forge/account.js";
 import type { Board, BoardIssue } from "./core.js";
 
 interface RawIssue {
@@ -20,6 +21,7 @@ export class ForgeBoard implements Board {
   constructor(
     private readonly forge: ForgeClient,
     private readonly repo: string,
+    private readonly factory: string,
     private readonly base = "main",
   ) {}
 
@@ -30,7 +32,7 @@ export class ForgeBoard implements Board {
       body: r.body ?? "",
       state: r.state,
       labels: r.labels.map((l) => l.name),
-      assignee: r.assignees?.[0]?.login ?? null,
+      assignee: r.assignees?.[0]?.login ? roleOf(this.factory, r.assignees[0].login) : null,
       thread,
     };
   }
@@ -76,7 +78,7 @@ export class ForgeBoard implements Board {
   }
 
   async assign(n: number, role: string | null): Promise<void> {
-    await this.forge.call("PATCH", `${this.repo}/issues/${n}`, { assignees: role ? [role] : [] });
+    await this.forge.call("PATCH", `${this.repo}/issues/${n}`, { assignees: role ? [accountOf(this.factory, role)] : [] });
   }
 
   async comment(n: number, body: string): Promise<void> {

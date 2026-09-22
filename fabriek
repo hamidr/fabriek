@@ -505,7 +505,7 @@ cmd_board() {
   password="$(sed -n 2p <<<"$answer")"
   [[ -n "$addr" && -n "$password" ]] || { log_err "$factory did not say where its board is"; exit 1; }
   checkout_fetch "$factory" || true
-  echo "http://$addr/operator/$factory"
+  echo "http://$addr/$factory-operator/$factory"
   echo "log in as operator with the password $password"
 }
 
