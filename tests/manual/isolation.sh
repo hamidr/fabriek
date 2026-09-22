@@ -199,9 +199,9 @@ fi
 if [ "$code" = 429 ]; then
 	scenario "At the ceiling the executor holds the decider"
 	given "the proxy refusing everything"
-	decider_exits() { sudo journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -c 'session decider exited'; }
+	decider_exits() { journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -c 'session decider exited'; }
 	# shellcheck disable=SC2329  # invoked through eventually
-	held_said() { sudo journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
+	held_said() { journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
 	when "the decider's session meets the 429 and ends"
 	check "the executor says the decider is held" yes "$(eventually 120 yes held_said)"
 	exits="$(decider_exits)"
