@@ -17,7 +17,7 @@ import { readDeclaration, type Declaration } from "../declaration.js";
 import { parseMessage } from "../messages.js";
 import { Decider, type IssueView, type Snapshot } from "./core.js";
 import { attemptsAt } from "../thread.js";
-import { roleOf } from "../forge/account.js";
+import { roleOf, accountOf } from "../forge/account.js";
 
 const STREAM_CAP = 1000;
 const STATE_LABELS = new Set(["assigning", "assigned", "blocked", "memory"]);
@@ -214,8 +214,8 @@ export function fromEnvironment(): Pick<DeciderBindOptions, "declaration" | "pol
     connect: () =>
       BusClient.connect({
         host: busHost ?? "127.0.0.1",
-        port: Number(busPort ?? "6379"),
-        user: "decider",
+        port: Number(busPort ?? "4222"),
+        user: accountOf(repo ?? "", "decider"),
         password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
     forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", factory: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),

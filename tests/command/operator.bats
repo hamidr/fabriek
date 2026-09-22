@@ -3,7 +3,7 @@
 # stop and a mirror each become one entry on the operator stream, written as
 # the executor's own bus user, and the executor is the only thing that acts
 # on them. A title and a body are files on the machine, never argv words the
-# executor re-reads (the second invariant). valkey-cli is stubbed.
+# executor re-reads (the second invariant). natscli is stubbed.
 
 load ../test_helper/common
 
@@ -19,27 +19,27 @@ setup() {
 	cat >"$ETC/bridge.json" <<'JSON'
 { "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10" }, "proxy": "10.77.0.1:8118",
-  "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
+  "forgejo": "10.77.0.1:3000", "bus": "10.77.0.1:4222" }
 JSON
 	cat >"$ETC/declaration.json" <<'JSON'
 { "name": "acme", "roles": { "builder": { "command": ["pi"], "provides": ["build"] } },
   "workflows": { "ship": { "stages": [ { "needs": "design" }, { "needs": "build" } ] } } }
 JSON
-	cat >"$STUB_DIR/valkey-cli" <<STUB
+	cat >"$STUB_DIR/nats" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/bus-calls"
-echo "1-0"
+printf '%s\n' "\$* user=\${NATS_USER:-} url=\${NATS_URL:-} password=\${NATS_PASSWORD:+set}" >>"$TEST_TEMP_DIR/bus-calls"
 STUB
-	chmod +x "$STUB_DIR/valkey-cli"
+	chmod +x "$STUB_DIR/nats"
 }
 
 teardown() {
 	teardown_temp_dir
 }
 
-# The json field is the last argument of the XADD.
+## An entry is the fields a reader takes, as one JSON body; the operator's
+## carries the intervention under json.
 sent_json() {
-	tail -1 "$TEST_TEMP_DIR/bus-calls" | sed 's/.* json //'
+	tail -1 "$TEST_TEMP_DIR/bus-calls" | sed 's/^pub operator //; s/ user=.*//' | jq -r .json
 }
 
 @test "given a goal, task-file writes the title and body as files and sends a file command naming them and the first stage" {
@@ -60,8 +60,9 @@ sent_json() {
 	run_fabriek_container task-file acme ship "t" "b"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_output --partial "--user executor"
-	assert_output --partial "XADD operator"
+	assert_output --partial "user=acme-executor"
+	assert_output --partial "pub operator"
+	assert_output --partial "password=set"
 	refute_output --partial "executor-pass"
 }
 

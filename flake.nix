@@ -67,7 +67,11 @@
               ## on localhost. Forgejo is marked broken on Darwin in nixpkgs,
               ## so a Mac gets Gitea, whose API and CLI are the subset the
               ## forge modules use; the machine itself always runs Forgejo.
-              valkey
+              ## The bus is a NATS account per factory (ADR-069): the
+              ## server for the journey on this host, and natscli where a
+              ## shell asks the bus anything.
+              nats-server
+              natscli
               curl
               (if stdenv.hostPlatform.isDarwin then gitea else forgejo)
               ## up's lock is flock(1): util-linux's on Linux, and on a Mac

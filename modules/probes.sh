@@ -119,18 +119,16 @@ fabriek_probes_password() {
 }
 
 ## One entry on the factory's probes stream, as its probes user. The
-## password reaches valkey-cli through its environment rather than its
-## arguments, which /proc shows to every uid on the host.
+## password reaches natscli through its environment rather than its
+## arguments, which /proc shows to every uid on the host. What the stream
+## keeps is the stream's own bound, set where it is made (ADR-069 point 5).
 fabriek_probes_send() {
-	local facts="$1" factory="$2" cgroup="$3" role="$4" line="$5" etc host port
+	local facts="$1" factory="$2" cgroup="$3" role="$4" line="$5" etc url
 	etc="$(sed -n 's/^FABRIEK_ETC=//p' "$facts/$factory.env")"
-	host="$(jq -r '.valkey | split(":")[0]' "$etc/bridge.json")"
-	port="$(jq -r '.valkey | split(":")[1]' "$etc/bridge.json")"
-	VALKEYCLI_AUTH="$(cat "$(fabriek_probes_password "$facts" "$factory")")" valkey-cli -h "$host" -p "$port" \
-		--user probes --no-auth-warning \
-		XADD probes MAXLEN '~' "$FABRIEK_PROBES_CAP" '*' cgroup "$cgroup" role "$role" event "$line" >/dev/null
+	url="nats://$(jq -r .bus "$etc/bridge.json")"
+	NATS_URL="$url" NATS_USER="$factory-probes" \
+		NATS_PASSWORD="$(cat "$(fabriek_probes_password "$facts" "$factory")")" \
+		nats pub probes "$(jq -cn --arg c "$cgroup" --arg r "$role" --arg e "$line" \
+			'{cgroup: $c, role: $r, event: $e}')" >/dev/null
 }
 
-## How many entries the stream keeps (roadmap 2.2): the operator watches it
-## live and nothing persists it.
-FABRIEK_PROBES_CAP=10000

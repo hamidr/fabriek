@@ -143,7 +143,7 @@ host_eval() {
 		   ports = c.networking.firewall.interfaces.fb-1.allowedTCPPorts; }'
 	assert_success
 	run jq -c '[.acme, .widgets, .carrier, .nonlocal, .ports]' <<<"$output"
-	assert_output '[[{"address":"10.77.0.1","prefixLength":24}],[{"address":"10.77.1.1","prefixLength":24}],true,1,[3000,6379,8118]]'
+	assert_output '[[{"address":"10.77.0.1","prefixLength":24}],[{"address":"10.77.1.1","prefixLength":24}],true,1,[3000,4222,8118]]'
 }
 
 # What the machine program is told through the environment, per factory
@@ -157,13 +157,13 @@ host_eval() {
 	text="$(jq -r . <<<"$output")"
 	run grep -c '^FABRIEK_[A-Z_]*=' <<<"$text"
 	assert_output "$(grep -c . <<<"$text")"
-	run bash -c "set -a; . <(printf '%s\n' \"\$1\"); printf '%s\n' \"\$FABRIEK_FACTORY\" \"\$FABRIEK_BRIDGE\" \"\$FABRIEK_BRIDGE_HOST\" \"\$FABRIEK_PROXY_PORT\" \"\$FABRIEK_FORGEJO_PORT\" \"\$FABRIEK_VALKEY_PORT\" \"\$FABRIEK_STATE\" \"\$FABRIEK_FORGE_STATE\" \"\$FABRIEK_ETC\" \"\$FABRIEK_RUN\" \"\${FABRIEK_FLOOR:+set}\"" _ "$text"
+	run bash -c "set -a; . <(printf '%s\n' \"\$1\"); printf '%s\n' \"\$FABRIEK_FACTORY\" \"\$FABRIEK_BRIDGE\" \"\$FABRIEK_BRIDGE_HOST\" \"\$FABRIEK_PROXY_PORT\" \"\$FABRIEK_FORGEJO_PORT\" \"\$FABRIEK_BUS_PORT\" \"\$FABRIEK_STATE\" \"\$FABRIEK_FORGE_STATE\" \"\$FABRIEK_ETC\" \"\$FABRIEK_RUN\" \"\${FABRIEK_FLOOR:+set}\"" _ "$text"
 	assert_output "widgets
 fb-1
 10.77.1.1
 8118
 3000
-6379
+4222
 /var/lib/nixcage/fabriek/widgets
 /var/lib/nixcage/fabriek-forge
 /var/lib/fabriek/widgets
@@ -188,20 +188,39 @@ set"
 	assert_output '["fabriek-acme.slice",true]'
 }
 
-@test "each factory's bus is Valkey on its own bridge with no persistence, and the ACL is the machine program's for that factory" {
+# The bus is one nats-server for the host (ADR-069 point 1), outside every
+# factory's slice, with JetStream in memory and no file store at all. A
+# factory is an account in it (point 2), bounded on memory, connections and
+# subscriptions, with no import and no export, and its users come from a
+# file this configuration includes (point 3).
+@test "the bus is one nats-server for the host, and a factory is an account in it" {
 	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
-		'{ start = c.systemd.services.fabriek-widgets-bus.serviceConfig.ExecStart;
-		   acl = c.systemd.services.fabriek-widgets-bus-acl.script;
-		   env = c.systemd.services.fabriek-widgets-bus-acl.serviceConfig.EnvironmentFile;
-		   slice = c.systemd.services.fabriek-widgets-bus.serviceConfig.Slice; }'
+		'{ start = c.systemd.services.nats.serviceConfig.ExecStart;
+		   reload = c.systemd.services.nats.serviceConfig.ExecReload;
+		   slice = c.systemd.services.nats.serviceConfig.Slice or "none";
+		   conf = c.services.fabriek.bus.text;
+		   files = builtins.filter (r: builtins.match ".*nats.*" r != null) c.systemd.tmpfiles.rules;
+		   perFactory = builtins.filter (n: builtins.match "fabriek-(acme|widgets)-bus.*" n != null) (builtins.attrNames c.systemd.services); }'
 	assert_success
-	local units="$output"
-	run jq -r .start <<<"$units"
-	assert_output --partial 'valkey-server'
-	assert_output --partial '--bind 10.77.1.1 --port 6379'
-	assert_output --partial '--save ""'
-	run jq -c '[.acl, .env, .slice]' <<<"$units"
-	assert_output '["fabriek-container bus-acl","/etc/fabriek/factories/widgets.env","fabriek-widgets.slice"]'
+	local out="$output"
+	run jq -c '[.start, .reload, .slice, .perFactory]' <<<"$out"
+	assert_output --partial 'nats-server -c /var/lib/fabriek/nats.conf'
+	assert_output --partial '--signal reload=/run/nats/nats.pid'
+	assert_output --partial '"none"'
+	assert_output --partial '[]'
+	run jq -r .conf <<<"$out"
+	assert_output --partial 'port: 4222'
+	assert_output --partial 'max_file_store: 0'
+	assert_output --partial 'acme {'
+	assert_output --partial 'widgets {'
+	assert_output --partial 'include "acme/nats-users.conf"'
+	assert_output --partial 'include "widgets/nats-users.conf"'
+	assert_output --partial 'max_connections: 64'
+	refute_output --partial 'imports'
+	run jq -r '.files | join("\n")' <<<"$out"
+	assert_output --partial 'L+ /var/lib/fabriek/nats.conf'
+	assert_output --partial 'f /var/lib/fabriek/acme/nats-users.conf'
+	assert_output --partial 'f /var/lib/fabriek/widgets/nats-users.conf'
 }
 
 # Forgejo's NixOS module is one instance, and so is the board: one unit

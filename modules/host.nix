@@ -114,7 +114,7 @@ let
         FABRIEK_BRIDGE_HOST = p.host;
         FABRIEK_PROXY_PORT = toString cfg.ports.egress;
         FABRIEK_FORGEJO_PORT = toString cfg.ports.forgejo;
-        FABRIEK_VALKEY_PORT = toString cfg.ports.valkey;
+        FABRIEK_BUS_PORT = toString cfg.ports.bus;
         FABRIEK_STATE = p.state;
         ## The host's one forge (ADR-068 point 1): where its state is, so
         ## the machine program takes the lock beside it.
@@ -176,10 +176,15 @@ in
         default = 3000;
         description = "Where on a factory's bridge its board answers.";
       };
-      valkey = lib.mkOption {
+      bus = lib.mkOption {
         type = lib.types.port;
-        default = 6379;
-        description = "Where on a factory's bridge its bus answers.";
+        default = 4222;
+        description = "Where on a factory's bridge the host's bus answers.";
+      };
+      busMonitor = lib.mkOption {
+        type = lib.types.port;
+        default = 8222;
+        description = "Where on loopback the bus answers for its own health; no bridge reaches it.";
       };
       egress = lib.mkOption {
         type = lib.types.port;

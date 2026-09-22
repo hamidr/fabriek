@@ -191,7 +191,7 @@ fabriek_actor_args() {
 	fi
 	local forge bus proxy
 	forge="$(jq -r .forgejo "$etc/bridge.json")"
-	bus="$(jq -r .valkey "$etc/bridge.json")"
+	bus="$(jq -r .bus "$etc/bridge.json")"
 	proxy="$(jq -r .proxy "$etc/bridge.json")"
 	## The configuration directory is ours and read-only, named twice
 	## because pi-lsp reads its servers from PI_AGENT_DIR (ADR-043); pi's sessions,

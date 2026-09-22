@@ -43,7 +43,7 @@ FABRIEK_BRIDGE=fb-0
 FABRIEK_BRIDGE_HOST=10.77.0.1
 FABRIEK_PROXY_PORT=8118
 FABRIEK_FORGEJO_PORT=3000
-FABRIEK_VALKEY_PORT=6379
+FABRIEK_BUS_PORT=4222
 FABRIEK_STATE=$STATE
 FABRIEK_FORGE_STATE=$TEST_TEMP_DIR/forge-state
 FABRIEK_ETC=$ETC
@@ -103,6 +103,7 @@ file = "$TEST_TEMP_DIR/anthropic.key"
 TOML
 
 	stub_forge "$FORGE"
+	stub_bus "$TEST_TEMP_DIR/bus-calls"
 	stub_nix_build "$CALLS" "$REAL_NIX" "$TEST_TEMP_DIR/store"
 	stub_record systemctl "$CALLS/systemctl"
 	stub_record chown "$CALLS/chown"
@@ -184,7 +185,7 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	run cat "$CALLS/systemctl"
 	assert_line --partial 'restart fabriek-acme-egress-credentials.service'
 	assert_line --partial 'reload-or-restart nginx.service'
-	assert_line --partial 'restart fabriek-acme-bus-acl.service'
+	assert_line --partial 'reload nats.service'
 	run cat "$FORGE/users"
 	assert_line acme-operator
 	assert_line acme-builder
@@ -241,7 +242,10 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	[ ! -e "$RUN/prepared" ]
 	run cat "$CALLS/systemctl"
 	assert_line --index 0 "stop fabriek-acme-executor.service"
-	assert_line --index 1 "stop fabriek-acme-bus-acl.service fabriek-acme-bus.service"
+	## The board and the bus are the host's (ADR-068, ADR-069), so down
+	## stops the executor and nothing else of anyone's.
+	run grep -c "^stop " "$CALLS/systemctl"
+	assert_output 1
 	[ -d "$STATE/factories/acme" ]
 }
 
@@ -364,22 +368,27 @@ TOML
 # the factory's own bridge was applied from the old plan on another
 # factory's bus and up died there, never reaching render. The state unit
 # alone goes first, since render writes into what it makes.
-@test "up renders before it starts the units that read the render, and only the state unit goes before" {
+# Found on a host: a second factory's up applied the plan of the first,
+# because the bus's users were written from the plan on disk before render
+# had laid the new one (2026-09-22). The state unit is the only one of the
+# factory's own that goes before render.
+@test "up renders before it writes what reads the render, and only the state unit goes before" {
 	run_fabriek_container factory-up acme
 	assert_success
 	cat >"$STUB_DIR/systemctl" <<EOF2
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$CALLS/systemctl"
-case "\$*" in *bus-acl*) cp "$ETC/bridge.json" "$CALLS/plan-at-acl-start" ;; esac
+case "\$*" in *"reload nats"*) cp "$ETC/bridge.json" "$CALLS/plan-at-bus-users" ;; esac
 EOF2
 	chmod +x "$STUB_DIR/systemctl"
 	: >"$CALLS/systemctl"
 	sed -i.bak "s/^FABRIEK_BRIDGE=.*/FABRIEK_BRIDGE=fb-1/; s/^FABRIEK_BRIDGE_HOST=.*/FABRIEK_BRIDGE_HOST=10.77.1.1/" "$FACTS/acme.env" && rm "$FACTS/acme.env.bak"
 	run_fabriek_container factory-up acme
 	assert_success
-	run jq -r .host "$CALLS/plan-at-acl-start"
+	run jq -r .host "$CALLS/plan-at-bus-users"
 	assert_output 10.77.1.1
 	run grep "^start " "$CALLS/systemctl"
 	assert_line --index 0 "start fabriek-acme-state.service"
-	assert_line --index 1 "start fabriek-acme-bus.service fabriek-acme-bus-acl.service"
+	run grep -c "^start " "$CALLS/systemctl"
+	assert_output 1
 }

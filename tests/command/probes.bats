@@ -4,8 +4,8 @@
 # cage the cgroup is, written as that factory's probes user, carrying the
 # cgroup the kernel saw and the role, which nixcage says from the cage's
 # scope (nixcage ADR-012). One reader serves every factory on the host
-# (ADR-067): the factories are the facts files the host wrote. valkey-cli
-# and nixcage-container are stubbed; the cgroup tree is a fixture.
+# (ADR-067): the factories are the facts files the host wrote. natscli and
+# nixcage-container are stubbed; the cgroup tree is a fixture.
 
 load ../test_helper/common
 
@@ -22,11 +22,10 @@ setup() {
 	factory acme 0 '"builder": { "command": ["pi"], "provides": ["build"] }, "reviewer": { "command": ["pi"], "provides": ["review"] }'
 	factory widgets 1 ""
 	STATE="$TEST_TEMP_DIR/acme/state"
-	cat >"$STUB_DIR/valkey-cli" <<STUB
+	cat >"$STUB_DIR/nats" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/bus-calls"
-printf '%s\n' "\${VALKEYCLI_AUTH:-}" >>"$TEST_TEMP_DIR/bus-auth"
-echo "1-0"
+printf '%s\n' "\$* url=\${NATS_URL:-} user=\${NATS_USER:-}" >>"$TEST_TEMP_DIR/bus-calls"
+printf '%s\n' "\${NATS_PASSWORD:-}" >>"$TEST_TEMP_DIR/bus-auth"
 STUB
 	# Each running cage's scope, asked by name; a role whose cage is not
 	# running is stopped and owns no cgroup.
@@ -39,7 +38,7 @@ STUB
 printf '%s\n' "\$*" >>"$TEST_TEMP_DIR/status-calls"
 case "\$2" in acme-builder) echo "running 4001 machine.slice/machine-acme-builder.scope" ;; acme-decider) echo "running 4002 machine.slice/machine-acme-decider.scope" ;; *) echo stopped ;; esac
 STUB
-	chmod +x "$STUB_DIR/valkey-cli" "$STUB_DIR/nixcage-container"
+	chmod +x "$STUB_DIR/nats" "$STUB_DIR/nixcage-container"
 }
 
 ## One factory on the host: its facts file, and what render and prepare
@@ -60,7 +59,7 @@ EOF
 	cat >"$dir/etc/bridge.json" <<JSON
 { "bridge": "fb-$idx", "host": "10.77.$idx.1", "prefix": 24,
   "cages": { "builder": "10.77.$idx.10", "reviewer": "10.77.$idx.11", "decider": "10.77.$idx.2" },
-  "proxy": "10.77.$idx.1:8118", "forgejo": "10.77.$idx.1:3000", "valkey": "10.77.$idx.1:6379" }
+  "proxy": "10.77.$idx.1:8118", "forgejo": "10.77.$idx.1:3000", "bus": "10.77.$idx.1:4222" }
 JSON
 	[ -n "$roles" ] || return 0
 	cat >"$dir/etc/declaration.json" <<JSON
@@ -90,8 +89,11 @@ connect cgroup=$DECIDER_CG uid=60192 pid=4300 comm=node
 LINES
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_line --index 0 --partial "-h 10.77.0.1 -p 6379 --user probes --no-auth-warning XADD probes MAXLEN ~ 10000 * cgroup $BUILDER_CG role builder event exec cgroup=$BUILDER_CG uid=60000 pid=4242 comm=git"
-	assert_line --index 1 --partial "cgroup $DECIDER_CG role decider event connect cgroup=$DECIDER_CG uid=60192 pid=4300 comm=node"
+	assert_line --index 0 --partial "url=nats://10.77.0.1:4222 user=acme-probes"
+	run bash -c "sed -n '1p' '$TEST_TEMP_DIR/bus-calls' | sed 's/^pub probes //; s/ url=.*//' | jq -r '[.cgroup, .role, .event] | join(\"|\")'"
+	assert_output "$BUILDER_CG|builder|exec cgroup=$BUILDER_CG uid=60000 pid=4242 comm=git"
+	run bash -c "sed -n '2p' '$TEST_TEMP_DIR/bus-calls' | sed 's/^pub probes //; s/ url=.*//' | jq -r '[.cgroup, .role] | join(\"|\")'"
+	assert_output "$DECIDER_CG|decider"
 }
 
 # nspawn runs the cage's payload in a child cgroup of its scope, so the id
@@ -106,8 +108,8 @@ LINES
 exec cgroup=$payload uid=60000 pid=4242 comm=git
 LINES
 	assert_success
-	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_line --index 0 --partial "cgroup $payload role builder event"
+	run bash -c "sed 's/^pub probes //; s/ url=.*//' '$TEST_TEMP_DIR/bus-calls' | jq -r '[.cgroup, .role] | join(\"|\")'"
+	assert_line --index 0 "$payload|builder"
 }
 
 @test "the entry is written as the probes user, with the password in the environment and not on argv" {
@@ -115,7 +117,7 @@ LINES
 	run publish <<<"exec cgroup=$BUILDER_CG uid=60000 pid=1 comm=sh"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_output --partial "--user probes"
+	assert_output --partial "user=acme-probes"
 	refute_output --partial "probes-pass"
 	run cat "$TEST_TEMP_DIR/bus-auth"
 	assert_output "probes-pass"
@@ -149,8 +151,10 @@ exec cgroup=$wcg uid=60300 pid=2 comm=b
 LINES
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_line --index 0 --partial "-h 10.77.0.1 -p 6379 --user probes --no-auth-warning XADD probes MAXLEN ~ 10000 * cgroup $BUILDER_CG role builder event"
-	assert_line --index 1 --partial "-h 10.77.1.1 -p 6379 --user probes --no-auth-warning XADD probes MAXLEN ~ 10000 * cgroup $wcg role builder event"
+	assert_line --index 0 --partial "url=nats://10.77.0.1:4222 user=acme-probes"
+	assert_line --index 0 --partial "\"cgroup\":\"$BUILDER_CG\",\"role\":\"builder\""
+	assert_line --index 1 --partial "url=nats://10.77.1.1:4222 user=widgets-probes"
+	assert_line --index 1 --partial "\"cgroup\":\"$wcg\",\"role\":\"builder\""
 	run cat "$TEST_TEMP_DIR/bus-auth"
 	assert_output "probes-pass
 widgets-pass"
@@ -161,7 +165,7 @@ widgets-pass"
 	run publish <<<"exec cgroup=$BUILDER_CG uid=0 pid=7 comm=setpriv"
 	assert_success
 	run cat "$TEST_TEMP_DIR/bus-calls"
-	assert_output --partial "role builder"
+	assert_output --partial '"role":"builder"'
 }
 
 @test "the host is asked for each declared role's scope once, not once per line, and for no role of a factory never rendered" {

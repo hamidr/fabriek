@@ -40,10 +40,11 @@ JSON
 	cat >"$ETC/bridge.json" <<'JSON'
 { "bridge": "fabriek-acme", "host": "10.77.0.1", "prefix": 24,
   "cages": { "builder": "10.77.0.10", "reviewer": "10.77.0.11", "decider": "10.77.0.2" },
-  "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "valkey": "10.77.0.1:6379" }
+  "proxy": "10.77.0.1:8118", "forgejo": "10.77.0.1:3000", "bus": "10.77.0.1:4222" }
 JSON
 
 	stub_forge "$FORGE"
+	stub_bus "$TEST_TEMP_DIR/bus-calls"
 	cat >"$STUB_DIR/systemctl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$FORGE/systemctl-calls"
@@ -65,7 +66,7 @@ teardown() {
 	teardown_temp_dir
 }
 
-@test "given a fresh machine, prepare makes a password for every bus user and applies the ACL" {
+@test "given a fresh machine, prepare makes a password for every bus user and writes the account's users" {
 	run_fabriek_container factory-prepare acme
 	assert_success
 	for user in builder reviewer decider executor probes; do
@@ -73,7 +74,13 @@ teardown() {
 		[ "$(stat -c %a "$STATE/bus/$user")" = 400 ]
 	done
 	run cat "$FORGE/systemctl-calls"
-	assert_output --partial "restart fabriek-acme-bus-acl"
+	assert_output --partial "reload nats.service"
+	## The file the host's server includes, with this factory's users in it
+	## and no password of theirs (ADR-069 point 3).
+	run jq -r '[.[].user] | sort | join(",")' <<<"$(sed '1d; s/^users = //' "$ETC/nats-users.conf")"
+	assert_output "acme-builder,acme-decider,acme-executor,acme-probes,acme-reviewer"
+	run grep -c -F "$(cat "$STATE/bus/builder")" "$ETC/nats-users.conf"
+	assert_output 0
 }
 
 # The executor starts every session, and a session started before its

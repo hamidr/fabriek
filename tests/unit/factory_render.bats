@@ -26,10 +26,10 @@ teardown() {
 }
 
 @test "the bridge plan puts the machine at .1, the decider at .2 and the roles from .10 in name order" {
-	run fabriek_render_bridge_plan "$DECL" fabriek0 10.77.0.1 8118 3000 6379
+	run fabriek_render_bridge_plan "$DECL" fabriek0 10.77.0.1 8118 3000 4222
 	assert_success
-	run jq -c '[.bridge, .host, .prefix, .cages, .proxy, .forgejo, .valkey]' <<<"$output"
-	assert_output '["fabriek0","10.77.0.1",24,{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"},"10.77.0.1:8118","10.77.0.1:3000","10.77.0.1:6379"]'
+	run jq -c '[.bridge, .host, .prefix, .cages, .proxy, .forgejo, .bus]' <<<"$output"
+	assert_output '["fabriek0","10.77.0.1",24,{"builder":"10.77.0.10","decider":"10.77.0.2","reviewer":"10.77.0.11"},"10.77.0.1:8118","10.77.0.1:3000","10.77.0.1:4222"]'
 }
 
 @test "nothing here names a cage's veth: the bridge's rules are nixcage's, keyed on nothing rendered here" {
@@ -150,8 +150,8 @@ teardown() {
 # factories' services and cages were planned on one bridge and the second's
 # bus ACL hit the first's bus.
 @test "the bridge plan is laid on the bridge's own net, taken from the address the host gave it" {
-	run fabriek_render_bridge_plan "$DECL" fb-1 10.77.1.1 8118 3000 6379
+	run fabriek_render_bridge_plan "$DECL" fb-1 10.77.1.1 8118 3000 4222
 	assert_success
-	run jq -c '[.bridge, .host, .cages.decider, .cages.builder, .valkey]' <<<"$output"
-	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.10","10.77.1.1:6379"]'
+	run jq -c '[.bridge, .host, .cages.decider, .cages.builder, .bus]' <<<"$output"
+	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.10","10.77.1.1:4222"]'
 }

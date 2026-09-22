@@ -7,22 +7,21 @@
 ##
 ## Sourced by store path into fabriek-container beside names.sh and bus.sh.
 
-## fabriek_operator_send <state> <plan.json> <json>
+## fabriek_operator_send <factory> <state> <plan.json> <json>
 fabriek_operator_send() {
-	local state="$1" plan="$2" json="$3"
-	local password host port
+	local factory="$1" state="$2" plan="$3" json="$4"
+	local password url
 	password="$(fabriek_bus_dir "$state")/executor"
 	if [ ! -s "$password" ]; then
 		echo "fabriek: the executor has no bus password at $password; run fabriek up" >&2
 		return 1
 	fi
-	host="$(jq -r '.valkey | split(":")[0]' "$plan")"
-	port="$(jq -r '.valkey | split(":")[1]' "$plan")"
-	## The password reaches valkey-cli through its environment rather than
-	## its arguments, which /proc shows to every uid on the machine.
-	VALKEYCLI_AUTH="$(cat "$password")" valkey-cli -h "$host" -p "$port" \
-		--user executor --no-auth-warning \
-		XADD operator MAXLEN '~' 1000 '*' json "$json" >/dev/null
+	url="nats://$(jq -r .bus "$plan")"
+	## An entry is the fields a reader takes, as the package writes them.
+	## The password reaches natscli through its environment rather than its
+	## arguments, which /proc shows to every uid on the host.
+	NATS_URL="$url" NATS_USER="$factory-executor" NATS_PASSWORD="$(cat "$password")" \
+		nats pub operator "$(jq -cn --arg json "$json" '{json: $json}')" >/dev/null
 }
 
 ## Where a filed goal's title and body are kept for the executor to read: a

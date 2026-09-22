@@ -27,7 +27,7 @@ setup() {
 	export PATH STATE
 	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY=acme
 	export FABRIEK_BRIDGE=fabriek0 FABRIEK_BRIDGE_HOST=10.77.0.1 FABRIEK_PROXY_PORT=8118 \
-		FABRIEK_FORGEJO_PORT=3000 FABRIEK_VALKEY_PORT=6379
+		FABRIEK_FORGEJO_PORT=3000 FABRIEK_BUS_PORT=4222
 	export FABRIEK_FLOOR="$TEST_TEMP_DIR/floor" FABRIEK_SELF="$TEST_TEMP_DIR/self" FABRIEK_NIXPKGS="$TEST_TEMP_DIR/nixpkgs" FABRIEK_SYSTEM=aarch64-linux
 	mkdir -p "$FABRIEK_FLOOR/extensions/fabriek" "$FABRIEK_FLOOR/decider/extensions/fabriek" "$FABRIEK_SELF"
 	echo loop >"$FABRIEK_FLOOR/extensions/fabriek/index.ts"
@@ -162,8 +162,8 @@ teardown() {
 @test "the bridge plan is laid on the net of the bridge the facts name" {
 	FABRIEK_BRIDGE=fb-1 FABRIEK_BRIDGE_HOST=10.77.1.1 run_fabriek_container factory-render
 	assert_success
-	run jq -c '[.bridge, .host, .cages.decider, .valkey]' "$ETC/bridge.json"
-	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.1:6379"]'
+	run jq -c '[.bridge, .host, .cages.decider, .bus]' "$ETC/bridge.json"
+	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.1:4222"]'
 }
 
 @test "the proxy's ceiling and locations, the endpoints and the model are written, and nginx reloaded after the headers" {

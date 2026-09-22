@@ -18,6 +18,7 @@
 import { readFileSync } from "node:fs";
 import { BusClient, type Entry } from "../bus/client.js";
 import { ForgeClient } from "../forge/client.js";
+import { accountOf } from "../forge/account.js";
 import { parseMessage, toFields, type Message } from "../messages.js";
 import { Actor, type Agent, type Board, type Bus, type Checks, type Tree } from "./actor.js";
 
@@ -151,8 +152,8 @@ export function fromEnvironment(): Pick<BindOptions, "role" | "capabilities" | "
     connect: () =>
       BusClient.connect({
         host: busHost ?? "127.0.0.1",
-        port: Number(busPort ?? "6379"),
-        user: role,
+        port: Number(busPort ?? "4222"),
+        user: accountOf(repo ?? "", role),
         password: readFileSync(env("FABRIEK_BUS_PASSWORD"), "utf8").trim(),
       }),
     forge: new ForgeClient({ base: env("FABRIEK_FORGE"), owner: owner ?? "", repo: repo ?? "", factory: repo ?? "", tokenFile: env("FABRIEK_FORGE_TOKEN") }),

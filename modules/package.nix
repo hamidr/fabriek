@@ -59,7 +59,12 @@ let
               ## forge's API, the bus, and the forge's own CLI on the
               ## host's path (host/board.nix wraps it).
               curl
-              valkey
+              ## The bus is one nats-server for the host (ADR-069): the
+              ## CLI where a shell asks it anything, and the server itself
+              ## because prepare checks the configuration before it asks
+              ## for a reload.
+              natscli
+              nats-server
               ## up holds a lock on the factory's directory for its whole
               ## run (ADR-067, models/factory-lifecycle.qnt).
               util-linux

@@ -49,7 +49,7 @@ in
       lib.nameValuePair p.bridge {
         allowedTCPPorts = [
           cfg.ports.forgejo
-          cfg.ports.valkey
+          cfg.ports.bus
           cfg.ports.egress
         ];
       }

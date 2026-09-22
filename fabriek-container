@@ -151,7 +151,7 @@ usage: fabriek-container
   factory-roles <factory>
   factory-board <factory>
   probes-publish [<factory>]
-  bus-acl [<factory>]
+  bus-users [<factory>]
 USAGE
 }
 
@@ -472,7 +472,7 @@ render_files() {
 	printf '%s\n' "$rev" >"$FABRIEK_ETC/rev"
 	jq -c .notes "$spec" >"$FABRIEK_ETC/notes.json"
 	fabriek_render_bridge_plan "$FABRIEK_ETC/declaration.json" "$FABRIEK_BRIDGE" "$FABRIEK_BRIDGE_HOST" \
-		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_VALKEY_PORT" >"$FABRIEK_ETC/bridge.json"
+		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_BUS_PORT" >"$FABRIEK_ETC/bridge.json"
 	fabriek_render_proxy "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/proxy/endpoints.conf"
 	jq -cS '{ credentials: (.egressHeaders // {}), models: (.egressModels // {}), embedder: .embedder }' "$spec" \
 		>"$FABRIEK_ETC/endpoints.json"
@@ -610,7 +610,12 @@ cmd_factory_prepare() {
 		fabriek_bus_ensure_password "$STATE_DIR" "$user" ||
 			die "could not make a bus password for $user"
 	done < <(fabriek_bus_users "$declaration")
-	systemctl restart "fabriek-$factory-bus-acl.service"
+	## The account's users, and the server asked to read them: a role
+	## declared since the last up has one from here on, and every other
+	## factory's connections are untouched (ADR-069 point 3).
+	fabriek_bus_render_users "$factory" "$STATE_DIR" "$FABRIEK_ETC" "$declaration" ||
+		die "could not write the bus users for $factory"
+	fabriek_bus_reload || die "could not have the bus read $factory's users"
 
 	## The repository's owner is the factory's own account and not an admin
 	## (ADR-068 points 2 and 3): its token, the executor's, reaches what this
@@ -739,7 +744,7 @@ cmd_task_file() {
 	dir="$(fabriek_operator_filed "$STATE_DIR")"
 	printf '%s\n' "$title" >"$dir/title"
 	printf '%s\n' "$body" >"$dir/body"
-	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
+	fabriek_operator_send "$factory" "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg t "$dir/title" --arg b "$dir/body" --arg s "$stage" \
 			'{verb: "file", titleFile: $t, bodyFile: $b, stage: $s}')" || exit 1
 	echo "$factory: filed at $stage"
@@ -758,7 +763,7 @@ cmd_role_stop() {
 		echo "$factory: $role stopped at its scope"
 		return
 	fi
-	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
+	fabriek_operator_send "$factory" "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" '{verb: "stop", role: $r}')" || exit 1
 	echo "$factory: stop sent to $role"
 }
@@ -787,7 +792,7 @@ cmd_role_steer() {
 	[ -n "$factory" ] && [ -n "$role" ] && [ -n "$text" ] ||
 		die "usage: fabriek-container role-steer <factory> <role> <text>"
 	fabriek_role_name_ok "$role" || die "invalid role name: $role"
-	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
+	fabriek_operator_send "$factory" "$STATE_DIR" "$FABRIEK_ETC/bridge.json" \
 		"$(jq -cn --arg r "$role" --arg t "$text" '{op: "steer", role: $r, text: $t}')" || exit 1
 	echo "$factory: steered $role"
 }
@@ -799,7 +804,7 @@ cmd_factory_send() {
 	[ -n "$factory" ] && [ -n "$json" ] || die "usage: fabriek-container factory-send <factory> <json>"
 	jq -e '.verb | type == "string"' <<<"$json" >/dev/null 2>&1 ||
 		die "not a command: $json"
-	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(jq -c . <<<"$json")" || exit 1
+	fabriek_operator_send "$factory" "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$(jq -c . <<<"$json")" || exit 1
 	echo "$factory: sent"
 }
 
@@ -849,11 +854,15 @@ prepared_declaration() {
 ## Who may say what on the bus, applied from the password files prepare
 ## wrote (ADR-033 point 3). The machine's ACL unit runs this at boot and
 ## prepare restarts that unit after writing a new password.
-cmd_bus_acl() {
-	local declaration
+## The account's users, written where the host's configuration includes
+## them and read at the server's next reload (ADR-069 point 3). Nothing
+## here speaks to a running server.
+cmd_bus_users() {
+	local factory="${1:-$FABRIEK_FACTORY}" declaration
 	declaration="$(prepared_declaration "${1:-}")" || exit 0
-	fabriek_bus_apply "$STATE_DIR" "$FABRIEK_ETC/bridge.json" "$declaration" ||
-		die "could not apply the bus ACL"
+	fabriek_bus_render_users "$factory" "$STATE_DIR" "$FABRIEK_ETC" "$declaration" ||
+		die "could not write the bus users for $factory"
+	fabriek_bus_reload || die "could not have the bus read $factory's users"
 }
 
 ## The kernel's lines, from bpftrace on stdin, onto the bus with the role
@@ -866,7 +875,7 @@ cmd_probes_publish() {
 cmd_factory_mirror() {
 	local factory="${1:-}"
 	[ -n "$factory" ] || die "usage: fabriek-container factory-mirror <factory>"
-	fabriek_operator_send "$STATE_DIR" "$FABRIEK_ETC/bridge.json" '{"op":"mirror"}' || exit 1
+	fabriek_operator_send "$factory" "$STATE_DIR" "$FABRIEK_ETC/bridge.json" '{"op":"mirror"}' || exit 1
 	echo "$factory: mirror requested"
 }
 
@@ -904,11 +913,10 @@ cmd_factory_up() {
 	local path
 	path="$(fabriek_up_credential "$factory" "$FABRIEK_ETC" "$update" "$FABRIEK_SYSTEM")" || exit 1
 
-	## The state unit first: it makes the datasets render writes into. The
-	## rest only after render, since the bus's ACL unit applies the plan it
-	## finds on disk, and a plan that moved must be the new one (seen
-	## 2026-09-22: the old plan applied on another factory's bus, and up
-	## dead there before render).
+	## The state unit makes the datasets render writes into, so it is
+	## started before render and is the only unit of the factory's own
+	## that up starts: the board and the bus are the host's (ADR-068,
+	## ADR-069), and prepare tells each what this factory is.
 	systemctl start "fabriek-$factory-state.service" || die "could not start $factory's state"
 
 	## What each role ran on before this render, so a changed substrate is
@@ -927,10 +935,6 @@ cmd_factory_up() {
 		.roles | to_entries[] | .key as $r | (.value.substrate // "nspawn") as $now
 		| select($before[$r] != null and $before[$r] != $now) | "\($r)\t\($now)"' \
 		"$FABRIEK_ETC/declaration.json")
-	local -a units=()
-	local unit
-	while IFS= read -r unit; do units+=("$unit"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$')
-	systemctl start "${units[@]}" || die "could not start $factory's units"
 	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
 	cmd_factory_prepare "$factory" "$path"
 }
@@ -971,10 +975,6 @@ cmd_factory_down() {
 		fi
 	fi
 	rm -f "$(fabriek_run_dir)/prepared"
-	local -a units=()
-	local unit
-	while IFS= read -r unit; do units=("$unit" "${units[@]}"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$')
-	systemctl stop "${units[@]}" || true
 	echo "$factory has stopped"
 }
 
@@ -1035,7 +1035,7 @@ main() {
 	factory-watch) cmd_factory_watch "$@" ;;
 	factory-board) cmd_factory_board "$@" ;;
 	probes-publish) cmd_probes_publish "$@" ;;
-	bus-acl) cmd_bus_acl "$@" ;;
+	bus-users) cmd_bus_users "$@" ;;
 	role-steer) cmd_role_steer "$@" ;;
 	factory-send) cmd_factory_send "$@" ;;
 	factory-roles) cmd_factory_roles "$@" ;;

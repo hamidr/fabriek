@@ -4,16 +4,6 @@
 ## store path into fabriek-container beside operator-config.sh and
 ## credential.sh.
 ##
-## The units of a factory, in the order they start; down stops them in
-## reverse. The executor is apart: it starts on the prepared mark and is
-## the first thing down stops.
-fabriek_up_units() {
-	local factory="$1" u
-	for u in state bus bus-acl; do
-		printf 'fabriek-%s-%s.service\n' "$factory" "$u"
-	done
-}
-
 ## The operator's prompts, skill files and catalogue directories, put in
 ## the store and rooted under the factory's directory (ADR-061 points 4
 ## and 6). A prompt or skill given as text stays text. Rewrites the config

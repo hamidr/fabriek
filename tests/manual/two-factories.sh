@@ -27,7 +27,7 @@ bridge_a="$(fact_of "$A" FABRIEK_BRIDGE)"
 bridge_b="$(fact_of "$B" FABRIEK_BRIDGE)"
 host_a="$(fact_of "$A" FABRIEK_BRIDGE_HOST)"
 host_b="$(fact_of "$B" FABRIEK_BRIDGE_HOST)"
-port="$(fact_of "$A" FABRIEK_VALKEY_PORT)"
+port="$(fact_of "$A" FABRIEK_BUS_PORT)"
 both_down() {
 	bash fabriek down "$A" >/dev/null 2>&1
 	bash fabriek down "$B" >/dev/null 2>&1

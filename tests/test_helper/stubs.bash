@@ -96,6 +96,26 @@ EOF
 ## for, and records the line under the calls directory; a marker file
 ## fail-<role> there makes that role's build fail. Everything else is the
 ## real nix.
+## The bus, as prepare speaks to it: natscli hashes a password and
+## nats-server checks the configuration before a reload is asked for
+## (ADR-069 point 3). Neither is a server here; what a suite reads is the
+## file prepare wrote and the calls it made.
+##
+## stub_bus <calls-file>
+stub_bus() {
+	local CALLS="$1"
+	cat >"$STUB_DIR/nats" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS"
+echo '\$2a\$11\$thisisthesuiteshash'
+EOF
+	cat >"$STUB_DIR/nats-server" <<EOF
+#!/usr/bin/env bash
+printf 'nats-server %s\n' "\$*" >>"$CALLS"
+EOF
+	chmod +x "$STUB_DIR/nats" "$STUB_DIR/nats-server"
+}
+
 ## stub_nix_build <calls-dir> <real-nix> <store-dir>
 stub_nix_build() {
 	local CALLS="$1" REAL_NIX="$2" STORE="$3"

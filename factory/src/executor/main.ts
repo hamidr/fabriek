@@ -34,11 +34,11 @@ function log(line: string): void {
 
 async function main(): Promise<void> {
   const declaration = readDeclaration(await readFile(`${ETC}/declaration.json`, "utf8"));
-  const plan = JSON.parse(await readFile(`${ETC}/bridge.json`, "utf8")) as { valkey: string; forgejo: string; proxy: string; cages: Record<string, string> };
+  const plan = JSON.parse(await readFile(`${ETC}/bridge.json`, "utf8")) as { bus: string; forgejo: string; proxy: string; cages: Record<string, string> };
   const factory = declaration.name;
   const workflow = Object.keys(declaration.workflows)[0];
   if (!workflow) throw new Error("the declaration has no workflow");
-  const [busHost, busPort] = plan.valkey.split(":");
+  const [busHost, busPort] = plan.bus.split(":");
   const repository = `${factory}-operator/${factory}`;
   const forgeBase = `http://${plan.forgejo}/api/v1`;
   const operatorToken = `${STATE}/forge/operator-token`;
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     const c = await BusClient.connect({
       host: busHost ?? "127.0.0.1",
       port: Number(busPort ?? "4222"),
-      user: "executor",
+      user: `${factory}-executor`,
       password: readFileSync(`${STATE}/bus/executor`, "utf8").trim(),
     });
     for (const s of streamsOf(held)) await c.ensureStream(s.name, s.subjects, s.name === "probes" ? PROBES_CAP : STREAM_CAP);
