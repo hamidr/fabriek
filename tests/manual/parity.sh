@@ -95,8 +95,11 @@ if [ "$answer" = 401 ]; then
 	bash fabriek down "$F"
 	exit "$fail"
 fi
-check "the issue is assigned to a role" yes \
-	"$([ -n "$(eventually "$WAIT_TASK" x assignee_of "$issue" | head -c 1)" ] && echo yes || echo no)"
+## Waited for as yes or no, not as a name it could never equal: the old
+## form waited the whole WAIT_TASK before it looked (seen 2026-09-22).
+# shellcheck disable=SC2329  # invoked through eventually
+assigned() { [ -n "$(assignee_of "$issue")" ] && echo yes || echo no; }
+check "the issue is assigned to a role" yes "$(eventually "$WAIT_TASK" yes assigned)"
 
 scenario "The work moves through every stage on its own"
 given "the issue $issue at ${stages[0]}"
