@@ -284,12 +284,22 @@ export class BusClient {
     return idOf(await this.createdAt(at.stream), sequence);
   }
 
-  /** Entries after id on one stream, waiting up to block milliseconds for one. */
+  /**
+   * Entries after id on one stream, waiting up to block milliseconds for
+   * one. A stream the executor has not made yet is no entries: a role that
+   * connects first waits for it, as it waits for a bus that is away
+   * (ADR-069 point 5).
+   */
   async xread(stream: string, after: string, block: number): Promise<Entry[]> {
     const at = place(stream);
-    const consumer = await this.readerFor(stream, after);
-    const messages = await this.pull(at.stream, consumer, BATCH, block);
-    return this.entries(stream, messages);
+    try {
+      const consumer = await this.readerFor(stream, after);
+      const messages = await this.pull(at.stream, consumer, BATCH, block);
+      return this.entries(stream, messages);
+    } catch (e) {
+      if (absent(e)) return [];
+      throw e;
+    }
   }
 
   /** Entries after each stream's id, on several streams, waiting up to block milliseconds. */
@@ -308,10 +318,15 @@ export class BusClient {
   /** Entries in a range, oldest first. */
   async xrange(stream: string, from = "-", to = "+", count?: number): Promise<Entry[]> {
     const at = place(stream);
-    const start = from === "-" ? { deliver_policy: "all" } : await this.startAt(at.stream, from, true);
-    const consumer = await this.makeConsumer(at, start);
-    const messages = await this.pull(at.stream, consumer, count ?? BATCH, 0);
-    const entries = this.entries(stream, messages);
+    let entries: Entry[];
+    try {
+      const start = from === "-" ? { deliver_policy: "all" } : await this.startAt(at.stream, from, true);
+      const consumer = await this.makeConsumer(at, start);
+      entries = this.entries(stream, await this.pull(at.stream, consumer, count ?? BATCH, 0));
+    } catch (e) {
+      if (absent(e)) return [];
+      throw e;
+    }
     if (to === "+") return entries;
     const end = readId(to);
     return end === null ? entries : entries.filter((e) => (readId(e.id)?.sequence ?? 0) <= end.sequence);
@@ -320,7 +335,13 @@ export class BusClient {
   /** The newest entry's id, or 0-0 on an empty stream: where a reader starts so nothing written before its first read is missed. */
   async lastId(stream: string): Promise<string> {
     const at = place(stream);
-    const info = await this.api(`$JS.API.STREAM.INFO.${at.stream}`, {});
+    let info: Record<string, unknown>;
+    try {
+      info = await this.api(`$JS.API.STREAM.INFO.${at.stream}`, {});
+    } catch (e) {
+      if (absent(e)) return "0-0";
+      throw e;
+    }
     const state = (info["state"] ?? {}) as Record<string, unknown>;
     const last = Number(state["last_seq"] ?? 0);
     if (last === 0) return "0-0";
@@ -405,6 +426,11 @@ export class BusApiError extends Error {
   ) {
     super(message);
   }
+}
+
+/** A stream or a consumer that is not there, which is a stream not made yet. */
+function absent(e: unknown): boolean {
+  return e instanceof BusApiError && (e.code === 10059 || e.code === 10014);
 }
 
 function parse(payload: string): Record<string, unknown> {

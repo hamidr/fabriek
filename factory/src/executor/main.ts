@@ -19,11 +19,14 @@ import { ForgeBoard } from "./forge.js";
 import { RoleSessions, sessionCommand } from "./sessions.js";
 import { resumeFrom, remember } from "./cursor.js";
 import { CloneGit } from "./git.js";
+import { streamsOf } from "../bus/subjects.js";
 import { spendByRole } from "./spend.js";
 
 const ETC = process.env["FABRIEK_ETC"] ?? "/etc/fabriek";
 const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
 const STREAM_CAP = 10000;
+/** What the probes stream keeps: the operator watches it live and nothing persists it (roadmap 2.2). */
+const PROBES_CAP = 10000;
 
 function log(line: string): void {
   process.stdout.write(`${new Date().toISOString()} ${line}\n`);
@@ -43,13 +46,21 @@ async function main(): Promise<void> {
   const forge = new ForgeClient({ base: forgeBase, owner: `${factory}-operator`, repo: factory, factory, tokenFile: operatorToken });
   const board = new ForgeBoard(forge, `/repos/${repository}`, factory);
 
-  const connect = () =>
-    BusClient.connect({
+  // Memory streams go with the server, as Valkey's keys did, so the
+  // account's are made at every connect and before anything is read or
+  // reconciled (ADR-069 point 5). The executor is the account's one
+  // manager; a role that connects first finds no stream and retries.
+  const held = [...Object.keys(declaration.roles), "decider", "executor"];
+  const connect = async () => {
+    const c = await BusClient.connect({
       host: busHost ?? "127.0.0.1",
-      port: Number(busPort ?? "6379"),
+      port: Number(busPort ?? "4222"),
       user: "executor",
       password: readFileSync(`${STATE}/bus/executor`, "utf8").trim(),
     });
+    for (const s of streamsOf(held)) await c.ensureStream(s.name, s.subjects, s.name === "probes" ? PROBES_CAP : STREAM_CAP);
+    return c;
+  };
   let client = await connect();
   const bus: Bus = {
     async send(role, message) {

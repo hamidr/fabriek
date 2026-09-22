@@ -293,6 +293,14 @@ describe("a bus client", () => {
     c.close();
   });
 
+  it("reads nothing from a stream the executor has not made yet, rather than failing", async () => {
+    const c = await client("acme-dev");
+    assert.deepEqual(await c.xread("mailbox:dev", "$", 10), []);
+    assert.deepEqual(await c.xrange("events:dev", "-", "+"), []);
+    assert.equal(await c.lastId("operator"), "0-0");
+    c.close();
+  });
+
   it("when the bus refuses a subject, the call rejects in the server's own words", async () => {
     const c = await client("acme-dev");
     await c.ensureStream("control-tester", ["control.tester"], 1000);
