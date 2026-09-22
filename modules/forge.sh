@@ -31,10 +31,29 @@ fabriek_forge_account() {
 	printf '%s-%s\n' "$factory" "$who"
 }
 
+## Where the forge keeps its state, and the lock beside it. One Forgejo
+## serves every factory (ADR-068 point 1) and the host names its dataset in
+## every factory's facts file; the default is that same path, for a hand
+## running the program with no facts loaded.
+fabriek_forge_state() {
+	printf '%s\n' "${FABRIEK_FORGE_STATE:-/var/lib/nixcage/fabriek-forge}"
+}
+fabriek_forge_lock_path() {
+	printf '%s/cli.lock\n' "$(fabriek_forge_state)"
+}
+
 ## The forge's own CLI, run as its user, which is the only way an account is
 ## made when registration is off.
+##
+## Under the host's lock, held for the call (ADR-068 point 5): the CLI opens
+## the sqlite database beside the running server, and two factories prepare
+## under locks of their own, so without this one their CLI calls meet on one
+## database. The API needs none; the server serialises what reaches it.
 fabriek_forge_admin() {
-	forgejo admin "$@"
+	local lock
+	lock="$(fabriek_forge_lock_path)"
+	mkdir -p "$(dirname "$lock")"
+	flock "$lock" forgejo admin "$@"
 }
 
 fabriek_forge_user_exists() {

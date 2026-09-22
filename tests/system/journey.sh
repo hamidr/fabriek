@@ -27,6 +27,7 @@ mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE" "$RUN" "$W/facts"
 cat >"$W/facts/$F.env" <<EOF
 FABRIEK_FACTORY=$F
 FABRIEK_STATE=$STATE
+FABRIEK_FORGE_STATE=$FORGE
 FABRIEK_ETC=$ETC
 FABRIEK_RUN=$RUN
 FABRIEK_BRIDGE=lo
@@ -39,6 +40,9 @@ ROOT="$PWD"
 ## The prepared mark is per boot, under /run on a machine (ADR-057); here
 ## under the scratch directory, since there is no machine.
 export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY="$F"
+## One forge for the host and the lock its CLI takes beside its state
+## (ADR-068 point 5); here the forge this run started.
+export FABRIEK_FORGE_STATE="$FORGE"
 export PATH="$BIN:$PATH" FABRIEK_LIB="$ROOT/modules"
 
 ## Everything this run starts, and everything a run before it left: the

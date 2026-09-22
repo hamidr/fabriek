@@ -116,6 +116,9 @@ let
         FABRIEK_FORGEJO_PORT = toString cfg.ports.forgejo;
         FABRIEK_VALKEY_PORT = toString cfg.ports.valkey;
         FABRIEK_STATE = p.state;
+        ## The host's one forge (ADR-068 point 1): where its state is, so
+        ## the machine program takes the lock beside it.
+        FABRIEK_FORGE_STATE = cfg.board.work;
         FABRIEK_ETC = p.etc;
         FABRIEK_RUN = "/run/fabriek/${name}";
         FABRIEK_FLOOR = "${cfg.floor}";

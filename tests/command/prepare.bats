@@ -23,6 +23,9 @@ setup() {
 	RUN="$TEST_TEMP_DIR/run"
 	mkdir -p "$RUN"
 	export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY=acme
+	# The forge's state on a host, and the lock its CLI takes beside it
+	# (ADR-068 point 5); here a directory of the suite's own.
+	export FABRIEK_FORGE_STATE="$TEST_TEMP_DIR/forge-state"
 	# Where a push of main to the forge lands here: a bare repository, so no
 	# test waits on an address that is not on this host.
 	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
