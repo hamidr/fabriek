@@ -17,13 +17,25 @@
 set -uo pipefail
 F=acme
 export FABRIEK_PROOF_DIR="${FABRIEK_PROOF_DIR:-$(mktemp -d)}"
+W="$FABRIEK_PROOF_DIR/system"
+rm -rf "$W"
+STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge" RUN="$W/run"
+mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE" "$RUN" "$W/facts"
+## The facts a host writes per factory (ADR-067), which lib.sh reads to
+## know where a factory's state is: here there is no host, so this run
+## writes its own, for the state and directories it made above.
+cat >"$W/facts/$F.env" <<EOF
+FABRIEK_FACTORY=$F
+FABRIEK_STATE=$STATE
+FABRIEK_ETC=$ETC
+FABRIEK_RUN=$RUN
+FABRIEK_BRIDGE=lo
+FABRIEK_BRIDGE_HOST=127.0.0.1
+EOF
+export FABRIEK_FACTORIES="$W/facts"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/../manual/lib.sh"
 ROOT="$PWD"
-W="$S/system"
-rm -rf "$W"
-STATE="$W/state" ETC="$W/etc" BIN="$W/bin" LOG="$W/log" FORGE="$W/forge" RUN="$W/run"
-mkdir -p "$STATE" "$ETC" "$BIN" "$LOG" "$FORGE" "$RUN"
 ## The prepared mark is per boot, under /run on a machine (ADR-057); here
 ## under the scratch directory, since there is no machine.
 export FABRIEK_STATE="$STATE" FABRIEK_ETC="$ETC" FABRIEK_RUN="$RUN" FABRIEK_FACTORY="$F"
