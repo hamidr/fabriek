@@ -213,10 +213,14 @@ fabriek_actor_args() {
 		return 1
 	fi
 	printf '%s\n' "--store-root" "$FABRIEK_FLOOR"
+	## The sessions go under the role's home, wherever the substrate binds
+	## it (/root on nspawn, /home/nixcage on microvm: nixcage ADR-019); pi
+	## expands ~ from HOME, which nixcage sets to that path. A fixed /root
+	## was EACCES on microvm (2026-09-22).
 	printf '%s\n' \
 		"--setenv" "PI_CODING_AGENT_DIR=/run/fabriek/pi" \
 		"--setenv" "PI_AGENT_DIR=/run/fabriek/pi" \
-		"--setenv" "PI_CODING_AGENT_SESSION_DIR=/root/.pi/sessions" \
+		"--setenv" "PI_CODING_AGENT_SESSION_DIR=~/.pi/sessions" \
 		"--setenv" "PI_OFFLINE=1" \
 		"--bind-ro" "$password:/run/fabriek/bus-password" \
 		"--bind-ro" "$token:/run/fabriek/forge-token" \

@@ -7,7 +7,7 @@
 ## Sourced by store path into fabriek-container beside names.sh.
 
 ## Where pi writes a role's sessions: PI_CODING_AGENT_SESSION_DIR is
-## /root/.pi/sessions in the cage, and the role's home is bound there.
+## ~/.pi/sessions in the cage, and the role's home is what ~ is there.
 fabriek_transcript_dir() {
 	local state="$1" factory="$2" role="$3"
 	printf '%s/homes/%s-%s/.pi/sessions\n' "$state" "$factory" "$role"
