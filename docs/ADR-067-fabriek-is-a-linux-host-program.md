@@ -247,3 +247,11 @@ is rewritten for this ADR with two factories, `widgets` declaring
 this tree; the rebuild, `tests/manual/host-autostart.sh`,
 `two-factories.sh`, `isolation.sh` and `parity.sh` are the operator's
 next step, after which this ADR is implemented.
+
+Status 2026-09-22: two proposals would change the per-factory services
+this ADR declares, neither accepted yet. ADR-068: one Forgejo per host
+in place of `fabriek-<name>-record` and `fabriek-<name>-board`.
+ADR-069: one NATS server per host, an account per factory, in place of
+`fabriek-<name>-bus` and `fabriek-<name>-bus-acl`. Sharing one Valkey
+between factories was examined under ADR-069 and refused. The units
+stand as built until either moves.

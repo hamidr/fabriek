@@ -113,3 +113,9 @@ six roles, the executor started every session and the decider read an
 empty board and waited. The probe script is still not rerun against the
 image, and no task went through a pull request on that machine: what
 keeps this at accepted is the same as before.
+
+Status 2026-09-22: ADR-068 proposes one Forgejo per host with an owner
+account per factory. If accepted, point 1 is amended: the board is on
+the host's dataset, not the factory's; the owner is `<factory>-operator`
+and not an admin; a role's account is `<factory>-<role>`. Points 2
+through 9 stand as written. Nothing here changes until ADR-068 moves.
