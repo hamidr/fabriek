@@ -1,8 +1,14 @@
-// A client of the bus (ADR-033): one connection, one user, the stream verbs.
-// Calls are answered in order, which is what RESP promises on one socket, so
-// a queue of pending promises is the whole of the bookkeeping.
+// A client of the bus (ADR-033, ADR-069): one connection, one user, the
+// stream verbs the rest of the package speaks. The bus is a NATS account
+// with JetStream memory streams, so a verb here is one request and its
+// reply on the user's own inbox, and a read is a pull on a consumer of its
+// own.
+//
+// The interface above this file has not moved: the six verbs, and a stream
+// sequence where Valkey's id was.
 import { createConnection, type Socket } from "node:net";
-import { Decoder, encode, type Reply } from "./resp.js";
+import { Decoder, connectLine, pubLine, subLine, type Frame, type Message } from "./proto.js";
+import { place, sequenceOf, idOf, readId } from "./subjects.js";
 
 export interface BusOptions {
   host: string;
@@ -16,14 +22,31 @@ export interface Entry {
   fields: Record<string, string>;
 }
 
-interface Pending {
-  resolve(reply: Reply): void;
-  reject(error: Error): void;
+interface Waiting {
+  /** Every message on this inbox, until the caller says it has what it wants. */
+  take(message: Message): boolean;
+  fail(error: Error): void;
+}
+
+/** How long a consumer with nobody pulling on it is kept, in nanoseconds. */
+const CONSUMER_IDLE_NS = 300_000_000_000;
+/** What one pull may bring back at once. */
+const BATCH = 128;
+/** How long a request that is not a pull waits for its answer. */
+const REQUEST_MS = 5000;
+
+interface Reader {
+  consumer: string;
+  /** The id this reader last handed out, so the next call may go on where it left off. */
+  at: string;
 }
 
 export class BusClient {
-  private readonly pending: Pending[] = [];
+  private readonly inboxes = new Map<string, Waiting>();
   private readonly decoder = new Decoder();
+  private readonly created = new Map<string, number>();
+  private readonly readers = new Map<string, Reader>();
+  private counter = 0;
   closed = false;
 
   private constructor(
@@ -31,22 +54,49 @@ export class BusClient {
     private readonly user: string,
   ) {
     socket.on("data", (chunk) => {
-      for (const reply of this.decoder.feed(chunk)) {
-        const p = this.pending.shift();
-        if (!p) continue;
-        if (reply instanceof Error) p.reject(reply);
-        else p.resolve(reply);
-      }
+      for (const frame of this.decoder.feed(chunk)) this.frame(frame);
     });
     const fail = (why: string) => {
       this.closed = true;
-      for (const p of this.pending.splice(0)) p.reject(new Error(`bus closed: ${why}`));
+      for (const [inbox, w] of this.inboxes) {
+        this.inboxes.delete(inbox);
+        w.fail(new Error(`bus closed: ${why}`));
+      }
     };
     socket.on("close", () => fail("connection closed"));
     socket.on("error", (e) => fail(e.message));
   }
 
-  /** Connect and authenticate. The password lives in the AUTH command and nowhere on this object. */
+  private frame(frame: Frame): void {
+    switch (frame.kind) {
+      case "PING":
+        this.socket.write("PONG\r\n");
+        return;
+      case "MSG": {
+        const waiting = this.inboxes.get(frame.subject);
+        if (waiting && waiting.take(frame)) this.inboxes.delete(frame.subject);
+        return;
+      }
+      case "ERR": {
+        // A permissions violation names the subject it was for, and the
+        // caller waiting on that subject is the one owed the error.
+        const error = new Error(frame.message);
+        for (const [inbox, w] of this.inboxes) {
+          this.inboxes.delete(inbox);
+          w.fail(error);
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Connect and authenticate. The password travels in CONNECT and is held
+   * nowhere on this object. The inbox is the user's own, which is the only
+   * one its subscribe permission allows (ADR-069 point 4).
+   */
   static async connect(options: BusOptions): Promise<BusClient> {
     const socket = createConnection({ host: options.host, port: options.port });
     await new Promise<void>((resolve, reject) => {
@@ -54,87 +104,321 @@ export class BusClient {
       socket.once("error", reject);
     });
     const client = new BusClient(socket, options.user);
-    await client.call(["AUTH", options.user, options.password]);
+    await client.greeted();
+    socket.write(connectLine(options));
+    socket.write(subLine(`_INBOX.${options.user}.>`, "1"));
+    await client.roundTrip();
     return client;
+  }
+
+  /** The server speaks first; nothing is sent before its INFO has been read. */
+  private greeted(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the bus said nothing")), REQUEST_MS);
+      const onData = () => {
+        clearTimeout(timer);
+        this.socket.off("data", onData);
+        resolve();
+      };
+      this.socket.prependListener("data", onData);
+    });
+  }
+
+  /** PING and its PONG: the answer that says CONNECT was accepted. */
+  private roundTrip(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the bus did not answer PING")), REQUEST_MS);
+      const onData = (chunk: Buffer) => {
+        const text = chunk.toString("binary");
+        if (text.includes("PONG")) {
+          clearTimeout(timer);
+          this.socket.off("data", onData);
+          resolve();
+        } else if (text.startsWith("-ERR")) {
+          clearTimeout(timer);
+          this.socket.off("data", onData);
+          reject(new Error(text.trim()));
+        }
+      };
+      this.socket.prependListener("data", onData);
+      this.socket.write("PING\r\n");
+    });
+  }
+
+  private inbox(): string {
+    this.counter += 1;
+    return `_INBOX.${this.user}.${this.counter}`;
+  }
+
+  /** One request, one reply. */
+  private request(subject: string, payload: string, timeout = REQUEST_MS): Promise<Message> {
+    return new Promise((resolve, reject) => {
+      if (this.closed) {
+        reject(new Error("bus closed"));
+        return;
+      }
+      const inbox = this.inbox();
+      const timer = setTimeout(() => {
+        this.inboxes.delete(inbox);
+        reject(new Error(`the bus did not answer ${subject}`));
+      }, timeout);
+      this.inboxes.set(inbox, {
+        take(message) {
+          clearTimeout(timer);
+          resolve(message);
+          return true;
+        },
+        fail(error) {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      this.socket.write(pubLine(subject, payload, inbox));
+    });
+  }
+
+  /**
+   * One pull: several messages on one inbox, ended by a status message when
+   * the batch runs out or the wait does. Nothing is acknowledged, because a
+   * reader keeps its own position (ADR-069 point 4).
+   */
+  private pull(stream: string, consumer: string, batch: number, waitMs: number): Promise<Message[]> {
+    return new Promise((resolve, reject) => {
+      if (this.closed) {
+        reject(new Error("bus closed"));
+        return;
+      }
+      const inbox = this.inbox();
+      const out: Message[] = [];
+      const timer = setTimeout(() => {
+        this.inboxes.delete(inbox);
+        resolve(out);
+      }, waitMs + REQUEST_MS);
+      const done = () => {
+        clearTimeout(timer);
+        resolve(out);
+        return true;
+      };
+      this.inboxes.set(inbox, {
+        take(message) {
+          if (message.status !== null) return done();
+          out.push(message);
+          return out.length >= batch ? done() : false;
+        },
+        fail(error) {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      const body = JSON.stringify({ batch, expires: waitMs * 1_000_000, no_wait: waitMs === 0 });
+      this.socket.write(pubLine(`$JS.API.CONSUMER.MSG.NEXT.${stream}.${consumer}`, body, inbox));
+    });
+  }
+
+  private async api(subject: string, body: unknown): Promise<Record<string, unknown>> {
+    const reply = await this.request(subject, JSON.stringify(body));
+    const answer = parse(reply.payload);
+    const error = answer["error"];
+    if (error && typeof error === "object") {
+      const e = error as { description?: string; err_code?: number };
+      throw new BusApiError(e.description ?? `the bus refused ${subject}`, e.err_code ?? 0);
+    }
+    return answer;
   }
 
   toString(): string {
     return `BusClient(${this.user})`;
   }
 
-  private call(words: string[]): Promise<Reply> {
-    if (this.closed) return Promise.reject(new Error("bus closed"));
-    return new Promise((resolve, reject) => {
-      this.pending.push({ resolve, reject });
-      this.socket.write(encode(words));
-    });
-  }
-
   async ping(): Promise<void> {
-    await this.call(["PING"]);
+    await this.roundTrip();
   }
 
-  /** Append one entry, keeping the stream at about maxlen entries. */
-  async xadd(stream: string, fields: Record<string, string>, maxlen: number): Promise<string> {
-    const words = ["XADD", stream, "MAXLEN", "~", String(maxlen), "*"];
-    for (const [k, v] of Object.entries(fields)) words.push(k, v);
-    return String(await this.call(words));
+  /**
+   * A stream, made if it is absent and left as it is if it is there. The
+   * executor's, at every connect and before it reconciles (ADR-069 point
+   * 5); no other user may ask.
+   */
+  async ensureStream(name: string, subjects: string[], maxMsgs: number): Promise<void> {
+    const config = {
+      name,
+      subjects,
+      storage: "memory",
+      retention: "limits",
+      discard: "old",
+      max_msgs: maxMsgs,
+      num_replicas: 1,
+    };
+    try {
+      await this.api(`$JS.API.STREAM.CREATE.${name}`, config);
+    } catch (e) {
+      // Already there with these subjects, which is what a second connect
+      // finds; anything else is the caller's to hear.
+      if (!(e instanceof BusApiError) || e.code !== 10058) throw e;
+    }
+    this.created.delete(name);
+  }
+
+  /** When the stream was made, in milliseconds, which is the first half of every id it gives out. */
+  private async createdAt(stream: string): Promise<number> {
+    const held = this.created.get(stream);
+    if (held !== undefined) return held;
+    const info = await this.api(`$JS.API.STREAM.INFO.${stream}`, {});
+    const created = Date.parse(String(info["created"] ?? ""));
+    const ms = Number.isFinite(created) ? created : 0;
+    this.created.set(stream, ms);
+    return ms;
+  }
+
+  /** Append one entry. The stream's bound is its own (ADR-069 point 5), so maxlen is the creator's business and not this call's. */
+  async xadd(stream: string, fields: Record<string, string>, _maxlen: number): Promise<string> {
+    const at = place(stream);
+    const reply = await this.request(at.subject, JSON.stringify(fields));
+    const ack = parse(reply.payload);
+    const error = ack["error"];
+    if (error && typeof error === "object") {
+      const e = error as { description?: string; err_code?: number };
+      throw new BusApiError(e.description ?? `the bus refused ${at.subject}`, e.err_code ?? 0);
+    }
+    const sequence = Number(ack["seq"] ?? 0);
+    return idOf(await this.createdAt(at.stream), sequence);
   }
 
   /** Entries after id on one stream, waiting up to block milliseconds for one. */
   async xread(stream: string, after: string, block: number): Promise<Entry[]> {
-    const reply = await this.call(["XREAD", "BLOCK", String(block), "STREAMS", stream, after]);
-    return entriesOf(reply, stream);
+    const at = place(stream);
+    const consumer = await this.readerFor(stream, after);
+    const messages = await this.pull(at.stream, consumer, BATCH, block);
+    return this.entries(stream, messages);
   }
 
   /** Entries after each stream's id, on several streams, waiting up to block milliseconds. */
   async xreadMany(after: Record<string, string>, block: number): Promise<Record<string, Entry[]>> {
     const names = Object.keys(after);
     if (names.length === 0) return {};
-    const reply = await this.call(["XREAD", "BLOCK", String(block), "STREAMS", ...names, ...names.map((n) => after[n] ?? "$")]);
     const out: Record<string, Entry[]> = {};
-    if (!Array.isArray(reply)) return out;
-    for (const s of reply) {
-      const [name, entries] = s as [string, Reply];
-      out[String(name)] = rawEntries(entries);
-    }
+    const reads = names.map(async (name) => {
+      const entries = await this.xread(name, after[name] ?? "$", block);
+      if (entries.length > 0) out[name] = entries;
+    });
+    await Promise.all(reads);
     return out;
   }
 
   /** Entries in a range, oldest first. */
   async xrange(stream: string, from = "-", to = "+", count?: number): Promise<Entry[]> {
-    const words = ["XRANGE", stream, from, to];
-    if (count !== undefined) words.push("COUNT", String(count));
-    return rawEntries(await this.call(words));
+    const at = place(stream);
+    const start = from === "-" ? { deliver_policy: "all" } : await this.startAt(at.stream, from, true);
+    const consumer = await this.makeConsumer(at, start);
+    const messages = await this.pull(at.stream, consumer, count ?? BATCH, 0);
+    const entries = this.entries(stream, messages);
+    if (to === "+") return entries;
+    const end = readId(to);
+    return end === null ? entries : entries.filter((e) => (readId(e.id)?.sequence ?? 0) <= end.sequence);
   }
 
-  /** The newest entry's id, or 0-0 when the stream is empty: where a reader starts so nothing written before its first read is missed. */
+  /** The newest entry's id, or 0-0 on an empty stream: where a reader starts so nothing written before its first read is missed. */
   async lastId(stream: string): Promise<string> {
-    const entries = rawEntries(await this.call(["XREVRANGE", stream, "+", "-", "COUNT", "1"]));
-    return entries[0]?.id ?? "0-0";
+    const at = place(stream);
+    const info = await this.api(`$JS.API.STREAM.INFO.${at.stream}`, {});
+    const state = (info["state"] ?? {}) as Record<string, unknown>;
+    const last = Number(state["last_seq"] ?? 0);
+    if (last === 0) return "0-0";
+    return idOf(await this.createdAt(at.stream), last);
   }
 
   close(): void {
     this.closed = true;
     this.socket.destroy();
   }
-}
 
-function rawEntries(reply: Reply): Entry[] {
-  if (!Array.isArray(reply)) return [];
-  return reply.map((e) => {
-    const [id, flat] = e as [string, string[]];
-    const fields: Record<string, string> = {};
-    for (let i = 0; i + 1 < flat.length; i += 2) fields[String(flat[i])] = String(flat[i + 1]);
-    return { id: String(id), fields };
-  });
-}
-
-function entriesOf(reply: Reply, stream: string): Entry[] {
-  if (!Array.isArray(reply)) return [];
-  for (const s of reply) {
-    const [name, entries] = s as [string, Reply];
-    if (name === stream) return rawEntries(entries);
+  /**
+   * The consumer a reader of this name pulls on. One is kept while the
+   * caller goes on reading where it left off; a caller that names another
+   * id has seeked, and gets a consumer that starts there.
+   */
+  private async readerFor(name: string, after: string): Promise<string> {
+    const at = place(name);
+    const key = `${at.stream}|${at.filter ?? ""}`;
+    const held = this.readers.get(key);
+    if (held && held.at === after) return held.consumer;
+    const consumer = await this.makeConsumer(at, await this.startAt(at.stream, after, false));
+    this.readers.set(key, { consumer, at: after });
+    return consumer;
   }
-  return [];
+
+  /**
+   * Where a read starts. An id from a stream made before this one is an id
+   * of a bus that has restarted, and what it names is gone, so the reader
+   * takes the stream from its start rather than skipping what it never saw
+   * (ADR-069 point 7).
+   */
+  private async startAt(stream: string, after: string, inclusive: boolean): Promise<Record<string, unknown>> {
+    if (after === "$") return { deliver_policy: "new" };
+    const id = readId(after);
+    if (id === null) return { deliver_policy: "all" };
+    if (id.created === 0 && id.sequence === 0) return { deliver_policy: "all" };
+    if (id.created !== (await this.createdAt(stream))) return { deliver_policy: "all" };
+    return { deliver_policy: "by_start_sequence", opt_start_seq: id.sequence + (inclusive ? 0 : 1) };
+  }
+
+  private async makeConsumer(at: ReturnType<typeof place>, start: Record<string, unknown>): Promise<string> {
+    this.counter += 1;
+    const name = `${this.user}-${process.pid}-${this.counter}`.replace(/[^A-Za-z0-9_-]/g, "-");
+    const config: Record<string, unknown> = {
+      name,
+      ack_policy: "none",
+      replay_policy: "instant",
+      inactive_threshold: CONSUMER_IDLE_NS,
+      ...start,
+    };
+    if (at.filter) config["filter_subject"] = at.filter;
+    await this.api(`$JS.API.CONSUMER.CREATE.${at.stream}.${name}`, { stream_name: at.stream, name, config });
+    return name;
+  }
+
+  private entries(name: string, messages: Message[]): Entry[] {
+    const at = place(name);
+    const created = this.created.get(at.stream) ?? 0;
+    const out: Entry[] = [];
+    for (const m of messages) {
+      const sequence = sequenceOf(m.reply);
+      if (sequence === null) continue;
+      out.push({ id: idOf(created, sequence), fields: fieldsOf(m.payload) });
+    }
+    if (out.length > 0) {
+      const key = `${at.stream}|${at.filter ?? ""}`;
+      const reader = this.readers.get(key);
+      const last = out[out.length - 1];
+      if (reader && last) reader.at = last.id;
+    }
+    return out;
+  }
+}
+
+/** What the bus refused, in its own words and with its own code. */
+export class BusApiError extends Error {
+  override name = "BusApiError";
+  constructor(
+    message: string,
+    readonly code: number,
+  ) {
+    super(message);
+  }
+}
+
+function parse(payload: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(payload);
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function fieldsOf(payload: string): Record<string, string> {
+  const value = parse(payload);
+  const fields: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) fields[k] = typeof v === "string" ? v : JSON.stringify(v);
+  return fields;
 }
