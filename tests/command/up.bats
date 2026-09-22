@@ -79,7 +79,7 @@ EOF
 	assert_output --partial "api.openai.com, which this host does not allow"
 	assert_output --partial "acme is running"
 	run nixcage_calls
-	assert_line "fabriek-container factory-up acme"
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-up acme"
 	run sudo_env
 	assert_line "FABRIEK_FACTORY=acme"
 }
@@ -88,7 +88,7 @@ EOF
 	run_fabriek up -u acme
 	assert_success
 	run nixcage_calls
-	assert_line "fabriek-container factory-up acme --update"
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-up acme --update"
 }
 
 # ADR-067 point 5: the operator observes the factory's branches in their
@@ -155,7 +155,7 @@ EOF
 	assert_success
 	assert_output --partial "acme has stopped"
 	run nixcage_calls
-	assert_line "fabriek-container factory-down acme"
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-down acme"
 	run git -C "$REPO" remote
 	refute_output --partial fabriek-acme
 	# What was fetched stays: the refs are the operator's now.
@@ -174,9 +174,21 @@ EOF
 	run_fabriek up
 	assert_success
 	run nixcage_calls
-	assert_line "fabriek-container factory-up acme"
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-up acme"
 	printf '[factories.widgets]\npath = "%s"\n' "$REPO" >>"$FABRIEK_CONFIG"
 	run_fabriek up
 	[ "$status" -eq 2 ]
 	assert_output --partial "which factory"
+}
+
+# The host's sudo rule allows one program by its path (ADR-067 point 1),
+# and sudo resolves a bare name in the caller's PATH. From a checkout's
+# devshell that PATH begins with the checkout, so a bare name ran the
+# unwrapped script as root, with no tool on its PATH (seen 2026-09-22:
+# forgejo run as root, "not supposed to be run as root").
+@test "the machine program is asked for by the path the host's rule names, whatever PATH holds" {
+	run_fabriek up acme
+	assert_success
+	run nixcage_calls
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-up acme"
 }

@@ -30,5 +30,5 @@ teardown() {
 	run_fabriek -f acme board
 	assert_success
 	run nixcage_calls
-	assert_line "fabriek-container factory-board acme"
+	assert_line "/run/current-system/sw/bin/fabriek-container factory-board acme"
 }

@@ -146,13 +146,17 @@ text_or_stdin() {
 ## the environment, which is how one program serves every factory here.
 ## Every verb takes the factory as its first word too, which is the machine
 ## program's dispatch convention rather than a coincidence of these call
-## sites.
+## sites. The program is named by the path the host's rule allows: sudo
+## resolves a bare name in the caller's PATH, and from a checkout's
+## devshell that is the checkout's unwrapped script, with no tool on its
+## PATH (seen 2026-09-22). A developer points FABRIEK_CONTAINER elsewhere.
+FABRIEK_CONTAINER="${FABRIEK_CONTAINER:-/run/current-system/sw/bin/fabriek-container}"
 machine() {
   local factory="${2:-}"
   [[ -n "$factory" ]] || { log_err "no factory named for machine command ${1:-}"; return 1; }
   local -a sudo_args=()
   machine_sudo_args "$factory" sudo_args
-  sudo "${sudo_args[@]}" fabriek-container "$@"
+  sudo "${sudo_args[@]}" "$FABRIEK_CONTAINER" "$@"
 }
 
 ## The sudo arguments that carry one factory into the array named: the
