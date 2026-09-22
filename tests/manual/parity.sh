@@ -13,7 +13,7 @@
 ## failing: a decider with no model decides nothing.
 ##
 ##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
-##   tests/manual/parity.sh
+##   F=acme tests/manual/parity.sh
 ##
 ## What the machine must offer for these to pass, and where each is decided:
 ## Forgejo on the machine with an operator token under the state directory
@@ -23,7 +23,7 @@
 ## opened (4.1); fabriek factory mirror pushing main and
 ## refs/fabriek/record (3.3).
 set -uo pipefail
-F=acme
+F="${F:-acme}"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 WAIT_TASK="${WAIT_TASK:-900}"
