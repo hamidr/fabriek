@@ -168,7 +168,7 @@ hand never render at once and the pin never moves under an up in flight
 `fabriek.toml` under the factory's directory (`modules/credential.sh`:
 the operator's config projected for the factory plus `[pin]` at the
 checkout's HEAD, kept on a second up and moved by `-u`), starts the
-factory's units, clones the checkout as a local path with its objects
+factory's state unit, clones the checkout as a local path with its objects
 hardlinked (`modules/factory-clone.sh`), renders
 (`factory-render`: the declaration read from the clone at the pin,
 clamped against the caps in `modules/machine-spec.sh`, and under the
@@ -177,7 +177,9 @@ factory's directory `declaration.json`, `rev`, `notes.json`,
 `decider-policy.md`, `pi-decider/`, and per role `roles/<role>/profile`,
 built by the host's daemon from the repository at the pin under
 `--restrict-eval`, and `roles/<role>/pi`; then `profiles.json`), removes
-the cage of any role whose declared substrate changed, files each model
+the cage of any role whose declared substrate changed, starts the rest
+of the factory's units (after render, since the bus's ACL unit applies
+the plan it finds), files each model
 credential the rendered factory reaches under the factory's state for the
 proxy's user (`modules/factory-up.sh`), prepares, and writes the mark
 last. What the clamp changed is printed, and a substrate raised to the

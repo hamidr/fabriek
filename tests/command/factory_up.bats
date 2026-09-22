@@ -127,7 +127,7 @@ teardown() {
 
 perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 
-@test "up pins the checkout's HEAD, writes the credential under the factory's directory, and starts the factory's units first" {
+@test "up pins the checkout's HEAD, writes the credential under the factory's directory, and starts the state unit first" {
 	run_fabriek_container factory-up acme
 	assert_success
 	run sed -n 's/^rev = "\(.*\)"$/\1/p' "$ETC/fabriek.toml"
@@ -135,7 +135,7 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	run grep -c "^remote = \"$REPO\"$" "$ETC/fabriek.toml"
 	assert_output 1
 	run head -1 "$CALLS/systemctl"
-	assert_output "start fabriek-acme-state.service fabriek-acme-bus.service fabriek-acme-record.service fabriek-acme-board.service fabriek-acme-bus-acl.service"
+	assert_output "start fabriek-acme-state.service"
 }
 
 @test "a second up keeps the pin; --update moves it to the checkout's HEAD" {
@@ -356,4 +356,29 @@ TOML
 	assert_output --partial "substrate: role builder asked for nspawn and this host's floor is microvm; raised to microvm"
 	run jq -c '[.roles.builder.substrate, .roles.reviewer.substrate]' "$ETC/declaration.json"
 	assert_output '["microvm","microvm"]'
+}
+
+# The bus's ACL unit reads the plan render wrote, so it starts after render
+# and not before: found on pc 2026-09-22, where a plan that had moved to
+# the factory's own bridge was applied from the old plan on another
+# factory's bus and up died there, never reaching render. The state unit
+# alone goes first, since render writes into what it makes.
+@test "up renders before it starts the units that read the render, and only the state unit goes before" {
+	run_fabriek_container factory-up acme
+	assert_success
+	cat >"$STUB_DIR/systemctl" <<EOF2
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS/systemctl"
+case "\$*" in *bus-acl*) cp "$ETC/bridge.json" "$CALLS/plan-at-acl-start" ;; esac
+EOF2
+	chmod +x "$STUB_DIR/systemctl"
+	: >"$CALLS/systemctl"
+	sed -i.bak "s/^FABRIEK_BRIDGE=.*/FABRIEK_BRIDGE=fb-1/; s/^FABRIEK_BRIDGE_HOST=.*/FABRIEK_BRIDGE_HOST=10.77.1.1/" "$FACTS/acme.env" && rm "$FACTS/acme.env.bak"
+	run_fabriek_container factory-up acme
+	assert_success
+	run jq -r .host "$CALLS/plan-at-acl-start"
+	assert_output 10.77.1.1
+	run grep "^start " "$CALLS/systemctl"
+	assert_line --index 0 "start fabriek-acme-state.service"
+	assert_line --index 1 "start fabriek-acme-bus.service fabriek-acme-record.service fabriek-acme-board.service fabriek-acme-bus-acl.service"
 }

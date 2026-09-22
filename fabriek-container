@@ -900,10 +900,12 @@ cmd_factory_up() {
 	local path
 	path="$(fabriek_up_credential "$factory" "$FABRIEK_ETC" "$update" "$FABRIEK_SYSTEM")" || exit 1
 
-	local -a units=()
-	local unit
-	while IFS= read -r unit; do units+=("$unit"); done < <(fabriek_up_units "$factory")
-	systemctl start "${units[@]}" || die "could not start $factory's units"
+	## The state unit first: it makes the datasets render writes into. The
+	## rest only after render, since the bus's ACL unit applies the plan it
+	## finds on disk, and a plan that moved must be the new one (seen
+	## 2026-09-22: the old plan applied on another factory's bus, and up
+	## dead there before render).
+	systemctl start "fabriek-$factory-state.service" || die "could not start $factory's state"
 
 	## What each role ran on before this render, so a changed substrate is
 	## seen (ADR-067 point 4): nixcage fixed it at the cage's first enter,
@@ -921,6 +923,10 @@ cmd_factory_up() {
 		.roles | to_entries[] | .key as $r | (.value.substrate // "nspawn") as $now
 		| select($before[$r] != null and $before[$r] != $now) | "\($r)\t\($now)"' \
 		"$FABRIEK_ETC/declaration.json")
+	local -a units=()
+	local unit
+	while IFS= read -r unit; do units+=("$unit"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$')
+	systemctl start "${units[@]}" || die "could not start $factory's units"
 	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
 	cmd_factory_prepare "$factory" "$path"
 }
