@@ -17,6 +17,7 @@ import { parseCommand } from "../vocabulary.js";
 import { Executor, type Bus, type Spend, type Streams } from "./core.js";
 import { ForgeBoard } from "./forge.js";
 import { RoleSessions, sessionCommand } from "./sessions.js";
+import { resumeFrom, remember } from "./cursor.js";
 import { CloneGit } from "./git.js";
 import { spendByRole } from "./spend.js";
 
@@ -109,6 +110,13 @@ async function main(): Promise<void> {
   // "$", and a role never heard ready is never assigned. Found on a host,
   // where a scripted actor is ready in milliseconds.
   for (const k of Object.keys(streams)) streams[k] = await client.lastId(k);
+  // The operator's stream is a queue of interventions, and one filed while
+  // the executor was down or reconciling (up restarts it) is owed an answer:
+  // read from the id last read, kept across restarts (before it is acted
+  // on, so a crash mid-way skips one rather than files it twice), and from
+  // the tail only where none was kept yet.
+  const operatorCursor = `${STATE}/operator-cursor`;
+  streams["operator"] = resumeFrom(operatorCursor, streams["operator"] ?? "$");
   for (const r of roles) await sessions.start(r);
   await sessions.start("decider");
   log(`sessions started for ${roles.join(", ")} and the decider`);
@@ -127,6 +135,7 @@ async function main(): Promise<void> {
       for (const [stream, entries] of Object.entries(batches)) {
         for (const e of entries) {
           streams[stream] = e.id;
+          if (stream === "operator") remember(operatorCursor, e.id);
           if (stream.startsWith("control:")) {
             const role = stream.slice("control:".length);
             try {
