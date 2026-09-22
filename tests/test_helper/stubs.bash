@@ -40,7 +40,13 @@ case "\$1 \$2 \$3" in
 	;;
 "admin user change-password") ;;
 "admin user generate-access-token")
-	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; esac; shift; done
+	while [ \$# -gt 0 ]; do case "\$1" in --username) u="\$2";; --token-name) n="\$2";; esac; shift; done
+	## A name an account has used already is refused, and the token behind
+	## it is the forge's to keep: there is no CLI that deletes one.
+	if grep -qx "\$u \$n" "$FORGE/tokens" 2>/dev/null; then
+		echo "Command error: access token name has been used already" >&2; exit 1
+	fi
+	echo "\$u \$n" >>"$FORGE/tokens"
 	echo "token-for-\$u"
 	;;
 esac

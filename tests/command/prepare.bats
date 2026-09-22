@@ -125,7 +125,23 @@ teardown() {
 	assert_success
 	[ "$(cat "$STATE/forge/operator-token")" = "$before" ]
 	run grep -c "generate-access-token --username acme-operator" "$FORGE/cli-calls"
-	assert_output 2
+	assert_output 3
+}
+
+# There is no CLI that deletes an access token, so the name the first one
+# took is taken for good; a second is minted under a name of its own rather
+# than failing the whole prepare.
+@test "a token minted again takes a name the account has not used" {
+	run_fabriek_container factory-prepare acme
+	assert_success
+	chmod u+w "$STATE/forge/operator-token"
+	printf 'token-of-the-instance-that-is-gone\n' >"$STATE/forge/operator-token"
+	run_fabriek_container factory-prepare acme
+	assert_success
+	run grep -c "^acme-operator fabriek$" "$FORGE/tokens"
+	assert_output 1
+	run grep -c "^acme-operator fabriek-" "$FORGE/tokens"
+	assert_output 1
 }
 
 @test "every role gets an account, read on the repository, and a write:issue token kept as a file" {

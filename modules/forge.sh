@@ -97,10 +97,33 @@ fabriek_forge_ensure_token() {
 	mkdir -p "$(dirname "$file")"
 	chmod 0700 "$(dirname "$file")"
 	local token
-	token="$(fabriek_forge_admin user generate-access-token \
-		--username "$account" --token-name fabriek --scopes "$scopes" --raw)" || return 1
+	token="$(fabriek_forge_mint_token "$account" "$scopes")" || return 1
 	(umask 077 && printf '%s\n' "$token" >"$file.new") && mv "$file.new" "$file"
 	chmod 0400 "$file"
+}
+
+## One token for an account, printed. Named fabriek, and when that name is
+## taken under a name of its own: the forge has no way to delete an access
+## token, so a name an account has used is used for good, and a token whose
+## file is gone is unreachable rather than reusable. Any other refusal is
+## the caller's failure and is said in the forge's own words.
+fabriek_forge_mint_token() {
+	local account="$1" scopes="$2" err token status=0
+	err="$(mktemp)"
+	token="$(fabriek_forge_admin user generate-access-token \
+		--username "$account" --token-name fabriek --scopes "$scopes" --raw 2>"$err")" || status=$?
+	if [ "$status" != 0 ]; then
+		if grep -q 'access token name has been used already' "$err"; then
+			status=0
+			token="$(fabriek_forge_admin user generate-access-token \
+				--username "$account" --token-name "fabriek-$(date +%s)" \
+				--scopes "$scopes" --raw 2>"$err")" || status=$?
+		fi
+	fi
+	[ "$status" = 0 ] || cat "$err" >&2
+	rm -f "$err"
+	[ "$status" = 0 ] || return "$status"
+	printf '%s\n' "$token"
 }
 
 ## A token file the forge no longer honours is not a token, and keeping it
@@ -111,12 +134,16 @@ fabriek_forge_ensure_token() {
 ## follows mints one; a forge that cannot be reached at all leaves the file
 ## where it is, since that is not an answer about the token.
 ##
-## fabriek_forge_drop_stale_token <base> <state> <key>
+## The path is the caller's, because a token may ask only what its scopes
+## allow: the owner's reaches /user, and a role's issue-scoped one reaches
+## its repository's issues and not /user.
+##
+## fabriek_forge_drop_stale_token <base> <state> <key> <path>
 fabriek_forge_drop_stale_token() {
-	local base="$1" state="$2" who="$3" file status=0
+	local base="$1" state="$2" who="$3" path="$4" file status=0
 	file="$(fabriek_forge_token_path "$state" "$who")" || return 1
 	[ -s "$file" ] || return 0
-	fabriek_forge_api "$base" "$file" GET /user >/dev/null 2>&1 || status=$?
+	fabriek_forge_api "$base" "$file" GET "$path" >/dev/null 2>&1 || status=$?
 	## 22 is curl's word for a status the server refused with; anything
 	## else is the forge not answering.
 	[ "$status" = 22 ] || return 0
