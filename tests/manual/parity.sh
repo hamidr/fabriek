@@ -63,7 +63,12 @@ check "every stage is a label" "$(printf '%s\n' "${stages[@]}" | sort | paste -s
 scenario "A filed goal is assigned without a second command"
 given "the executor is running and the decider's session with it"
 check "the executor unit is active" active "$(systemctl is-active "fabriek-$F-executor" 2>/dev/null)"
-check "the decider's cage is running" yes "$(onhost "nixcage-container status '$F-decider'" 2>/dev/null | grep -q '^running' && echo yes || echo no)"
+## up returns before the executor has started its sessions (seen
+## 2026-09-22: the decider asked for a few seconds too early), so its cage
+## is waited for, as isolation.sh waits for the roles'.
+# shellcheck disable=SC2329  # invoked through eventually
+decider_running() { onhost "nixcage-container status '$F-decider'" 2>/dev/null | grep -q '^running' && echo yes || echo no; }
+check "the decider's cage is running" yes "$(eventually 60 yes decider_running)"
 when "the operator files a goal"
 ## Filing is one entry on the operator stream; the executor opens the issue.
 ## The number is read off the board by title, because task file cannot know
