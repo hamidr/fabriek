@@ -171,24 +171,20 @@ set"
 }
 
 # The factory's own state is a dataset under nixcage's pool, asked for
-# through the primitive, before anything of the factory writes there; the
-# record's is a dataset inside it with a default bound render tightens.
-@test "each factory's state and its record are datasets asked for through the storage primitive, in its slice" {
+# through the primitive, before anything of the factory writes there. The
+# record is no longer one of them: it is the host's forge (ADR-068).
+@test "each factory's state is a dataset asked for through the storage primitive, in its slice" {
 	run host_eval 'factories.acme.path = "/srv/acme";' \
-		'{ state = c.systemd.services.fabriek-acme-state.script; record = c.systemd.services.fabriek-acme-record.script;
-		   slice = c.systemd.services.fabriek-acme-record.serviceConfig.Slice;
-		   after = c.systemd.services.fabriek-acme-record.requires; sliceUnit = c.systemd.slices ? fabriek-acme; }'
+		'{ state = c.systemd.services.fabriek-acme-state.script;
+		   slice = c.systemd.services.fabriek-acme-state.serviceConfig.Slice;
+		   sliceUnit = c.systemd.slices ? fabriek-acme; }'
 	assert_success
 	local units="$output"
 	run jq -r .state <<<"$units"
 	assert_output --partial 'nixcage-container storage ensure'
 	assert_output --partial '/var/lib/nixcage/fabriek/acme 0'
-	run jq -r .record <<<"$units"
-	assert_output --partial 'storage ensure'
-	assert_output --partial '/var/lib/nixcage/fabriek/acme/forgejo "$(id -u forgejo)" 4096M'
-	assert_output --partial 'systemd-tmpfiles --create --prefix=/var/lib/nixcage/fabriek/acme/forgejo'
-	run jq -c '[.slice, .after, .sliceUnit]' <<<"$units"
-	assert_output '["fabriek-acme.slice",["fabriek-acme-state.service"],true]'
+	run jq -c '[.slice, .sliceUnit]' <<<"$units"
+	assert_output '["fabriek-acme.slice",true]'
 }
 
 @test "each factory's bus is Valkey on its own bridge with no persistence, and the ACL is the machine program's for that factory" {
@@ -207,24 +203,64 @@ set"
 	assert_output '["fabriek-container bus-acl","/etc/fabriek/factories/widgets.env","fabriek-widgets.slice"]'
 }
 
-# Forgejo's NixOS module is one instance; the board is a unit of ours per
-# factory, on the factory's bridge, working in the record's dataset, its
-# secrets generated there on first start and read back by name.
-@test "each factory's board is a Forgejo of its own on its bridge, in the record's dataset, with nothing federated or mailed" {
+# Forgejo's NixOS module is one instance, and so is the board: one unit
+# for the host (ADR-068 point 1), outside every factory's slice, on one
+# dataset of the host's, its secrets generated there on first start and
+# read back by name. No factory has a board or a record of its own.
+@test "the board is one Forgejo on the host, in no factory's slice, on one dataset" {
 	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
-		'{ ini = c.services.fabriek.boards.widgets.settings;
-		   unit = { inherit (c.systemd.services.fabriek-widgets-board) serviceConfig environment requires preStart; };
+		'{ ini = c.services.fabriek.board.settings;
+		   unit = { inherit (c.systemd.services.fabriek-forge) serviceConfig environment requires preStart; };
+		   storage = c.systemd.services.fabriek-forge-storage.script;
+		   perFactory = builtins.filter (n: builtins.match ".*-(board|record)" n != null) (builtins.attrNames c.systemd.services);
 		   wrapper = map (p: p.name) (builtins.filter (p: p.name == "forgejo") c.environment.systemPackages); }'
 	assert_success
 	local out="$output"
-	run jq -c '[.ini.server.HTTP_ADDR, .ini.server.HTTP_PORT, .ini.server.ROOT_URL, .ini.server.DISABLE_SSH, .ini.service.DISABLE_REGISTRATION, .ini.security.INSTALL_LOCK, .ini.federation.ENABLED, .ini.mailer.ENABLED, .ini.DEFAULT.WORK_PATH, .ini.database.DB_TYPE]' <<<"$out"
-	assert_output '["10.77.1.1",3000,"http://10.77.1.1:3000/",true,true,true,false,false,"/var/lib/nixcage/fabriek/widgets/forgejo","sqlite3"]'
-	run jq -c '[.unit.serviceConfig.User, .unit.serviceConfig.Slice, .unit.environment.FORGEJO_WORK_DIR, (.unit.serviceConfig.ExecStart | test("forgejo.* web")), .unit.requires, .wrapper]' <<<"$out"
-	assert_output '["forgejo","fabriek-widgets.slice","/var/lib/nixcage/fabriek/widgets/forgejo",true,["fabriek-widgets-record.service"],["forgejo"]]'
+	run jq -c '[.ini.server.HTTP_PORT, .ini.server.DISABLE_SSH, .ini.service.DISABLE_REGISTRATION, .ini.security.INSTALL_LOCK, .ini.federation.ENABLED, .ini.mailer.ENABLED, .ini.DEFAULT.WORK_PATH, .ini.database.DB_TYPE]' <<<"$out"
+	assert_output '[3000,true,true,true,false,false,"/var/lib/nixcage/fabriek-forge","sqlite3"]'
+	run jq -c '[.unit.serviceConfig.User, (.unit.serviceConfig.Slice // "none"), .unit.environment.FORGEJO_WORK_DIR, (.unit.serviceConfig.ExecStart | test("forgejo.* web")), .unit.requires, .wrapper, .perFactory]' <<<"$out"
+	assert_output '["forgejo","none","/var/lib/nixcage/fabriek-forge",true,["fabriek-forge-storage.service"],["forgejo"],[]]'
+	run jq -r .storage <<<"$out"
+	assert_output --partial 'nixcage-container storage ensure'
+	assert_output --partial '/var/lib/nixcage/fabriek-forge "$(id -u forgejo)" 4096M'
+	assert_output --partial 'systemd-tmpfiles --create --prefix=/var/lib/nixcage/fabriek-forge'
 	run jq -r .unit.preStart <<<"$out"
 	assert_output --partial 'generate secret SECRET_KEY'
 	assert_output --partial 'generate secret INTERNAL_TOKEN'
 	assert_output --partial 'environment-to-ini'
+}
+
+# ADR-068 point 6: one instance answers on every factory's bridge, so it
+# binds every address and the firewall is what bounds it, the same rule a
+# cage's proxy and bus are under. Loopback is open to the host itself and
+# no external interface is, because NixOS opens none by default. The URL
+# the forge builds is loopback's: nothing in factory/src reads it.
+@test "the board answers on every bridge and loopback, and on no external interface" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'{ addr = c.services.fabriek.board.settings.server.HTTP_ADDR;
+		   root = c.services.fabriek.board.settings.server.ROOT_URL;
+		   domain = c.services.fabriek.board.settings.server.DOMAIN;
+		   bridges = { fb0 = c.networking.firewall.interfaces.fb-0.allowedTCPPorts;
+		               fb1 = c.networking.firewall.interfaces.fb-1.allowedTCPPorts; };
+		   open = c.networking.firewall.allowedTCPPorts; }'
+	assert_success
+	run jq -c '[.addr, .root, .domain, (.bridges.fb0 | index(3000) != null), (.bridges.fb1 | index(3000) != null), (.open | index(3000))]' <<<"$output"
+	assert_output '["0.0.0.0","http://127.0.0.1:3000/","127.0.0.1",true,true,null]'
+}
+
+# ADR-068 point 1: one work directory, named here and not taken from the
+# caller's environment, so the CLI cannot be pointed at a factory's state
+# that no longer holds a forge.
+@test "the forgejo wrapper runs against the one work directory and reads no factory's state" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'(builtins.head (builtins.filter (p: p.name == "forgejo") c.environment.systemPackages)).text'
+	assert_success
+	local text
+	text="$(jq -r . <<<"$output")"
+	run printf '%s\n' "$text"
+	assert_output --partial 'FORGEJO_WORK_DIR=/var/lib/nixcage/fabriek-forge'
+	assert_output --partial '--config /var/lib/nixcage/fabriek-forge/custom/conf/app.ini'
+	refute_output --partial 'FABRIEK_STATE'
 }
 
 # One nginx on the host, a server per factory on its bridge, a dictionary
@@ -299,7 +335,7 @@ set"
 		   start = c.systemd.services.fabriek-widgets-executor.serviceConfig.ExecStart; }'
 	assert_success
 	local out="$output"
-	run jq -c '[.cond, .env, .slice, (.after | contains(["fabriek-widgets-bus-acl.service","fabriek-widgets-board.service"])), (.start | test("executor/main.js$"))]' <<<"$out"
+	run jq -c '[.cond, .env, .slice, (.after | contains(["fabriek-widgets-bus-acl.service","fabriek-forge.service"])), (.start | test("executor/main.js$"))]' <<<"$out"
 	assert_output '["/run/fabriek/widgets/prepared","/etc/fabriek/factories/widgets.env","fabriek-widgets.slice",true,true]'
 }
 

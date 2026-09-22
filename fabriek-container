@@ -969,7 +969,7 @@ cmd_factory_down() {
 	rm -f "$(fabriek_run_dir)/prepared"
 	local -a units=()
 	local unit
-	while IFS= read -r unit; do units=("$unit" "${units[@]}"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$\|-record\.service$')
+	while IFS= read -r unit; do units=("$unit" "${units[@]}"); done < <(fabriek_up_units "$factory" | grep -v -- '-state\.service$')
 	systemctl stop "${units[@]}" || true
 	echo "$factory has stopped"
 }

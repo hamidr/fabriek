@@ -9,7 +9,7 @@
 ## the first thing down stops.
 fabriek_up_units() {
 	local factory="$1" u
-	for u in state bus record board bus-acl; do
+	for u in state bus bus-acl; do
 		printf 'fabriek-%s-%s.service\n' "$factory" "$u"
 	done
 }

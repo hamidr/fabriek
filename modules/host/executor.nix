@@ -24,12 +24,12 @@ in
         wantedBy = [ "multi-user.target" ];
         after = [
           "fabriek-${name}-bus-acl.service"
-          "fabriek-${name}-board.service"
+          "fabriek-forge.service"
           "fabriek-${name}-state.service"
         ];
         wants = [
           "fabriek-${name}-bus-acl.service"
-          "fabriek-${name}-board.service"
+          "fabriek-forge.service"
         ];
         ## Not before up has prepared the factory for this start (profiles
         ## for this pin, accounts, tokens, passwords owned by their cages):

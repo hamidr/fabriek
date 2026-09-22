@@ -240,7 +240,7 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	[ ! -e "$RUN/prepared" ]
 	run cat "$CALLS/systemctl"
 	assert_line --index 0 "stop fabriek-acme-executor.service"
-	assert_line --index 1 "stop fabriek-acme-bus-acl.service fabriek-acme-board.service fabriek-acme-bus.service"
+	assert_line --index 1 "stop fabriek-acme-bus-acl.service fabriek-acme-bus.service"
 	[ -d "$STATE/factories/acme" ]
 }
 
@@ -380,5 +380,5 @@ EOF2
 	assert_output 10.77.1.1
 	run grep "^start " "$CALLS/systemctl"
 	assert_line --index 0 "start fabriek-acme-state.service"
-	assert_line --index 1 "start fabriek-acme-bus.service fabriek-acme-record.service fabriek-acme-board.service fabriek-acme-bus-acl.service"
+	assert_line --index 1 "start fabriek-acme-bus.service fabriek-acme-bus-acl.service"
 }
