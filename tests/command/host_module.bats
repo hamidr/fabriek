@@ -283,6 +283,16 @@ set"
 	refute_output --partial 'FABRIEK_STATE'
 }
 
+# Found on the host: a second factory's up was refused with "start of the
+# service was attempted too often", because every up reloads the proxy and
+# a reload after a failed start is a restart, which systemd counts.
+@test "the proxy has no start limit, so two factories may come up one after the other" {
+	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
+		'c.systemd.services.nginx.startLimitIntervalSec'
+	assert_success
+	assert_output 0
+}
+
 # One nginx on the host, a server per factory on its bridge, a dictionary
 # and a ceiling per factory (ADR-067 point 2). The locations are render's
 # to write under the factory's directory; before render there are none.

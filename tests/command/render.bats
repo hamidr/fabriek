@@ -179,7 +179,7 @@ teardown() {
 	assert_output '{"model":"claude-opus-5","provider":"anthropic"}'
 	run cat "$CALLS/systemctl"
 	assert_line --partial 'restart fabriek-acme-egress-credentials'
-	assert_line --partial 'reload-or-restart nginx'
+	assert_line --partial 'reload nginx'
 }
 
 @test "the decider's policy is read from the pin and its directory composed from the floor" {

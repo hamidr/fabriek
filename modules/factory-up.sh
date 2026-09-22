@@ -142,5 +142,8 @@ fabriek_up_secrets() {
 	done < <(jq -r '.credentials | keys[]' "$endpoints")
 	## The proxy read its headers when it started, which was before this.
 	systemctl restart "fabriek-$factory-egress-credentials.service"
-	systemctl reload-or-restart nginx.service
+	## Reloaded rather than restarted where it can be: a restart drops
+	## every connection a cage has open through it, and counts against
+	## systemd's start limit.
+	systemctl reload nginx.service || systemctl restart nginx.service
 }

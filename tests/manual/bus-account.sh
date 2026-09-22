@@ -24,6 +24,15 @@ FACTS_DIR="${FABRIEK_FACTORIES:-/etc/fabriek/factories}"
 	exit 1
 }
 fact_of() { sed -n "s/^$2=//p" "$FACTS_DIR/$1.env"; }
+## As root on this host with one named factory's facts loaded, the host's
+## own path first as a unit has it.
+onhost_of() {
+	local f="$1"
+	shift
+	sudo env "FABRIEK_FACTORY=$f" "FABRIEK_LIB=$FABRIEK_LIB" \
+		"PATH=/run/current-system/sw/bin:$PATH" \
+		bash -c "set -a; . '$FACTS_DIR/$f.env'; set +a; $*"
+}
 state_a="$(fact_of "$A" FABRIEK_STATE)"
 state_b="$(fact_of "$B" FABRIEK_STATE)"
 etc_a="$(fact_of "$A" FABRIEK_ETC)"
@@ -70,7 +79,7 @@ scenario "One factory's users are read again without the server restarting"
 given "the server's pid and $B's connections"
 pid_before="$(systemctl show -p MainPID --value nats.service)"
 when "$A prepares, which writes its users and asks for a reload"
-onhost "fabriek-container factory-prepare '$A'" >/dev/null 2>&1
+onhost_of "$A" "fabriek-container factory-prepare '$A'" >/dev/null 2>&1
 check "the server was not restarted" "$pid_before" "$(systemctl show -p MainPID --value nats.service)"
 check "$B may still speak on its own account" yes \
 	"$(as_b executor pub operator '{"json":"still here"}' | grep -q "Published" && echo yes || echo no)"
@@ -80,22 +89,24 @@ given "$A's include made malformed by hand, which is not how a factory writes it
 users_file="$etc_a/nats-users.conf"
 sudo cp "$users_file" "$S/nats-users.conf.kept"
 sudo bash -c "printf 'users = [ { user: \"broken\"\n' >'$users_file'"
-when "$B is brought up while that file is still on the host"
+when "$B prepares while that file is still on the host"
 ## One server reads one configuration, so a file nobody has repaired holds
 ## up every factory's reload: $B's users are written and the reload is
-## refused, naming the configuration rather than $B.
-up_b="$(bash fabriek up "$B" 2>&1)"
-check "$B's up is refused at the reload" yes "$(grep -q "nothing was reloaded" <<<"$up_b" && echo yes || echo no)"
-check "and the refusal says where to look" yes "$(grep -q "another factory's users" <<<"$up_b" && echo yes || echo no)"
+## refused, naming the configuration rather than $B. Prepare is asked
+## rather than up, because up also renders and reloads what is not the
+## bus's, and this is about the bus.
+prepare_b="$(onhost_of "$B" "fabriek-container factory-prepare '$B'" 2>&1)"
+check "$B's prepare is refused at the reload" yes "$(grep -q "nothing was reloaded" <<<"$prepare_b" && echo yes || echo no)"
+check "and the refusal says where to look" yes "$(grep -q "another factory's users" <<<"$prepare_b" && echo yes || echo no)"
 check "the server is still the one that was running" "$pid_before" "$(systemctl show -p MainPID --value nats.service)"
-when "$A is brought up, which renders its users again"
-up_a="$(bash fabriek up "$A" 2>&1)"
-check "$A comes up" yes "$(grep -q "$A is running" <<<"$up_a" && echo yes || echo no)"
+when "$A prepares, which renders its users again"
+prepare_a="$(onhost_of "$A" "fabriek-container factory-prepare '$A'" 2>&1)"
+check "$A is prepared" yes "$(grep -q "$A: prepared" <<<"$prepare_a" && echo yes || echo no)"
 check "the file the server reads is one it can read" yes \
 	"$(sudo nats-server -t -c /var/lib/fabriek/nats.conf >/dev/null 2>&1 && echo yes || echo no)"
-when "$B is brought up again"
-up_b="$(bash fabriek up "$B" 2>&1)"
-check "$B comes up" yes "$(grep -q "$B is running" <<<"$up_b" && echo yes || echo no)"
+when "$B prepares again"
+prepare_b="$(onhost_of "$B" "fabriek-container factory-prepare '$B'" 2>&1)"
+check "$B is prepared" yes "$(grep -q "$B: prepared" <<<"$prepare_b" && echo yes || echo no)"
 
 bash fabriek down "$B"
 bash fabriek down "$A"

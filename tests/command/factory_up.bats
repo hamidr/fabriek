@@ -184,7 +184,7 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	assert_output 1
 	run cat "$CALLS/systemctl"
 	assert_line --partial 'restart fabriek-acme-egress-credentials.service'
-	assert_line --partial 'reload-or-restart nginx.service'
+	assert_line --partial 'reload nginx.service'
 	assert_line --partial 'reload nats.service'
 	run cat "$FORGE/users"
 	assert_line acme-operator

@@ -37,6 +37,13 @@ in
     };
     users.groups.${egress} = { };
 
+    ## Every up reloads the proxy, and two factories brought up one after
+    ## the other reload it twice in a few seconds. A reload does not count
+    ## against systemd's start limit but a restart does, and one failed
+    ## start makes the next reload a restart, so the limit is off here:
+    ## found on the host, where the second factory's up was refused with
+    ## "start of the service was attempted too often" and nothing else was
+    ## wrong.
     services.nginx = {
       enable = true;
       user = egress;
@@ -97,7 +104,18 @@ in
     ## endpoints render wrote and the secrets up put under the factory's
     ## state (ADR-025: a path, never a value, and readable by the proxy's
     ## user alone).
-    systemd.services = lib.mapAttrs' (
+    systemd.services = {
+      ## Every up reloads the proxy, and two factories brought up one
+      ## after the other reload it twice in a few seconds. A reload does
+      ## not count against systemd's start limit but a restart does, and a
+      ## reload of something that failed to start is a restart, so the
+      ## limit is off: found on the host, where the second factory's up
+      ## was refused with "start of the service was attempted too often"
+      ## and nothing else was wrong.
+      ## NixOS gives nginx a limit of its own, which this replaces.
+      nginx.startLimitIntervalSec = lib.mkForce 0;
+    }
+    // lib.mapAttrs' (
       name: p:
       lib.nameValuePair "fabriek-${name}-egress-credentials" {
         description = "Compose the factory ${name}'s credential headers for the proxy";

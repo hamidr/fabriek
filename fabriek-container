@@ -560,7 +560,10 @@ cmd_factory_render() {
 	render_files "$spec" "$clone" "$rev"
 	render_profiles "$clone" "$rev"
 	systemctl restart "fabriek-$factory-egress-credentials.service"
-	systemctl reload-or-restart nginx.service
+	## Reloaded rather than restarted where it can be: a restart drops
+	## every connection a cage has open through it, and counts against
+	## systemd's start limit.
+	systemctl reload nginx.service || systemctl restart nginx.service
 	jq -r '.[]' "$FABRIEK_ETC/notes.json"
 	rm -f "$credential" "$declaration" "$local_file" "$spec"
 	echo "$factory: rendered at $rev"
