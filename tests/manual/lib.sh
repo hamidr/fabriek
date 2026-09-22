@@ -50,13 +50,17 @@ spec_json() {
 }
 
 ## Waits up to WAIT_CAGES seconds (default 120) for the executor to hold a
-## cage for each role named. up returns before the sessions are started, and
-## a hand session entered in that window meets the actor's cage being made
-## under the same name (seen 2026-09-16: one role with no address).
+## cage for each role named, and for each to answer a command. up returns
+## before the sessions are started, and a hand session entered in that
+## window meets the actor's cage being made under the same name (seen
+## 2026-09-16: one role with no address); a microVM's scope runs while
+## its guest still boots, and a hand entered then gets nothing back (seen
+## 2026-09-22: a role with no address, again).
 cages_present() {
 	local role
 	for role in "$@"; do
 		onhost "nixcage-container status '$F-$role'" 2>/dev/null | grep -q '^running' || return 1
+		[ "$(in_cage "$role" echo up)" = up ] || return 1
 	done
 }
 wait_cages() {
