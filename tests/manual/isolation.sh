@@ -26,6 +26,7 @@ F="${F:-acme}"
 # shellcheck source=tests/manual/lib.sh
 . "$(dirname "$0")/lib.sh"
 
+run_start="$(date '+%Y-%m-%d %H:%M:%S')"
 bash fabriek up "$F" || exit 1
 
 ## The bridge, proxy and forged-source scenarios enter an nspawn cage's
@@ -199,9 +200,11 @@ fi
 if [ "$code" = 429 ]; then
 	scenario "At the ceiling the executor holds the decider"
 	given "the proxy refusing everything"
-	decider_exits() { journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -c 'session decider exited'; }
+	## This run's lines only: the journal keeps every run's, and the last
+	## run reached the ceiling as well.
+	decider_exits() { journalctl -u "fabriek-$F-executor" --since "$run_start" --no-pager 2>/dev/null | grep -c 'session decider exited'; }
 	# shellcheck disable=SC2329  # invoked through eventually
-	held_said() { journalctl -u "fabriek-$F-executor" --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
+	held_said() { journalctl -u "fabriek-$F-executor" --since "$run_start" --no-pager 2>/dev/null | grep -q 'the decider is held' && echo yes || echo no; }
 	when "the decider's session meets the 429 and ends"
 	check "the executor says the decider is held" yes "$(eventually 120 yes held_said)"
 	exits="$(decider_exits)"
