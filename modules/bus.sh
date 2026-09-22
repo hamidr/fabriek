@@ -141,19 +141,45 @@ fabriek_bus_render_users() {
 	} >"$file.new"
 	rm -f "$entries"
 	chmod 0644 "$file.new"
+	## Checked before it is moved into place: a file the server cannot read
+	## would be read by every factory's reload and not by this one alone, so
+	## what this factory writes is never that file. The one in place stays
+	## as it was.
+	if ! fabriek_bus_check_users "$file.new"; then
+		echo "fabriek: the bus users rendered for this factory are not valid; the file is left as it was" >&2
+		rm -f "$file.new"
+		return 1
+	fi
 	mv "$file.new" "$file"
 }
 
-## Check the whole configuration and ask the server to read it again.
-## Checked first, so a file this factory wrote badly is refused here rather
-## than at a reload every other factory shares.
+## Whether one file of users is a file nats-server can read, asked of a
+## configuration that holds that file and nothing else.
+fabriek_bus_check_users() {
+	local candidate="$1" dir status=0
+	dir="$(mktemp -d)"
+	cp "$candidate" "$dir/users.conf"
+	printf 'port: 14222\naccounts { check { include "users.conf" } }\n' >"$dir/check.conf"
+	nats-server -t -c "$dir/check.conf" >/dev/null 2>&1 || status=1
+	rm -rf "$dir"
+	return "$status"
+}
+
+## Ask the server to read every include again.
+##
+## The whole configuration is checked first, this factory's file included.
+## What this factory wrote was checked before it was put in place, so a
+## refusal here is another factory's file or the host's own configuration,
+## and it is said that way: one server reads one configuration, and a file
+## nobody has repaired holds up every factory's reload until it is.
 ##
 ## fabriek_bus_reload
 fabriek_bus_reload() {
 	local config
 	config="$(fabriek_bus_config)"
 	nats-server -t -c "$config" >/dev/null 2>&1 || {
-		echo "fabriek: the bus's configuration is not valid with this factory's users; nothing was reloaded" >&2
+		echo "fabriek: the bus's configuration is not valid; this factory's users are written but nothing was reloaded" >&2
+		echo "fabriek: nats-server -t -c $config says what it cannot read, which may be another factory's users" >&2
 		return 1
 	}
 	systemctl reload nats.service

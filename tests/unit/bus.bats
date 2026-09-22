@@ -110,6 +110,21 @@ users_json() {
 	refute_output --partial "acme-reviewer"
 }
 
+# ADR-069 point 3, as one server makes it true: a file the server cannot
+# read would be read by every factory's reload, so what a factory writes is
+# checked before it is put in place and the one in place stays as it was.
+@test "a file the server cannot read is never put in place, and nothing is reloaded" {
+	fabriek_bus_render_users acme "$STATE" "$ETC" "$ETC/declaration.json"
+	local kept
+	kept="$(cat "$ETC/nats-users.conf")"
+	touch "$TEST_TEMP_DIR/invalid"
+	run fabriek_bus_render_users acme "$STATE" "$ETC" "$ETC/declaration.json"
+	assert_failure
+	assert_output --partial "left as it was"
+	[ "$(cat "$ETC/nats-users.conf")" = "$kept" ]
+	[ ! -e "$ETC/nats-users.conf.new" ]
+}
+
 @test "the configuration is checked before the server is asked to read it again" {
 	run fabriek_bus_reload
 	assert_success
@@ -118,11 +133,15 @@ users_json() {
 	assert_line --index 1 "systemctl reload nats.service"
 }
 
-@test "a configuration this factory made invalid is refused here, and no reload is asked of the server" {
+# One server reads one configuration: a file this factory did not write and
+# nobody has repaired holds up every factory's reload, and the refusal says
+# where to look rather than blaming the factory that asked.
+@test "a configuration the server cannot read stops the reload, and says it may be another factory's" {
 	touch "$TEST_TEMP_DIR/invalid"
 	run fabriek_bus_reload
 	assert_failure
 	assert_output --partial "nothing was reloaded"
+	assert_output --partial "another factory's users"
 	run grep -c "systemctl" "$CALLS"
 	assert_output 0
 }
