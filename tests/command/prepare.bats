@@ -110,6 +110,24 @@ teardown() {
 	assert_output 1
 }
 
+# ADR-068 moved every factory onto one Forgejo, so a token file kept from
+# the instance a factory had before names an account that instance held and
+# this one does not. Found on a host: up failed at the repository, because
+# prepare kept a token the forge answered 401 to.
+@test "a token the forge no longer honours is minted again, and the file is the new one" {
+	run_fabriek_container factory-prepare acme
+	assert_success
+	local before
+	before="$(cat "$STATE/forge/operator-token")"
+	chmod u+w "$STATE/forge/operator-token"
+	printf 'token-of-the-instance-that-is-gone\n' >"$STATE/forge/operator-token"
+	run_fabriek_container factory-prepare acme
+	assert_success
+	[ "$(cat "$STATE/forge/operator-token")" = "$before" ]
+	run grep -c "generate-access-token --username acme-operator" "$FORGE/cli-calls"
+	assert_output 2
+}
+
 @test "every role gets an account, read on the repository, and a write:issue token kept as a file" {
 	run_fabriek_container factory-prepare acme
 	assert_success

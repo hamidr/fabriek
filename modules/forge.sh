@@ -103,6 +103,26 @@ fabriek_forge_ensure_token() {
 	chmod 0400 "$file"
 }
 
+## A token file the forge no longer honours is not a token, and keeping it
+## makes prepare fail at the first call that needs one. It happens when the
+## account it belongs to is gone with the instance that held it (ADR-068
+## put every factory on one Forgejo, where each had its own before), and
+## when a token is revoked in the UI. Dropped here so the ensure that
+## follows mints one; a forge that cannot be reached at all leaves the file
+## where it is, since that is not an answer about the token.
+##
+## fabriek_forge_drop_stale_token <base> <state> <key>
+fabriek_forge_drop_stale_token() {
+	local base="$1" state="$2" who="$3" file status=0
+	file="$(fabriek_forge_token_path "$state" "$who")" || return 1
+	[ -s "$file" ] || return 0
+	fabriek_forge_api "$base" "$file" GET /user >/dev/null 2>&1 || status=$?
+	## 22 is curl's word for a status the server refused with; anything
+	## else is the forge not answering.
+	[ "$status" = 22 ] || return 0
+	rm -f "$file"
+}
+
 ## A random secret: a password nothing needs to remember, or a bus password
 ## the ACL is set from.
 fabriek_secret() {

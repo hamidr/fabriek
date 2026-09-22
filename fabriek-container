@@ -622,6 +622,7 @@ cmd_factory_prepare() {
 	base="http://$(jq -r .forgejo "$FABRIEK_ETC/bridge.json")/api/v1"
 	fabriek_forge_ensure_user "$owner" "operator@$factory.invalid" ||
 		die "could not make the operator's account"
+	fabriek_forge_drop_stale_token "$base" "$STATE_DIR" operator
 	fabriek_forge_ensure_token "$STATE_DIR" operator "$owner" all ||
 		die "could not mint the operator's token"
 	local operator
@@ -676,6 +677,7 @@ cmd_factory_prepare() {
 			die "could not make an account for role $role"
 		fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$account" ||
 			die "could not give role $role read on the repository"
+		fabriek_forge_drop_stale_token "$base" "$STATE_DIR" "$role"
 		fabriek_forge_ensure_token "$STATE_DIR" "$role" "$account" write:issue ||
 			die "could not mint a token for role $role"
 		fabriek_forge_ensure_memory "$base" "$operator" \
@@ -690,6 +692,7 @@ cmd_factory_prepare() {
 		die "could not make the decider's account"
 	fabriek_forge_ensure_reader "$base" "$operator" "$owner" "$factory" "$account" ||
 		die "could not give the decider read on the repository"
+	fabriek_forge_drop_stale_token "$base" "$STATE_DIR" "$FABRIEK_DECIDER"
 	fabriek_forge_ensure_token "$STATE_DIR" "$FABRIEK_DECIDER" "$account" read:issue ||
 		die "could not mint the decider's token"
 	cage_owns_credentials "$factory" "$FABRIEK_DECIDER"

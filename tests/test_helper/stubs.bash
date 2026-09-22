@@ -50,18 +50,25 @@ EOF
 	cat >"$STUB_DIR/curl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$FORGE/api-calls"
-method=GET; url=""; body=""
+method=GET; url=""; body=""; token=""
 while [ \$# -gt 0 ]; do
 	case "\$1" in
 	-X) method="\$2"; shift ;;
 	-d) body="\$2"; shift ;;
-	-H) case "\$2" in Authorization*) echo "token on argv" >>"$FORGE/leaks" ;; esac; shift ;;
+	-H) case "\$2" in
+		Authorization*) echo "token on argv" >>"$FORGE/leaks" ;;
+		@*) token="\$(sed -n 's/^Authorization: token //p' "\${2#@}")" ;;
+		esac; shift ;;
 	http*) url="\$1" ;;
 	esac
 	shift
 done
 path="\${url#*/api/v1}"
 case "\$method \$path" in
+## Who the token belongs to. A token this forge never minted answers 401,
+## which is what a token file kept from an instance that is gone looks
+## like (ADR-068).
+"GET /user") case "\$token" in token-for-*) echo "{\"login\": \"\${token#token-for-}\"}" ;; *) echo '{}'; exit 22 ;; esac ;;
 "GET /repos/acme-operator/acme") [ -f "$FORGE/repo" ] && echo '{"name":"acme"}' || { echo '{}'; exit 22; } ;;
 "GET /repos/acme-operator/acme/branches/main") [ -e "$FORGE/has-main" ] && echo '{"name":"main"}' || { echo '{}'; exit 22; } ;;
 "POST /user/repos") touch "$FORGE/repo"; echo '{"name":"acme"}' ;;
