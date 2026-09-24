@@ -163,6 +163,10 @@ code="$(ask_model "$a")"
 check "the request reached the endpoint through the proxy" yes "$(case "$code" in 2*|4*) echo yes ;; *) echo "no ($code)" ;; esac)"
 if [ "$code" = 401 ]; then
 	gated "$a's count moved" "the endpoint refused the credential, so nothing was counted; needs a real one"
+elif [ "$code" = 429 ]; then
+	## The count outlives a run and the ceiling scenario below spends it
+	## (seen 2026-09-24: the second run of the day met the first's 429).
+	gated "$a's count moved" "the factory is already at its ceiling from an earlier run, so the proxy answered 429 and counted nothing"
 else
 	check "$a's count moved" moved "$([ "$(spent_by "$addr_a")" != "$before_a" ] && echo moved || echo still)"
 fi
