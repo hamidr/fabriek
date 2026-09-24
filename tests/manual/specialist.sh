@@ -97,10 +97,26 @@ when "the machine is asked about the role's cage through nixcage"
 ## off status and asked back, never composed here.
 scope="$(onhost "nixcage-container status $F-$ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
 check "status says running with a scope under machine.slice" "yes" "$([ -n "$scope" ] && echo yes)"
-check "the scope carries the memory bound" "yes" \
-	"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
-check "a hand lands inside the actor's cage" "yes" \
-	"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
+## A microVM is bounded by the guest's own RAM and never by its scope
+## (nixcage ADR-022 point 7), and a hand in it sees the guest's cgroups,
+## not the host's; what both substrates share is the actor's process.
+substrate="$(jq -r --arg r "$ROLE" '.declaration.roles[$r].substrate // "nspawn"' "$(spec_json)")"
+if [ "$substrate" = microvm ]; then
+	check "the scope carries no memory bound, the guest's RAM is it" "yes" \
+		"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qx infinity && echo yes)"
+	guest_kb="$(in_cage "$ROLE" sh -c 'sed -n "s/^MemTotal: *\([0-9]*\).*/\1/p" /proc/meminfo' | tr -d '\r')"
+	host_kb="$(sed -n 's/^MemTotal: *\([0-9]*\).*/\1/p' /proc/meminfo)"
+	check "the guest has less memory than the host" "yes" \
+		"$([ -n "$guest_kb" ] && [ "$guest_kb" -lt "$host_kb" ] && echo yes)"
+else
+	check "the scope carries the memory bound" "yes" \
+		"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
+	check "a hand lands inside the actor's cage" "yes" \
+		"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
+fi
+# shellcheck disable=SC2016  # expands in the cage
+check "a hand sees the actor's pi" "yes" \
+	"$(in_cage "$ROLE" sh -c 'for p in /proc/[0-9]*; do c="$(tr "\0" " " <"$p/cmdline" 2>/dev/null)"; [ "${c%% *}" = pi ] && echo yes && break; done' | tr -d '\r')"
 gated "enter --print-argv matches seam.bats" "compare nixcage-container enter --print-argv for the role against the line seam.bats asserts; needs the role's uid and paths from the machine"
 
 scenario "The guidance is the front of the prompt, and the repository's is in the brief (ADR-054)"
