@@ -356,6 +356,28 @@ set"
 	assert_output --partial 'oifname "fb-*" drop'
 }
 
+# The host is .1 on every factory's bridge, and nixos-fw's global accepts
+# (sshd, NFS, whatever else the host serves) apply on that interface too:
+# a cage reached 10.77.1.1:22 (found 2026-09-24). A cage may reach the
+# host's forge, bus and proxy there and nothing else of the host.
+@test "a cage reaches the host's three factory ports and nothing else of the host" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ content = c.networking.nftables.tables.fabriek.content;
+		   ports = [ c.services.fabriek.ports.forgejo c.services.fabriek.ports.bus c.services.fabriek.ports.egress ]; }'
+	assert_success
+	local out ports
+	out="$output"
+	ports="$(jq -r '.ports | map(tostring) | join(", ")' <<<"$out")"
+	run jq -r .content <<<"$out"
+	assert_output --partial 'hook input'
+	assert_output --partial 'iifname "fb-*" ct state established,related accept'
+	assert_output --partial "iifname \"fb-*\" tcp dport { $ports } accept"
+	assert_output --partial 'iifname "fb-*" drop'
+	# The input chain's drop comes after its accepts.
+	run bash -c "jq -r .content <<<'$out' | sed -n '/hook input/,/^[[:space:]]*}[[:space:]]*$/p' | grep -n 'fb-' | tail -1"
+	assert_output --partial 'iifname "fb-*" drop'
+}
+
 @test "each factory's executor waits for a mark up writes per start, under /run, and reads the factory's facts" {
 	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
 		'{ cond = c.systemd.services.fabriek-widgets-executor.unitConfig.ConditionPathExists;

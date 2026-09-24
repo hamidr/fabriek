@@ -155,7 +155,10 @@ in
     ## A cage's only interface is its factory's bridge, and the host
     ## forwards nothing from or to one, whatever docker or a VPN set
     ## ip_forward to: a drop in a base chain holds beside any other
-    ## table's accept.
+    ## table's accept. The same holds for the host itself: it is .1 on
+    ## every bridge, and nixos-fw's global accepts (sshd, NFS, whatever
+    ## else it serves) apply there too, so a cage reaches the forge, the
+    ## bus and the proxy on it and nothing else of the host.
     networking.nftables = {
       enable = true;
       tables.fabriek = {
@@ -165,6 +168,18 @@ in
             type filter hook forward priority filter; policy accept;
             iifname "fb-*" drop
             oifname "fb-*" drop
+          }
+          chain input {
+            type filter hook input priority filter; policy accept;
+            iifname "fb-*" ct state established,related accept
+            iifname "fb-*" tcp dport { ${
+              lib.concatMapStringsSep ", " toString [
+                cfg.ports.forgejo
+                cfg.ports.bus
+                cfg.ports.egress
+              ]
+            } } accept
+            iifname "fb-*" drop
           }
         '';
       };

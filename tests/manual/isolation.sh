@@ -124,6 +124,13 @@ when "$a opens a connection to an address on another interface of the host"
 other="$(ip -4 -o addr show scope global | awk '$2 !~ /^fb-/ {print $4}' | cut -d/ -f1 | head -1)"
 check "the connection to ${other:-nothing} fails" refused \
 	"$([ -z "$other" ] || in_cage "$a" bash -c "exec 3<>/dev/tcp/$other/22" >/dev/null 2>&1 && echo connected || echo refused)"
+## The host is on the bridge itself, so its address there is on-link and no
+## route stands in the way: only the fabriek table's input chain keeps the
+## host's own services (sshd here) from a cage (seen 2026-09-24: :22 answered).
+bridge_host="$(fact FABRIEK_BRIDGE_HOST)"
+when "$a opens a connection to the host's sshd on the bridge, at $bridge_host"
+check "the connection to $bridge_host:22 fails" refused \
+	"$(in_cage "$a" timeout 5 bash -c "exec 3<>/dev/tcp/$bridge_host/22" >/dev/null 2>&1 && echo connected || echo refused)"
 
 scenario "A cage cannot reach a peer"
 given "roles $a and $b each in their cage, $b at $addr_b"
