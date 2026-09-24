@@ -62,7 +62,11 @@ is for a turn that no longer answers, and is `nixcage-container stop`.
 **4. A supervised session is bounded from the declaration.** `--memory`
 and `--cpus` on the actor line: the declaration's `memory` and `cores`
 divided by its `concurrency`, never below one cpu, nothing when nothing
-is declared. A hand's own cage stays bounded by the machine.
+is declared. A hand's own cage stays bounded by the machine. The memory
+bound is RAM: nixcage sets `MemoryMax=` on an nspawn cage's scope and
+leaves swap unbounded, so a cage past its share swaps rather than being
+killed (nixcage ADR-012, decided 2026-09-24); a microVM's is the guest's
+memory and holds hard.
 
 **5. The bridge's rules key on nixcage's name for the veth.** `bridge.nix`
 takes `nixcage.lib.vethHostName` through the module arguments and writes
