@@ -209,6 +209,14 @@ role_enter_on_host() {
 	if [ -n "$auth_sock" ] && [ -n "$signing" ]; then
 		die "--auth-sock and --signing-key are mutually exclusive"
 	fi
+	## A supervised session owns its role's cage, so one already running
+	## when it starts is an orphan of an executor that went before it
+	## (found on a host 2026-09-25): stopped here, since nixcage refuses an
+	## enter under a running cage's name.
+	if [ -n "$signing" ] && [ $# -ge 2 ] && fabriek_cage_running "$1-$2"; then
+		fabriek_nixcage stop "$1-$2" >/dev/null 2>&1 ||
+			die "could not stop $1-$2, which a session before this one left running"
+	fi
 
 	## The guest has no origin filed, since up files it here; the checkout it
 	## clones is the one the credential names, shared at the same path.

@@ -30,6 +30,9 @@ printf '%s\n' "$*" >>"$CALLS"
 if [ "$1 $2 $3 $4" = "machine exec acme fabriek-machine" ] && [ "$5" = role-enter ]; then
 	cat "$PLAN"
 fi
+if [ "$1" = status ]; then
+	[ -e "$TEST_TEMP_DIR/running-$4" ] && echo "running 42 machine.slice/$4.scope" || echo stopped
+fi
 exit 0
 EOF
 	chmod +x "$STUB_DIR/nixcage-container"
@@ -52,8 +55,9 @@ role_enter() {
 	role_enter --signing-key builder acme builder
 	assert_success
 	run cat "$CALLS"
-	assert_line --index 0 "machine exec acme fabriek-machine role-enter --plan --signing-key builder --repository /srv/acme acme builder"
-	assert_line --index 1 "enter --machine acme --uid 60000 --no-agent --no-nix-daemon --store-root /nix/store/abc-p acme-builder /var/lib/nixcage/fabriek/acme/worktrees/acme/builder pi"
+	assert_line "machine exec acme fabriek-machine role-enter --plan --signing-key builder --repository /srv/acme acme builder"
+	run tail -1 "$CALLS"
+	assert_output "enter --machine acme --uid 60000 --no-agent --no-nix-daemon --store-root /nix/store/abc-p acme-builder /var/lib/nixcage/fabriek/acme/worktrees/acme/builder pi"
 }
 
 @test "a hand beside a running actor is put inside it through the machine" {
@@ -145,4 +149,27 @@ role_enter() {
 	assert_success
 	run head -1 "$CALLS"
 	assert_output "machine exec acme fabriek-machine role-enter --plan --repository /srv/other acme builder"
+}
+
+# An executor that restarted finds its last instance's cages still running
+# in the machine (found on a host 2026-09-25): a supervised session owns its
+# role's cage, so one already running is an orphan and is stopped before the
+# new one enters, which nixcage would otherwise refuse by name.
+@test "a supervised session stops its role's orphaned cage before it enters" {
+	touch "$TEST_TEMP_DIR/running-acme-builder"
+	plan enter --no-agent acme-builder /w pi
+	role_enter --signing-key builder acme builder
+	assert_success
+	run cat "$CALLS"
+	assert_line --index 1 "stop --machine acme acme-builder"
+	assert_line --index 2 --partial "machine exec acme fabriek-machine role-enter --plan"
+}
+
+@test "a hand does not stop the running actor it is put beside" {
+	touch "$TEST_TEMP_DIR/running-acme-builder"
+	plan exec acme-builder -- git status
+	role_enter acme builder git status
+	assert_success
+	run grep -c "^stop " "$CALLS"
+	assert_output 0
 }
