@@ -472,7 +472,8 @@ render_files() {
 	printf '%s\n' "$rev" >"$FABRIEK_ETC/rev"
 	jq -c .notes "$spec" >"$FABRIEK_ETC/notes.json"
 	fabriek_render_bridge_plan "$FABRIEK_ETC/declaration.json" "$FABRIEK_BRIDGE" "$FABRIEK_BRIDGE_HOST" \
-		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_BUS_PORT" >"$FABRIEK_ETC/bridge.json"
+		"$FABRIEK_PROXY_PORT" "$FABRIEK_FORGEJO_PORT" "$FABRIEK_BUS_PORT" >"$FABRIEK_ETC/bridge.json" ||
+		die "could not place the declaration's roles on the factory's bridge"
 	fabriek_render_proxy "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/proxy/endpoints.conf"
 	jq -cS '{ credentials: (.egressHeaders // {}), models: (.egressModels // {}), embedder: .embedder }' "$spec" \
 		>"$FABRIEK_ETC/endpoints.json"

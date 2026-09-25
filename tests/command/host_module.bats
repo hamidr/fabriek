@@ -439,3 +439,81 @@ set"
 	written="$(jq -r . <<<"$script" | sed -n 's/^ *conf=\(.*\)$/\1/p' | sed 's/\$host/api.anthropic.com/')"
 	[ "$included" = "$written" ]
 }
+
+# A factory in a nixcage machine of its own (ADR-070): what the host module
+# declares to nixcage for each factory, and what the machine's guest carries.
+
+@test "each factory is a nixcage machine with a slice of its own, sized by the host" {
+	run host_eval 'factories.acme.path = "/srv/acme"; factories.widgets = { path = "/srv/widgets"; machine = { memory = "4G"; cpus = 2; disk = "20G"; }; };' \
+		'{ acme = { inherit (c.nixcage.machines.acme) memory cpus diskSize uidSlice; };
+		   widgets = { inherit (c.nixcage.machines.widgets) memory cpus diskSize uidSlice; }; }'
+	assert_success
+	run jq -c '[.acme.memory, .acme.cpus, .acme.diskSize, .acme.uidSlice.base, .acme.uidSlice.size]' <<<"$output"
+	assert_output '["8G",4,"40G",3000000,65536]'
+	run host_eval 'factories.acme.path = "/srv/acme"; factories.widgets = { path = "/srv/widgets"; machine = { memory = "4G"; cpus = 2; disk = "20G"; }; };' \
+		'{ inherit (c.nixcage.machines.widgets) memory cpus diskSize uidSlice; }'
+	run jq -c '[.memory, .cpus, .diskSize, .uidSlice.base]' <<<"$output"
+	assert_output '["4G",2,"20G",3065536]'
+}
+
+@test "a factory's machine is placed on its bridge as every address of its subnet but the host's" {
+	run host_eval 'factories.acme.path = "/srv/acme";' 'c.nixcage.machines.acme.placement'
+	assert_success
+	run jq -c '[.bridge, (.addresses | length), .addresses[0], .addresses[-1], (.addresses | index("10.77.0.1"))]' <<<"$output"
+	assert_output '["fb-0",253,"10.77.0.2","10.77.0.254",null]'
+}
+
+@test "a factory's machine sees the checkout, the rendered directory and its credentials, read-only" {
+	run host_eval 'factories.acme.path = "/srv/acme";' 'c.nixcage.machines.acme.shares'
+	assert_success
+	assert_output '[{"path":"/srv/acme","writable":false},{"path":"/var/lib/fabriek/acme","writable":false},{"path":"/var/lib/nixcage/fabriek/acme/bus","writable":false},{"path":"/var/lib/nixcage/fabriek/acme/forge","writable":false}]'
+}
+
+@test "the egress credentials are shared with no machine" {
+	run host_eval 'factories.acme.path = "/srv/acme";' 'map (s: s.path) c.nixcage.machines.acme.shares'
+	refute_output --partial egress
+}
+
+@test "the host's facts name the machine and the guest's do not" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ host = c.environment.etc."fabriek/factories/acme.env".text;
+		   guest = c.nixcage.machines.acme.guest.config.environment.etc."fabriek/machine.env".text; }'
+	assert_success
+	local both="$output"
+	jq -r .host <<<"$both" | grep -qx 'FABRIEK_MACHINE=acme'
+	run jq -r .guest <<<"$both"
+	refute_output --partial FABRIEK_MACHINE
+	assert_line FABRIEK_STATE=/var/lib/nixcage/fabriek/acme
+	assert_line GIT_CONFIG_VALUE_0=/srv/acme
+}
+
+@test "the guest puts its cages on the factory's bridge through its NIC, at the address kept for it" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'let g = c.nixcage.machines.acme.guest.config; in
+		 { bridge = g.nixcage.bridges.fb-0;
+		   packages = map (p: p.pname or p.name) g.nixcage.containerPackages;
+		   path = map (p: p.pname or p.name) g.environment.systemPackages;
+		   range = g.nixcage.principalUidRange; }'
+	assert_success
+	run jq -c '[.bridge.address, .bridge.prefix, .bridge.uplink, (.packages | index("pi-coding-agent") != null), (.path | index("fabriek-machine") != null), .range.base]' <<<"$output"
+	assert_output '["10.77.0.254",24,"eth0",true,true,700000]'
+}
+
+@test "the machine table is the host's and never reaches the operator's config" {
+	run host_eval 'factories.acme = { path = "/srv/acme"; machine.memory = "4G"; };' 'c.environment.etc."fabriek/config.toml".text'
+	assert_success
+	refute_output --partial machine
+	refute_output --partial 4G
+}
+
+@test "the state unit makes the credential directories a machine shares, before the machine is up" {
+	run host_eval 'factories.acme.path = "/srv/acme";' 'c.systemd.services.fabriek-acme-state.script'
+	assert_success
+	assert_output --partial 'install -d -m 0700 /var/lib/nixcage/fabriek/acme/bus /var/lib/nixcage/fabriek/acme/forge'
+}
+
+@test "a factory's machine's guest evaluates whole, with fabriek in it" {
+	run host_eval 'factories.acme.path = "/srv/acme";' 'c.nixcage.machines.acme.guest.config.system.build.toplevel.drvPath'
+	assert_success
+	assert_output --partial '-nixos-system-acme-'
+}

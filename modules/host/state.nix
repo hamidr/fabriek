@@ -37,6 +37,9 @@ in
           set -eu
           nixcage-container storage ensure ${p.state} 0 >/dev/null
           chmod 0755 ${p.state}
+          ## What the factory's machine shares of the host (ADR-070): made
+          ## here, before up starts the machine, since a share must exist.
+          install -d -m 0700 ${p.state}/bus ${p.state}/forge
         '';
       }
     ) cfg.plan;

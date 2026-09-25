@@ -155,3 +155,16 @@ teardown() {
 	run jq -c '[.bridge, .host, .cages.decider, .cages.builder, .bus]' <<<"$output"
 	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.10","10.77.1.1:4222"]'
 }
+
+@test "a declaration with more roles than the subnet has addresses below the machine's is refused" {
+	# .254 is the factory's machine's own address on its bridge (ADR-070),
+	# so the last a role may take is .253: 244 roles from .10.
+	jq -n '{ name: "acme", roles: ([range(0; 245)] | map({ key: "r\(.)", value: {} }) | from_entries) }' >"$TEST_TEMP_DIR/many.json"
+	run fabriek_render_bridge_plan "$TEST_TEMP_DIR/many.json" fb-0 10.77.0.1 8118 3000 4222
+	assert_failure
+	assert_output --partial "245 roles; a factory's bridge holds 244"
+	jq -n '{ name: "acme", roles: ([range(0; 244)] | map({ key: "r\(.)", value: {} }) | from_entries) }' >"$TEST_TEMP_DIR/many.json"
+	run fabriek_render_bridge_plan "$TEST_TEMP_DIR/many.json" fb-0 10.77.0.1 8118 3000 4222
+	assert_success
+	refute_output --partial '10.77.0.254'
+}

@@ -66,7 +66,8 @@ let
     );
   ## A factory's table is its path, autoStart left out (the unit is this
   ## module's), and the declaration keys given.
-  factoryTable = f: lib.filterAttrs (k: v: k != "autoStart" && v != null && v != { }) f;
+  factoryTable =
+    f: lib.filterAttrs (k: v: k != "autoStart" && k != "machine" && v != null && v != { }) f;
   rendered = lib.concatStringsSep "\n" (
     tomlTables "" (
       {
@@ -104,8 +105,11 @@ let
 
   ## What the machine program is told through the environment, per
   ## factory: the units load it and the CLI hands it to fabriek-container
-  ## for the factory named.
-  facts =
+  ## for the factory named. The same facts reach the program inside the
+  ## factory's machine (ADR-070), less the one that says which machine to
+  ## forward to, since there it is the machine.
+  facts = name: p: guestFacts name p + "FABRIEK_MACHINE=${name}\n";
+  guestFacts =
     name: p:
     lib.concatStringsSep "\n" (
       lib.mapAttrsToList (k: v: "${k}=${v}") {
@@ -130,6 +134,71 @@ let
       }
     )
     + "\n";
+
+  ## A factory's nixcage machine (ADR-070): a slice of ids after every
+  ## other factory's, placed on the factory's bridge as any address of its
+  ## subnet but the host's, since which role is which is the guest's pin
+  ## to keep and the host's is only that the machine stays in its subnet.
+  ## It sees the operator's checkout to clone, the rendered directory, and
+  ## the bus and forge credentials the host mints, all read-only; the
+  ## egress credentials stay on the host.
+  machineAddresses = p: map (i: "10.77.${toString p.idx}.${toString i}") (lib.range 2 254);
+  machineFor = name: f: {
+    inherit (f.machine) memory cpus;
+    diskSize = f.machine.disk;
+    uidSlice = {
+      base = cfg.machineUidBase + plan.${name}.idx * 65536;
+      size = 65536;
+    };
+    placement = {
+      inherit (plan.${name}) bridge;
+      addresses = machineAddresses plan.${name};
+    };
+    shares = map (path: { inherit path; }) [
+      f.path
+      plan.${name}.etc
+      "${plan.${name}.state}/bus"
+      "${plan.${name}.state}/forge"
+    ];
+    modules = [ (guestModule name plan.${name} f) ];
+  };
+  ## What the guest carries of fabriek: the program and a wrapper that
+  ## loads the factory's facts, git told the checkout is safe to read as
+  ## root, the floor's packages in every cage as on the host, a range for
+  ## its own cages, and the factory's bridge through its NIC at .254, the
+  ## one address the bridge plan never gives a cage.
+  guestModule =
+    name: p: f:
+    { pkgs, ... }:
+    {
+      environment.etc."fabriek/machine.env".text =
+        guestFacts name p
+        + ''
+          GIT_CONFIG_COUNT=1
+          GIT_CONFIG_KEY_0=safe.directory
+          GIT_CONFIG_VALUE_0=${f.path}
+        '';
+      environment.systemPackages = [
+        pkgs.git
+        pkgs.fabriek-container
+        (pkgs.writeShellScriptBin "fabriek-machine" ''
+          set -a
+          . /etc/fabriek/machine.env
+          set +a
+          exec ${pkgs.fabriek-container}/bin/fabriek-container "$@"
+        '')
+      ];
+      nixcage.containerPackages = [ pkgs.pi-coding-agent ];
+      nixcage.principalUidRange = {
+        base = 700000;
+        size = 256;
+      };
+      nixcage.bridges.${p.bridge} = {
+        address = "10.77.${toString p.idx}.254";
+        prefix = 24;
+        uplink = "eth0";
+      };
+    };
 
   ## The declaration's own shape (fabriek.toml, ADR-058), as options: what
   ## the CLI's schema checks is checked there, so these are loose on
@@ -191,6 +260,17 @@ in
         default = 8118;
         description = "Where on a factory's bridge a role's agent finds the proxy.";
       };
+    };
+
+    machineUidBase = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 3000000;
+      description = ''
+        The first host uid of the first factory's machine slice; each
+        factory's slice is 65536 ids after the one before (ADR-070). What a
+        machine writes through a share is owned here by its slice, so the
+        range must hold no account and meet no other range nixcage uses.
+      '';
     };
 
     package = lib.mkOption {
@@ -265,6 +345,26 @@ in
               type = lib.types.bool;
               default = false;
               description = "Bring this factory's machine up at boot and down at shutdown, as a unit.";
+            };
+            ## The host's and not the repository's (ADR-070 point 9): a
+            ## machine is evaluated, and a factory's resources are read at
+            ## up. Each role's cage inside it is bounded by the declaration.
+            machine = {
+              memory = lib.mkOption {
+                type = lib.types.str;
+                default = "8G";
+                description = "The factory's machine's memory, reserved while it runs.";
+              };
+              cpus = lib.mkOption {
+                type = lib.types.ints.positive;
+                default = 4;
+                description = "The factory's machine's cores.";
+              };
+              disk = lib.mkOption {
+                type = lib.types.str;
+                default = "40G";
+                description = "The factory's machine's disk, which holds its clone, worktrees and homes, fixed when first made.";
+              };
             };
             ## The declaration, in fabriek.toml's own words (ADR-061 point
             ## 1): given here, the repository must carry none.
@@ -360,6 +460,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    nixcage.machines = lib.mapAttrs machineFor cfg.factories;
+
     environment.etc = {
       "fabriek/config.toml".text = rendered;
     }

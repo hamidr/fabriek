@@ -23,6 +23,14 @@
 ## fabriek_render_bridge_plan <declaration.json> <bridge> <host> <proxyPort> <forgejoPort> <busPort>
 fabriek_render_bridge_plan() {
 	local declaration="$1" bridge="$2" host="$3" proxy_port="$4" forgejo_port="$5" bus_port="$6"
+	## .254 is the factory's machine's own address on the bridge (ADR-070),
+	## so a role's is at most .253.
+	local roles
+	roles="$(jq '.roles | length' "$declaration")"
+	if [ "$roles" -gt 244 ]; then
+		echo "fabriek: the declaration has $roles roles; a factory's bridge holds 244" >&2
+		return 1
+	fi
 	## -S: keys in name order, as the build's toJSON wrote them, so the set
 	## below and the executor's reading of the plan meet what they met.
 	jq -cS --arg bridge "$bridge" --arg net "${host%.*}" --arg proxy "$proxy_port" --arg forgejo "$forgejo_port" --arg bus "$bus_port" '
