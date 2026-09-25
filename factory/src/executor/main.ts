@@ -99,11 +99,18 @@ async function main(): Promise<void> {
       return false;
     },
   });
+  // With the roles in the factory's machine (ADR-070), their clone is the
+  // machine's, at the same path on its own disk, and git reaches it through
+  // nixcage; the record is written in this host's clone, render's, and
+  // pushed to the forge for the operator's fetch.
+  const machine = process.env["FABRIEK_MACHINE"];
+  const clone = `${STATE}/factories/${factory}`;
   const git = new CloneGit({
-    clone: `${STATE}/factories/${factory}`,
+    clone,
     forgeUrl: `http://${plan.forgejo}/${repository}.git`,
     forgeTokenFile: operatorToken,
     record: async () => JSON.stringify(await forge.call("GET", `/repos/${repository}/issues?state=all&type=issues&limit=1000`), null, 2),
+    ...(machine ? { command: ["nixcage-container", "machine", "exec", machine], recordClone: clone } : {}),
   });
 
   const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed });

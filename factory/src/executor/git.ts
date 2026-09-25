@@ -18,11 +18,35 @@ export interface GitOptions {
   forgeTokenFile: string;
   /** What the record is exported as, when mirroring. */
   record?: () => Promise<string>;
+  /**
+   * The words git runs behind when the clone is in the factory's machine
+   * (ADR-070): nixcage's machine exec. The environment does not cross it,
+   * so what git is given in its environment goes as `env` words instead.
+   */
+  command?: string[];
+  /**
+   * The clone the record is written in, on this host: the machine's clone
+   * is a disk this host does not read, and the record is pushed to the
+   * forge, where the operator fetches it. The clone itself when absent.
+   */
+  recordClone?: string;
 }
 
-function git(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {
+function git(
+  cwd: string,
+  args: string[],
+  env: Record<string, string> = {},
+  command: string[] = [],
+): Promise<string> {
+  const [program, argv, extra] = command.length
+    ? [
+        command[0] as string,
+        [...command.slice(1), "env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), "git", "-C", cwd, ...args],
+        {},
+      ]
+    : ["git", ["-C", cwd, ...args], env];
   return new Promise((resolve, reject) => {
-    execFile("git", ["-C", cwd, ...args], { env: { ...process.env, ...env } }, (err, stdout, stderr) => {
+    execFile(program, argv, { env: { ...process.env, ...extra } }, (err, stdout, stderr) => {
       if (err) reject(new Error(`git ${args[0]}: ${stderr.trim() || err.message}`));
       else resolve(stdout);
     });
@@ -45,35 +69,50 @@ export class CloneGit implements Git {
     };
   }
 
+  /** git in the clone roles commit in, wherever that clone is. */
+  private inClone(args: string[], env: Record<string, string> = {}): Promise<string> {
+    return git(this.o.clone, args, env, this.o.command ?? []);
+  }
+
   async tip(branch: string): Promise<string | null> {
-    const out = await git(this.o.clone, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).catch(() => "");
+    const out = await this.inClone(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).catch(() => "");
     return out.trim() || null;
   }
 
   async commitsSince(branch: string, since: string | null): Promise<number> {
-    const out = await git(this.o.clone, ["rev-list", "--count", `${since ?? this.base}..${branch}`]).catch(() => "0");
+    const out = await this.inClone(["rev-list", "--count", `${since ?? this.base}..${branch}`]).catch(() => "0");
     return Number(out.trim()) || 0;
   }
 
   async push(branch: string): Promise<void> {
-    await git(this.o.clone, ["push", this.o.forgeUrl, `refs/heads/${branch}:refs/heads/${branch}`], this.helper());
+    await this.inClone(["push", this.o.forgeUrl, `refs/heads/${branch}:refs/heads/${branch}`], this.helper());
   }
 
-  /** main and refs/fabriek/record into the clone, together (ADR-036 point 7). */
+  /**
+   * main into the clone roles start from, and refs/fabriek/record written
+   * beside it (ADR-036 point 7). With the roles in a machine the record is
+   * written in this host's clone and pushed to the forge, where the
+   * operator's fetch finds it (ADR-070 point 8).
+   */
   async mirror(): Promise<void> {
-    await git(this.o.clone, ["fetch", this.o.forgeUrl, `refs/heads/${this.base}:refs/heads/${this.base}`], this.helper());
-    if (this.o.record) {
+    await this.inClone(["fetch", this.o.forgeUrl, `refs/heads/${this.base}:refs/heads/${this.base}`], this.helper());
+    const here = this.o.recordClone ?? this.o.clone;
+    const local = this.o.command === undefined || this.o.recordClone !== undefined;
+    if (this.o.record && local) {
       const dir = await mkdtemp(join(tmpdir(), "record-"));
       try {
         await writeFile(join(dir, "issues.json"), await this.o.record());
-        const tree = await git(this.o.clone, ["--work-tree", dir, "add", "-A", "--", "."], { GIT_INDEX_FILE: join(dir, "index") });
+        const tree = await git(here, ["--work-tree", dir, "add", "-A", "--", "."], { GIT_INDEX_FILE: join(dir, "index") });
         void tree;
-        const written = (await git(this.o.clone, ["write-tree"], { GIT_INDEX_FILE: join(dir, "index") })).trim();
-        const commit = (await git(this.o.clone, ["commit-tree", written, "-m", "the record, mirrored"], {
+        const written = (await git(here, ["write-tree"], { GIT_INDEX_FILE: join(dir, "index") })).trim();
+        const commit = (await git(here, ["commit-tree", written, "-m", "the record, mirrored"], {
           GIT_AUTHOR_NAME: "fabriek", GIT_AUTHOR_EMAIL: "fabriek@invalid",
           GIT_COMMITTER_NAME: "fabriek", GIT_COMMITTER_EMAIL: "fabriek@invalid",
         })).trim();
-        await git(this.o.clone, ["update-ref", "refs/fabriek/record", commit]);
+        await git(here, ["update-ref", "refs/fabriek/record", commit]);
+        if (this.o.recordClone !== undefined) {
+          await git(here, ["push", "--force", this.o.forgeUrl, "refs/fabriek/record:refs/fabriek/record"], this.helper());
+        }
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
