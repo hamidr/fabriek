@@ -3,8 +3,9 @@
 You design the factory. fabriek runs it.
 
 Name the trades. Write the pipeline. Say what done means at every stage.
-fabriek hires a worker into a cage for every role on your NixOS host, runs
-the line, counts every token, and hands you merge.
+fabriek gives the factory a machine of its own on your NixOS host, hires a
+worker into a cage in it for every role, runs the line, counts every token,
+and hands you merge.
 
 A factory is declared in the repository it works, so anyone who clones it
 gets the same team. What a worker is, its tools, its prompt, its skills,
@@ -85,10 +86,11 @@ Commit both. Then:
 fabriek check                    what up would refuse, in seconds: the
                                  declaration at its commit, every specialist
                                  resolved and evaluated
-fabriek up knot                  the factory's services come up on this host,
-                                 on a bridge of its own; each role gets a uid,
-                                 a worktree, a signing key, a forge account, a
-                                 bus user and a toolchain the host built itself
+fabriek up knot                  the factory gets a machine of its own on this
+                                 host, a microVM on a bridge of its own; each
+                                 role gets a cage in it, a uid, a worktree, a
+                                 signing key, a forge account, a bus user and
+                                 a toolchain the host built itself
 fabriek -f knot file ship "Add an importer" -m "handles empty files"
      |
      +-- an issue on the factory's forge, labelled with the first stage
@@ -102,9 +104,9 @@ fabriek -f knot file ship "Add an importer" -m "handles empty files"
      |     the reviewer reads the diff and gives a verdict
      |
 git branch                       the builder's work is in your own checkout
-                                 as fabriek/knot/builder-1/*, refreshed by
-                                 every verb; nothing in the factory writes
-                                 your repository
+                                 as fabriek/knot/builder-1/*, fetched from the
+                                 factory's forge by every verb; nothing in the
+                                 factory writes your repository
 fabriek -f knot board            Forgejo on the factory's bridge; merging is
                                  your click, and no cage can write main
 fabriek -f knot mirror           merged main and the record reach your
@@ -152,14 +154,16 @@ holds is a claim the executor checks against its own board (ADR-033).
 A role writes only `refs/heads/<role>/*`. `main` is writable by no cage.
 The board and the record are the factory's own Forgejo (ADR-036); a stage
 moves only on a signed commit, and `main` moves only in its web UI, by
-you. `mirror` brings it into the factory's clone afterwards, and your
-checkout fetches it from there: nothing in the factory writes your
-repository (ADR-067).
+you. Your checkout fetches the factory's branches, merged `main` and the
+record from the forge, with a token that can only read: nothing in the
+factory writes your repository (ADR-067, ADR-070).
 
 ### Workers with keys, not sessions with prompts
 
 A role is a worker: its own uid, its own worktree, its own home, its own
-signing key, its own forge account and bus user (ADR-010, ADR-033).
+signing key, its own forge account and bus user (ADR-010, ADR-033), all in
+its factory's machine but the accounts, which are on the host's forge and
+bus.
 `replicas = N` is N such workers, and a stage's tasks spread across them
 (ADR-053). Adding a second builder adds capacity without touching the
 pipeline, because a stage names a capability and never a role (ADR-015).
@@ -195,7 +199,9 @@ may name (ADR-061). Specialists compose and extend; a skill is a
 **The operator's side.** `~/.config/fabriek/config.toml`: caps, which
 endpoints exist and which credential opens each, which model a session
 starts on, and where each factory's repository is. On NixOS the same
-file is `services.fabriek`, and a factory can come up at boot (ADR-048).
+file is `services.fabriek`, where each factory's machine is sized
+(`machine.memory`, `cpus`, `disk`) and a factory can come up at boot
+(ADR-048, ADR-070).
 A declaration names no endpoint, credential or model; those are the
 operator's alone.
 
@@ -215,8 +221,8 @@ takes `-h`; a usage error is one line on stderr and exit 2; `ls`, `ps`,
 | `fabriek check [REPO]` | What `up` would refuse, in seconds: the declaration at its commit and every specialist each role names |
 | `fabriek ls [REPO]`, `fabriek show NAME [REPO]` | Every specialist and skill, and what one brings: order, tools, skills, servers, tests, prompt; no build |
 | `fabriek -f FACTORY show ROLE` | The same for a registered factory's role at its commit |
-| `fabriek up [-u] [FACTORY]` | Bring a factory up on this host, pinned to the checkout's commit; -u moves the pin to HEAD; its branches appear in the checkout as `fabriek/NAME/*` |
-| `fabriek down [FACTORY]` | Stop it, refusing while a role's cage runs rather than forcing one |
+| `fabriek up [-u] [FACTORY]` | Bring a factory up in its machine on this host, pinned to the checkout's commit; -u moves the pin to HEAD; its branches appear in the checkout as `fabriek/NAME/*` |
+| `fabriek down [FACTORY]` | Stop its sessions and its machine, refusing while a cage a hand entered runs rather than forcing one |
 | `fabriek fetch [FACTORY]` | The factory's branches into the checkout, now |
 | `fabriek ps [--json]` | Every factory declared here, and what each is doing |
 | `fabriek enter ROLE [-- CMD...]` | Enter a role by hand, in its own worktree and uid; inside its cage when its actor runs |
@@ -227,20 +233,23 @@ takes `-h`; a usage error is one line on stderr and exit 2; `ls`, `ps`,
 | `fabriek board` | Where Forgejo's UI is on the factory's bridge, and the login, for merging |
 | `fabriek watch [--from ID] [--stream NAME]...` | The factory's bus as JSON lines, for any client; some streams or all |
 | `fabriek send [JSON]` | A command in the decider's vocabulary, from you or stdin |
-| `fabriek mirror` | Merged main and the record into the factory's clone, then your checkout |
+| `fabriek mirror` | Merged main into the factory's clone and the record onto its forge, then into your checkout |
 
 ## Not yet
 
 `docs/roadmap.md` keeps the list. The record reaches origin without its
 comments; the TUI shows what the bus carries and not yet the forge's own
-views; the proofs on a NixOS host, the specialists' among them, have not
-all passed. A cage has no network, so a language whose build tool fetches
-dependencies works only when the project's devShell carries the cache.
+views; `tests/manual/parity.sh`, the whole journey with real models, has
+not run with factories in machines, though every other proof on a NixOS
+host has. A cage has no network, so a language whose build tool fetches
+dependencies works only when the project's devShell carries the cache. A
+factory's machine reserves its memory while it runs.
 
 ## Development
 
 fabriek runs on [nixcage](https://github.com/hamidr/nixcage), which owns
-the cages: isolation, uid mapping, binds, secrets and storage are its;
+the machines and the cages: isolation, uid mapping, binds, secrets and
+storage are its;
 everything that exists only because several named workers share one
 repository is here (ADR-018).
 

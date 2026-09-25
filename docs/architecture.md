@@ -1,10 +1,10 @@
 # Architecture, as built
 
-What fabriek is on `main` as of 2026-09-21, read from the code rather than
-from the decisions. Where an ADR's status and the code disagree, this file
-says what the code does and names the ADR. The decisions are ADR-033
-through ADR-044, ADR-067 and PRD-006; `docs/roadmap.md` says what of them
-is built and what is not.
+What fabriek is on `main` as of 2026-09-26 (`03ad9b8`, on nixcage 5.2.1),
+read from the code rather than from the decisions. Where an ADR's status
+and the code disagree, this file says what the code does and names the
+ADR. The decisions are ADR-033 through ADR-044, ADR-067, ADR-070 and
+PRD-006; `docs/roadmap.md` says what of them is built and what is not.
 
 This file carries no docmeta frontmatter on purpose: it is not a decision and
 `docmeta-tracker` should not index it. Regenerate it by hand when the
@@ -19,9 +19,12 @@ dataset, a signing key, a forge account with an issue-scoped token, a bus
 user (ADR-010, ADR-009, ADR-036, ADR-033). The repository declares its own
 factory (ADR-020, ADR-058), the operator declares the factory on the host
 and says what it may cost there, and fabriek gives it a set of service
-instances of its own and a cage per role (ADR-067). A role that must not
-share the host's kernel asks for `substrate = "microvm"` and nixcage runs
-its cage in a kernel of its own (nixcage ADR-019).
+instances of its own and a cage per role (ADR-067). Every factory runs in
+a nixcage machine of its own, a long-lived microVM that is itself a nixcage
+host, and every role is an nspawn cage inside it (ADR-070, nixcage
+ADR-026): the roles of one factory share its kernel, and no other factory
+and not the host does. Its clone, worktrees, homes and keys are on the
+machine's disk, which the host never reads.
 
 Nothing a cage does is trusted. A host-provided decider judges, an uncaged
 executor acts, the host's forge holds each factory's board and record
@@ -32,16 +35,17 @@ bridge with no route off the host.
 
 ## The boundary with nixcage
 
-Six primitives, and nothing else, cross it:
+These primitives, and nothing else, cross it:
 
 | Primitive | Used for |
 | --- | --- |
-| `nixcage-container enter [flags] <name> <project> [cmd]` | every role session, `--substrate nspawn\|microvm` per role |
-| `nixcage-container uid <principal>` | a role's uid, allocated once; the principal is `<factory>-<role>` |
-| `nixcage-container storage ensure <path> <uid> [quota]` | a factory's state, a role's worktree and the forge's dataset |
-| `nixcage-container status <name>`, `stop <name>` | whether a cage runs and its scope; `stop -k` |
-| `nixcage-container exec <name> [-- cmd]` | a person entering a role whose actor runs |
-| `nixcage-container rm <name>` | a role whose declared substrate changed, so the next enter may choose again |
+| `nixcage.machines.<name>` (host module) | a factory's machine, declared by `services.fabriek` |
+| `nixcage-container machine up\|down\|status <factory>` | a factory's machine, at `up` and `down` |
+| `nixcage-container machine exec <factory> fabriek-machine ...` | the machine program run inside the factory's machine |
+| `nixcage-container enter --machine <factory> [flags] <name> <project> [cmd]` | every role session, entered from the host into the machine |
+| `nixcage-container uid [--machine <factory>] <principal>` | a role's uid, allocated by the machine's nixcage; the principal is `<factory>-<role>` |
+| `nixcage-container storage ensure <path> <uid>` | a factory's state and, inside the machine, a role's worktree; no quota, the machine's disk bounds them |
+| `nixcage-container status\|stop\|exec [--machine <factory>] <name>` | whether a cage runs and its scope; a stop; a person entering a role whose actor runs |
 
 Two options on `enter` were added upstream for this design (nixcage
 ADR-011): `--network <bridge>:<addr>/<prefix>` gives a cage one veth on the
@@ -51,7 +55,9 @@ the daemon socket unbound and runs the command in the base userland with
 `NIXCAGE_PATH_PREFIX` on the front of `PATH`.
 
 `tests/command/seam.bats` stubs `nixcage-container` on `PATH`, records the
-argv a role session produces and asserts the whole line. The operator's CLI
+argv a role session produces and asserts the whole line;
+`tests/command/machine_seam.bats` does the same for the host's half of it
+(below). The operator's CLI
 reaches the machine program as root on this host through `sudo`, for that
 one program and the `fabriek` group, with the factory named in the
 environment and argv passed as argv (ADR-067).
@@ -74,7 +80,11 @@ interventions `task-file`, `role-stop`, `role-steer`, `factory-mirror`,
 is `FABRIEK_FACTORY`, whose facts it loads from
 `/etc/fabriek/factories/<name>.env`, so one program serves every factory
 on the host. It composes sessions and writes the operator stream; it
-decides nothing and runs no loop.
+decides nothing and runs no loop. The same program runs inside each
+factory's machine, as `fabriek-machine`, with the same facts less
+`FABRIEK_MACHINE`: on the host that fact names the machine and the program
+forwards what touches a role's state to it (`modules/in-machine.sh`); in
+the guest it is absent and the program does that work itself.
 
 **`factory/`** (TypeScript, one package, no runtime dependency) holds the
 executor, the extension that is the loop, the decider, the relay and the
@@ -123,8 +133,9 @@ A NixOS host declares its factories with `services.fabriek`
 (`modules/host.nix`, ADR-048, ADR-067): the operator's `config.toml`
 rendered to `/etc/fabriek/config.toml`, read by the CLI when no personal
 file exists; `services.fabriek.factories.<name>` with the checkout's path
-and `autoStart`; and from those, per factory, everything that was a
-machine's:
+and `autoStart`, and `machine` (the machine's `memory`, `cpus` and
+`disk`, the host's to size since a machine is evaluated before a
+factory's resources are read); and from those, per factory:
 
 - A bridge `fb-<idx>` at `10.77.<idx>.1/24` (`modules/host/bridge.nix`),
   `<idx>` the factory's position among the declared names, configured
@@ -135,8 +146,22 @@ machine's:
 - A facts file `/etc/fabriek/factories/<name>.env`: the bridge, the
   address, the ports, `FABRIEK_STATE` (`/var/lib/nixcage/fabriek/<name>`),
   `FABRIEK_ETC` (`/var/lib/fabriek/<name>`), `FABRIEK_RUN`
-  (`/run/fabriek/<name>`), the floor, and what render evaluates a profile
-  from. The units load it; the CLI hands it over by naming the factory.
+  (`/run/fabriek/<name>`), `FABRIEK_MACHINE`, the floor, and what render
+  evaluates a profile from. The units load it; the CLI hands it over by
+  naming the factory.
+- A machine, `nixcage.machines.<name>` (ADR-070): a uid slice 65536 wide
+  after every other factory's from `machineUidBase` (3000000); placement
+  on `fb-<idx>` as every address of the subnet but the host's `.1`, so
+  the host's pin keeps the machine in its subnet and the guest's pins
+  keep each role to its own address; read-only shares of the operator's
+  checkout, `FABRIEK_ETC`, and `bus/` and `forge/` under the state path,
+  which the host mints and the guest reads; `egress/` is shared with
+  nothing. Its guest carries `fabriek-container`, the `fabriek-machine`
+  wrapper, the facts at the host's path, the floor's packages for every
+  cage, a principal range of its own, the factory's bridge through its
+  NIC at `.254` (an address the bridge plan never gives a role), and the
+  probes: bpftrace over the machine's own kernel, published to the host's
+  bus as the factory's probes user (`modules/host/probes.bt`).
 - A slice `fabriek-<name>.slice` and under it: `fabriek-<name>-state`
   (the factory's dataset through the storage primitive),
   `-egress-credentials` (the proxy's header lines for this factory), and
@@ -158,17 +183,18 @@ machine's:
   address and the firewall opens its port on the bridges and loopback
   alone (`modules/host/board.nix`).
 - With `autoStart`, `fabriek-<name>.service`, which runs `factory-up` at
-  boot and `factory-down` at stop in the slice.
+  boot and `factory-down` at stop in the slice. A switch reloads it, and
+  reload is `factory-up`: the factory is rendered again against the new
+  floor and its executor restarted, and nothing is taken down; the
+  executor is not restarted by a switch, nor is the machine.
 
 Once on the host: nginx with a server per factory on its bridge, an njs
 dictionary and a ceiling per factory, the locations render writes under
-the factory's directory (`modules/host/proxy.nix`, `spend.js`); one
-bpftrace reader publishing each kernel line to the bus of the factory
-whose cage the cgroup is (`modules/host/probes.nix`, `modules/probes.sh`);
-the floor, one store path every role's pi directory is composed from
+the factory's directory (`modules/host/proxy.nix`, `spend.js`); the
+floor, one store path every role's pi directory is composed from
 (`modules/host/floor.nix`); a sudoers rule for `fabriek-container` and the
-`fabriek` group; and `nixcage.nixosModules.host` beside it all, with
-`microvm.enable` where any role wants a kernel.
+`fabriek` group; and `nixcage.nixosModules.host` beside it all. No probe
+runs on the host: it sees a machine as one qemu.
 
 ## Up
 
@@ -187,26 +213,28 @@ factory's directory `declaration.json`, `rev`, `notes.json`,
 `bridge.json`, `proxy/endpoints.conf`, `endpoints.json`, `model.json`,
 `decider-policy.md`, `pi-decider/`, and per role `roles/<role>/profile`,
 built by the host's daemon from the repository at the pin under
-`--restrict-eval`, and `roles/<role>/pi`; then `profiles.json`), removes
-the cage of any role whose declared substrate changed, starts the rest
-of the factory's units (after render, since the bus's ACL unit applies
-the plan it finds), files each model
-credential the rendered factory reaches under the factory's state for the
-proxy's user (`modules/factory-up.sh`), prepares, and writes the mark
-last. What the clamp changed is printed, and a substrate raised to the
-operator's floor is among it.
+`--restrict-eval`, and `roles/<role>/pi`; then `profiles.json`), files
+each model credential the rendered factory reaches under the factory's
+state for the proxy's user (`modules/factory-up.sh`), brings the
+factory's machine up with `machine up`, prepares, and writes the mark
+last. What the clamp changed is printed. The host's clone is render's
+alone; the roles work a clone the machine makes of the checkout on its
+own disk, once, under a lock, when the first session asks for it.
 
-Then the CLI does the operator's side (ADR-067 point 5): a remote
-`fabriek-<name>` at the factory's clone in the checkout, fetched as the
-operator into `refs/heads/fabriek/<name>/*` and
-`refs/fabriek/<name>/*`, so the factory's branches, merged `main` and
-the record are seen with `git branch` and `git log` in the operator's own
+Then the CLI does the operator's side (ADR-067 point 5, ADR-070 point 8):
+a remote `fabriek-<name>` at the factory's repository on the host's
+Forgejo, read with a token that reads repositories and nothing else,
+kept at `FABRIEK_ETC/fetch-token` for the `fabriek` group and read by a
+credential helper on each fetch, so it is in no URL and no argument. It
+fetches as the operator into `refs/heads/fabriek/<name>/*` and
+`refs/fabriek/<name>/*`, so the factory's branches, merged `main` and the
+record are seen with `git branch` and `git log` in the operator's own
 repository. `ps`, `watch`, `board` and `mirror` fetch again; `fetch` does
-only that. Nothing in the factory writes the checkout: the executor's
-`mirror` brings `main` and `refs/fabriek/record` into the clone and pushes
-nowhere. `down` is refused while a role's cage runs, then stops the
-executor, removes the mark and stops the units; the datasets stay and the
-remote leaves the checkout.
+only that. Nothing in the factory writes the checkout. `down` stops the
+executor, which ends every session and waits for each to stop its cage,
+is refused if a role's cage still runs (one a hand entered), then removes
+the mark and brings the machine down; its disk and the datasets stay, and
+the remote and its helper leave the checkout.
 
 ## Prepare
 
@@ -218,36 +246,47 @@ and not an admin's (ADR-068); per role an account `<factory>-<role>` with
 read on it, a `write:issue` token and a pinned `memory` issue opened as
 that account; for the decider `<factory>-decider` and a `read:issue`
 token; a label per stage's capability
-plus `blocked` and `memory`. Tokens and passwords are files under the state
-directory, owned by the role's uid, and reach the API as a header read from
-a file.
+plus `blocked` and `memory`. Tokens and passwords are files under the
+host's state directory, owned by the uid the machine's nixcage allocated
+for each cage (`uid --machine`), shared read-only into the machine, and
+reach the API as a header read from a file. The probes are restarted in
+the machine, where they run.
 
 ## A role session
 
-`cmd_role_enter` composes one `nixcage-container enter` line in a fixed
-order, asserted whole by `seam.bats`: `--uid`, `--user`, `--home`,
-`--network` (the plan's placement for a supervised run; for a person, the
-running actor's namespace when there is one, found through the nspawn
-that holds it, so a hand beside an actor takes no second veth),
-`--no-nix-daemon`, `--substrate` (the role's, raised to the operator's
-floor by the clamp; the decider's is `nspawn`), the profile on
+A session is planned in the factory's machine and entered from the host
+(ADR-070 point 9), since the guest has the store without its database and
+only the host can compute the closure a cage sees (nixcage ADR-026). The
+host's `role-enter` (`role_enter_on_host`) first stops the role's cage if
+it is running and the session is supervised, since a supervised session
+owns its role's cage and one left running is an executor's orphan; then
+it asks the guest's `fabriek-machine role-enter --plan`, with the
+checkout as `--repository`. The guest prepares the role where its state
+is (the clone and worktree, the key, the pi scratch) and prints the words
+it would have run, NUL-separated. The host reads the plan as data from
+outside the boundary: only `enter` or `exec`, and no `--auth-sock` among
+enter's options; a person's agent is added here and never named to the
+guest; `--task-dir` is refused, since a task reaches a role in a machine
+by the bus. Then `nixcage-container <verb> --machine <factory> ...`.
+
+The planned line is `cmd_role_enter`'s, in a fixed order asserted whole
+by `seam.bats`: `--uid`, `--user`, `--home`, `--network` (the plan's
+placement on the factory's bridge), `--no-nix-daemon`, the profile on
 `NIXCAGE_PATH_PREFIX` when render realised one, then `--auth-sock` (by
-hand) or `--no-agent` (supervised), the task bind if given, the signing binds, and for a supervised run the actor's part: the
-role's own pi directory bound at `PI_CODING_AGENT_DIR` and `PI_AGENT_DIR`, the bus password
-and forge token bound read-only, and the `FABRIEK_*` environment naming the
-role, its capabilities, its specialists, the bus, the forge, the repository
-and the proxy, and `--memory` and `--cpus` sized from the declaration's
-resources over its concurrency, set on the cage's scope (nixcage ADR-012).
-The cage is named `<factory>-<role>`, a machine name of at most
-sixty-four characters, and so is its uid's principal, since one host runs
-several factories; its veth carries a hash of that name (nixcage
-ADR-013). A
-person entering a role whose actor is running is put inside its cage with
-`nixcage-container exec`, not beside it. The decider's session is the same
-line with the machine's own loop, the declaration and the policy bound in,
-and `pi --mode rpc` as its command. A role declared `microvm` is the
-same line with `--substrate microvm`, and nixcage boots it under
-`systemd-vmspawn` in a kernel of its own (nixcage ADR-019).
+hand) or `--no-agent` (supervised), the task bind if given, the signing
+binds, and for a supervised run the actor's part: the role's own pi
+directory bound at `PI_CODING_AGENT_DIR` and `PI_AGENT_DIR`, the bus
+password and forge token bound read-only, and the `FABRIEK_*` environment
+naming the role, its capabilities, its specialists, the bus, the forge,
+the repository and the proxy, and `--memory` and `--cpus` sized from the
+declaration's resources over its concurrency, set on the cage's scope
+(nixcage ADR-012). The cage is named `<factory>-<role>`, and so is its
+uid's principal; its veth carries a hash of that name (nixcage ADR-013)
+and is pinned to the role's address by the guest, and the machine's tap
+by the host. A person entering a role whose actor is running is put
+inside its cage with `nixcage-container exec`, not beside it. The
+decider's session is the same line with the machine's own loop, the
+declaration and the policy bound in, and `pi --mode rpc` as its command.
 
 ## The loop
 
@@ -296,10 +335,16 @@ starts the sessions, so no ready is missed. `main.ts` connects as the executor's
 user, starts every role's session and the decider's through the machine
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend, named by role from the
-plan, to `events:executor`.
-`mirror` fetches `main` from the forge into the clone and writes the
-issues as `refs/fabriek/record` there, pushing nowhere; the operator's
-fetch carries both into the checkout. `factory-prepare` reads the record
+plan, to `events:executor`. On SIGTERM it ends every session and waits
+for each, within a minute, before it exits: a session's end stops its
+cage in the machine, and systemd would end the unit under it.
+The executor's git (`git.ts`) runs in the machine's clone, where the roles
+commit, through `nixcage-container machine exec` with git's environment
+passed as `env` words: a role's tip, its commits since an attempt began,
+and the push of its branch to the forge. `mirror` fetches `main` from the
+forge into that clone, and writes the issues as `refs/fabriek/record` in
+the host's own clone, render's, and pushes it to the forge, where the
+operator's fetch carries both into the checkout. `factory-prepare` reads the record
 back on a host whose board is empty (`fabriek_forge_restore_record`):
 each issue opened again in number order with its labels and state, memory
 issues excepted, a label the declaration lost named and dropped. The export
@@ -317,8 +362,8 @@ thirty seconds and whenever an actor says something.
 ## The operator
 
 The relay (`factory/src/relay/`) prints every stream as JSON lines,
-`relay/fixtures.json` being the contract; `fabriek watch` carries
-it over ssh. When the bus goes away the relay waits, connects again and
+`relay/fixtures.json` being the contract; `fabriek watch` runs it
+through the machine program on this host. When the bus goes away the relay waits, connects again and
 reads on from the last id it printed (`relay/tail.ts`). The TUI
 (`factory/src/tui/`) folds those lines into one state and renders it in
 panes: the roles with one selected (`j`/`k`), the board by stage, the
@@ -352,27 +397,39 @@ since the account was made with one nothing kept.
 
 ```
 nix develop --command shellcheck -x fabriek fabriek-container modules/*.sh
-nix develop --command bats --recursive tests/       # ~470 scenarios, minutes
-nix build .#factory                                  # 185 scenarios
+nix develop --command bats --recursive tests/       # ~490 scenarios, minutes
+nix build .#factory                                  # 224 scenarios
 quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
 nix develop --command tests/system/journey.sh        # the factory on this host
 FABRIEK_PROOF_DIR=... tests/manual/isolation.sh    # needs a NixOS host
 FABRIEK_PROOF_DIR=... tests/manual/parity.sh       # needs a NixOS host
 FABRIEK_PROOF_DIR=... tests/manual/specialist.sh   # needs a NixOS host
+FABRIEK_PROOF_DIR=... tests/manual/two-factories.sh  # and forge-boundary, bus-account, host-autostart
 ```
 
+The manual proofs ask a cage's questions where the factory's cages are:
+through `--machine` for nixcage's verbs, and as the machine's root with a
+script on stdin for what must run beside the cages (`tests/manual/lib.sh`).
+All but `parity.sh` passed on `pc` on 2026-09-25 with both factories in
+machines (ADR-070's verification).
+
+`tests/command/machine_seam.bats` drives the host's half of a session in a
+machine: the plan asked for, checked and entered with `--machine`, the
+refusals, an orphaned cage stopped, and the verbs forwarded to the guest.
 `tests/command/catalogue.bats` evaluates and builds `lib.catalogue` for
 real over the shipped catalogue and one each scenario writes: the flattening,
 every refusal, and what a built role carries (`bin/`, `APPEND_SYSTEM.md`,
 `skills/`, `lsp.json`, `tests.json`). `host_module.bats` evaluates
 `services.fabriek` for real with two factories declared: the bridges, the
-facts files, the slices and units, the proxy's servers and dictionaries,
-the forward chain, the sudoers rule; `factory_up.bats` drives `factory-up`
+facts files, the slices and units, each factory's machine and its guest
+evaluated whole, the proxy's servers and dictionaries, the forward chain,
+the sudoers rule; `factory_up.bats` drives `factory-up`
 and `factory-down` whole with the forge, `nix build`, `systemctl` and
 `nixcage-container` stubbed and real git; `up.bats` drives the CLI's side
 with `sudo` stubbed and real git on the checkout; `render.bats` drives
-`factory-render`; `probes.bats` drives the one reader over two factories;
+`factory-render`; `probes.bats` drives the reader over the factories whose
+facts it is given;
 `factory_render.bats` and `credential.bats` drive the renderers and the
 credential writer.
 
@@ -386,7 +443,7 @@ decider's own binding (`decider/bind.ts`) judged by `fake-decider/policy.ts`.
 Every command still passes the core's gate and the executor's. What the
 journey proves is everything but the model and the cage, including the
 checkout's refs and its untouched branch and tree; what needs a NixOS
-host is the cage, the bridge, the proxy's count, the substrate and pi.
+host is the machine, the cage, the bridge, the proxy's count and pi.
 
 ## Not built, and known gaps
 
@@ -409,7 +466,11 @@ host is the cage, the bridge, the proxy's count, the substrate and pi.
   per-factory artifact cache exists.
 - The guard's verdict is pi's bash error flag, not an exit code; `sbt`
   counts any invocation as a run because its verbs sit inside one quoted
-  argument. `tests/manual/specialist.sh` has not run on a host.
-- The manual proofs under `tests/manual/` still reach a factory over the
-  machine's ssh; they are rewritten against the host with ADR-067's
-  measurement plan.
+  argument.
+- A factory's roles share its machine's kernel and disk: no role can be
+  kept from its factory's kernel, and none has a quota of its own.
+- A machine reserves its memory while it runs, whatever its roles use; a
+  switch that changes a machine takes effect at its next `up`.
+- A compromised guest can read the factory owner's forge token through the
+  forge share; it reaches that factory's repository and nothing another
+  factory owns.
