@@ -38,6 +38,9 @@ in
         ## on it; under /run on purpose, so a reboot is not prepared for
         ## the old pin (models/factory-lifecycle.qnt).
         unitConfig.ConditionPathExists = "/run/fabriek/${name}/prepared";
+        ## up restarts it once it has rendered; a switch restarting it
+        ## first would start sessions on the old render.
+        restartIfChanged = false;
         path = [
           pkgs.git
           pkgs.fabriek-container

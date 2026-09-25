@@ -523,9 +523,12 @@ set"
 	assert_output --partial '-nixos-system-acme-'
 }
 
-@test "a switch leaves a running factory alone: up and down move it, as they move its machine" {
+@test "a switch brings a running factory up again in place, render and all, and never down" {
 	run host_eval 'factories.acme = { path = "/srv/acme"; autoStart = true; };' \
-		'{ restart = c.systemd.services.fabriek-acme.restartIfChanged; stop = c.systemd.services.fabriek-acme.stopIfChanged; }'
+		'{ reload = c.systemd.services.fabriek-acme.reloadIfChanged;
+		   exec = c.systemd.services.fabriek-acme.serviceConfig.ExecReload;
+		   executor = c.systemd.services.fabriek-acme-executor.restartIfChanged; }'
 	assert_success
-	assert_output '{"restart":false,"stop":false}'
+	run jq -c '[.reload, (.exec | test("/bin/fabriek-container factory-up acme$")), .executor]' <<<"$output"
+	assert_output '[true,true,false]'
 }

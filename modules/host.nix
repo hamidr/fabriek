@@ -523,11 +523,12 @@ in
       name: f:
       lib.nameValuePair "fabriek-${name}" {
         description = "The factory ${name}, brought up at boot";
-        ## A switch that changes the machine program would otherwise take
-        ## the factory down and up, machine and all (found on a host
-        ## 2026-09-25); a changed program takes effect at the next up.
-        restartIfChanged = false;
-        stopIfChanged = false;
+        ## A switch that changes the machine program brings the factory up
+        ## again where it stands: up is idempotent, renders against the new
+        ## floor and restarts the executor, and never takes the machine down
+        ## (found on a host 2026-09-25: a restart cycled every factory, and
+        ## no restart at all left sessions on a render of the old floor).
+        reloadIfChanged = true;
         wantedBy = [ "multi-user.target" ];
         after = [
           "network-online.target"
@@ -552,6 +553,7 @@ in
           EnvironmentFile = "/etc/fabriek/factories/${name}.env";
           ExecStart = "${pkgs.fabriek-container}/bin/fabriek-container factory-up ${name}";
           ExecStop = "${pkgs.fabriek-container}/bin/fabriek-container factory-down ${name}";
+          ExecReload = "${pkgs.fabriek-container}/bin/fabriek-container factory-up ${name}";
           Slice = "fabriek-${name}.slice";
         };
       }
