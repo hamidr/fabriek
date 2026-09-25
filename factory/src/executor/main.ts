@@ -121,6 +121,21 @@ async function main(): Promise<void> {
   const publish = (kind: string, payload: unknown) =>
     client.xadd("events:executor", toFields({ kind: "event", name: kind, payload }), STREAM_CAP).catch(() => undefined);
 
+  // A stop ends every session and waits for each to finish its own stop
+  // before this process exits: a session's end stops its cage in the
+  // factory's machine, and systemd ends the unit under a session whose
+  // executor went first (found on a host 2026-09-25). Under the unit's own
+  // stop timeout, so what will not end is still ended.
+  let stopping = false;
+  const shutdown = (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    log(`${signal}: ending every session`);
+    void sessions.stopAll(60000).then(() => process.exit(0));
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+
   await executor.reconcile();
   log("reconciled");
   // Read from where each stream is now, and only then start the sessions:

@@ -63,6 +63,30 @@ export class RoleSessions implements Sessions {
     });
   }
 
+  /**
+   * Every session ended, and waited for up to `boundMs` while each finishes
+   * its own stop: a session's end is work of its own (its cage stopped in
+   * the factory's machine), and an executor that exits before it lets
+   * systemd end the unit under it. What is left at the bound is killed.
+   */
+  async stopAll(boundMs: number): Promise<void> {
+    const children = [...this.children.values()];
+    this.wanted.clear();
+    this.holding.clear();
+    const exited = children.map(
+      (child) => new Promise<void>((resolve) => {
+        if (child.exitCode !== null || child.signalCode !== null) resolve();
+        else child.once("exit", () => resolve());
+      }),
+    );
+    for (const child of children) child.kill("SIGTERM");
+    let timer: NodeJS.Timeout | undefined;
+    const bound = new Promise<void>((resolve) => { timer = setTimeout(resolve, boundMs); });
+    await Promise.race([Promise.all(exited), bound]);
+    clearTimeout(timer);
+    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
+
   /** The sessions wanted but not restarted at their last exit. */
   held(): Set<string> {
     return new Set(this.holding);

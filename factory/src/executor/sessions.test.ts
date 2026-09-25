@@ -79,4 +79,31 @@ describe("role sessions", () => {
     assert.equal(asked, 0);
     assert.deepEqual([...sessions.held()], []);
   });
+
+  // Found on a host (2026-09-25): a session's own stop runs after it is
+  // signalled, and an executor that exited first let systemd end the unit
+  // under it, so a role's cage outlived the executor. stopAll ends every
+  // session and waits for each to finish its own stop.
+  it("stopAll signals every session and resolves only once each has finished its stop", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sessions-"));
+    const done = join(dir, "done");
+    const command = ["sh", "-c", `trap 'sleep 0.3; echo "$3" >>"${done}"; exit 0' TERM; while :; do sleep 0.05; done`, "session"];
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 60000 });
+    await sessions.start("builder");
+    await sessions.start("reviewer");
+    await settle(200);
+    await sessions.stopAll(5000);
+    assert.deepEqual(readFileSync(done, "utf8").trim().split("\n").sort(), ["builder", "reviewer"]);
+    assert.deepEqual([...sessions.running()], []);
+  });
+
+  it("stopAll resolves at its bound when a session will not end", async () => {
+    const command = ["sh", "-c", "trap '' TERM; while :; do sleep 0.05; done", "session"];
+    const sessions = new RoleSessions({ factory: "acme", command, restartDelayMs: 60000 });
+    await sessions.start("stuck");
+    await settle(100);
+    const t0 = Date.now();
+    await sessions.stopAll(300);
+    assert.ok(Date.now() - t0 < 2000);
+  });
 });
