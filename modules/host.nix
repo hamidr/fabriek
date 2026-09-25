@@ -162,16 +162,20 @@ let
     ];
     modules = [ (guestModule name plan.${name} f) ];
   };
-  ## What the guest carries of fabriek: the program and a wrapper that
-  ## loads the factory's facts, git told the checkout is safe to read as
-  ## root, the floor's packages in every cage as on the host, a range for
-  ## its own cages, and the factory's bridge through its NIC at .254, the
-  ## one address the bridge plan never gives a cage.
+  ## What the guest carries of fabriek: the program, the factory's facts
+  ## where the host keeps them and a wrapper that names the factory so the
+  ## program loads them, git told the checkout is safe to read as root, the
+  ## floor's packages in every cage as on the host, a range for its own
+  ## cages, and the factory's bridge through its NIC at .254, the one
+  ## address the bridge plan never gives a cage. And the probes (ADR-038
+  ## point 3, ADR-070 point 7): a host sees a machine as one qemu, so what
+  ## the kernel says a role ran is read by the machine's own kernel and put
+  ## on the host's bus, with the probes user's password the host shares.
   guestModule =
     name: p: f:
     { pkgs, ... }:
     {
-      environment.etc."fabriek/machine.env".text =
+      environment.etc."fabriek/factories/${name}.env".text =
         guestFacts name p
         + ''
           GIT_CONFIG_COUNT=1
@@ -182,12 +186,30 @@ let
         pkgs.git
         pkgs.fabriek-container
         (pkgs.writeShellScriptBin "fabriek-machine" ''
-          set -a
-          . /etc/fabriek/machine.env
-          set +a
-          exec ${pkgs.fabriek-container}/bin/fabriek-container "$@"
+          FABRIEK_FACTORY=${name} exec ${pkgs.fabriek-container}/bin/fabriek-container "$@"
         '')
       ];
+      systemd.services.fabriek-probes = {
+        description = "What the kernel says the factory's roles ran, onto its bus";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        environment.FABRIEK_FACTORIES = "/etc/fabriek/factories";
+        serviceConfig = {
+          Restart = "on-failure";
+          RestartSec = 5;
+        };
+        path = [
+          pkgs.coreutils
+          pkgs.bpftrace
+          pkgs.fabriek-container
+          "/run/current-system/sw"
+        ];
+        script = ''
+          set -u
+          bpftrace -q -f text ${./host/probes.bt} | fabriek-container probes-publish
+        '';
+      };
       nixcage.containerPackages = [ pkgs.pi-coding-agent ];
       nixcage.principalUidRange = {
         base = 700000;
@@ -224,7 +246,6 @@ in
     ./host/bus.nix
     ./host/board.nix
     ./host/proxy.nix
-    ./host/probes.nix
     ./host/floor.nix
     ./host/executor.nix
   ];

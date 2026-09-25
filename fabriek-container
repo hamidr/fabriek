@@ -813,7 +813,13 @@ cmd_factory_prepare() {
 	systemctl restart "fabriek-$factory-executor.service"
 	## The probes read every factory's declaration to name a cgroup's role
 	## and skip one without, which is not a failure their unit restarts on.
-	systemctl restart fabriek-probes.service
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		## The probes are the machine's (ADR-070 point 7).
+		nixcage-container machine exec "$FABRIEK_MACHINE" systemctl restart fabriek-probes.service ||
+			echo "fabriek-container: could not restart the probes in $factory's machine" >&2
+	else
+		systemctl restart fabriek-probes.service
+	fi
 	echo "$factory: prepared"
 }
 

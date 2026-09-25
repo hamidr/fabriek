@@ -419,3 +419,13 @@ EOF
 	assert_line --index 0 "$FABRIEK_FORGE_GIT_URL"
 	assert_line --index 1 "$ETC/fetch-token"
 }
+
+@test "in a machine, prepare restarts the probes in the machine, where they read its cages" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	run cat "$CALLS/nixcage-container"
+	assert_line "machine exec acme systemctl restart fabriek-probes.service"
+	run grep -c "restart fabriek-probes.service" "$CALLS/systemctl"
+	assert_output 0
+}

@@ -394,17 +394,22 @@ set"
 # One reader for the host: the kernel is one, so the probes are one, and
 # the machine program names the factory and the role each cgroup belongs
 # to from every factory's facts.
-@test "the probes are one unit on the host, going through the machine program over every factory's facts" {
+@test "the probes run in each factory's machine, over its facts there, and none on the host (ADR-070 point 7)" {
 	run host_eval 'factories.widgets.path = "/srv/widgets"; factories.acme.path = "/srv/acme";' \
-		'{ script = c.systemd.services.fabriek-probes.script; env = c.systemd.services.fabriek-probes.environment.FABRIEK_FACTORIES;
-		   bt = c.environment.etc."fabriek/probes.bt".text; per = c.systemd.services ? fabriek-acme-probes; }'
+		'let g = c.nixcage.machines.acme.guest.config; in
+		 { host = c.systemd.services ? fabriek-probes;
+		   script = g.systemd.services.fabriek-probes.script;
+		   env = g.systemd.services.fabriek-probes.environment.FABRIEK_FACTORIES;
+		   wanted = g.systemd.services.fabriek-probes.wantedBy;
+		   facts = g.environment.etc ? "fabriek/factories/acme.env"; }'
 	assert_success
 	local out="$output"
 	run jq -r .script <<<"$out"
 	assert_output --partial 'bpftrace'
-	assert_output --partial '| fabriek-container probes-publish'
-	run jq -c '[.env, (.bt | test("exec cgroup=%d uid=%d")), .per]' <<<"$out"
-	assert_output '["/etc/fabriek/factories",true,false]'
+	assert_output --regexp '/nix/store/[^ ]*-probes.bt \| fabriek-container probes-publish'
+	grep -q 'exec cgroup=%d uid=%d' "$FABRIEK_ROOT/modules/host/probes.bt"
+	run jq -c '[.host, .env, .wanted, .facts]' <<<"$out"
+	assert_output '[false,"/etc/fabriek/factories",["multi-user.target"],true]'
 }
 
 # ADR-067 point 1: the CLI reaches the machine program through sudo, for
@@ -477,7 +482,7 @@ set"
 @test "the host's facts name the machine and the guest's do not" {
 	run host_eval 'factories.acme.path = "/srv/acme";' \
 		'{ host = c.environment.etc."fabriek/factories/acme.env".text;
-		   guest = c.nixcage.machines.acme.guest.config.environment.etc."fabriek/machine.env".text; }'
+		   guest = c.nixcage.machines.acme.guest.config.environment.etc."fabriek/factories/acme.env".text; }'
 	assert_success
 	local both="$output"
 	jq -r .host <<<"$both" | grep -qx 'FABRIEK_MACHINE=acme'
