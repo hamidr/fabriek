@@ -39,7 +39,8 @@ function world() {
   writeFileSync(token, "unused\n");
   const log = join(dir, "prefix.log");
   const prefix = join(dir, "machine-exec");
-  writeFileSync(prefix, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >>${log}\nexec "$@"\n`);
+  // /bin/sh: the build's sandbox has it and no /usr/bin/env.
+  writeFileSync(prefix, `#!/bin/sh\nprintf '%s\\n' "$*" >>${log}\nexec "$@"\n`);
   chmodSync(prefix, 0o755);
   return { dir, forge, clone, hostClone, token, log, prefix };
 }

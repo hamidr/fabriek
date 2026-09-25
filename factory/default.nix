@@ -36,6 +36,8 @@ in
       pkgs.nodejs
       pkgs.typescript
     ];
+    ## The executor's git is tested on real repositories (git.test.ts).
+    nativeCheckInputs = [ pkgs.git ];
     doCheck = true;
     buildPhase = ''
       rm -rf node_modules dist
