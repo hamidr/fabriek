@@ -720,6 +720,19 @@ cmd_factory_prepare() {
 	fabriek_forge_ensure_repository "$base" "$operator" "$owner" "$factory" ||
 		die "could not make the repository $owner/$factory"
 
+	## The operator's fetch (ADR-070 point 8): with the clone on the
+	## machine's disk the checkout's remote is the forge, read with a token
+	## that reads and nothing else, readable by the fabriek group.
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		fabriek_forge_ensure_token "$STATE_DIR" fetch "$owner" read:repository ||
+			die "could not mint the operator's fetch token"
+		install -m 0640 "$(fabriek_forge_token_path "$STATE_DIR" fetch)" "$FABRIEK_ETC/fetch-token.new" ||
+			die "could not file the operator's fetch token"
+		chgrp fabriek "$FABRIEK_ETC/fetch-token.new" 2>/dev/null || [ "$EUID" != 0 ] ||
+			die "could not give the fetch token to the fabriek group"
+		mv "$FABRIEK_ETC/fetch-token.new" "$FABRIEK_ETC/fetch-token"
+	fi
+
 	local label
 	while IFS= read -r label; do
 		[ -n "$label" ] || continue
@@ -1064,6 +1077,15 @@ cmd_factory_down() {
 cmd_factory_clone() {
 	local factory="${1:-}"
 	[ -n "$factory" ] || die "usage: fabriek-container factory-clone <factory>"
+	## In a machine the clone is on a disk this host does not read, so what
+	## the CLI fetches is the forge's repository and the token that reads it
+	## (ADR-070 point 8), one per line.
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		fabriek_name_ok "$factory" || die "invalid factory name: $factory"
+		fabriek_forge_git_url "$FABRIEK_ETC/bridge.json" "$(fabriek_forge_account "$factory" operator)" "$factory"
+		printf '%s\n' "$FABRIEK_ETC/fetch-token"
+		return
+	fi
 	fabriek_factory_clone_path "$STATE_DIR" "$factory" || die "invalid factory name: $factory"
 }
 

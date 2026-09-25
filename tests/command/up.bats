@@ -40,7 +40,13 @@ factory-up)
 	;;
 factory-down) rm -f "$TEST_TEMP_DIR/running"; echo "acme has stopped" ;;
 factory-status) [ -e "$TEST_TEMP_DIR/running" ] && echo "acme: running at abc" || echo "acme: stopped" ;;
-factory-clone) echo "$CLONE" ;;
+factory-clone)
+	if [ -e "$TEST_TEMP_DIR/in-a-machine" ]; then
+		printf '%s\n%s\n' "$TEST_TEMP_DIR/forge.git" "$TEST_TEMP_DIR/fetch-token"
+	else
+		echo "$CLONE"
+	fi
+	;;
 esac
 STUB
 	chmod +x "$STUB_DIR/sudo"
@@ -191,4 +197,37 @@ EOF
 	assert_success
 	run nixcage_calls
 	assert_line "/run/current-system/sw/bin/fabriek-container factory-up acme"
+}
+
+# A factory in a nixcage machine of its own (ADR-070 point 8): its clone is
+# on a disk the host does not read, so the checkout's remote is the forge,
+# fetched with the read-only token the host made for the fabriek group.
+@test "in a machine, up adds a remote at the forge and fetches its branches and record with the host's token" {
+	touch "$TEST_TEMP_DIR/in-a-machine"
+	echo token >"$TEST_TEMP_DIR/fetch-token"
+	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
+	git -C "$REPO" push -q "$TEST_TEMP_DIR/forge.git" main main:builder/one
+	git -C "$REPO" push -q "$TEST_TEMP_DIR/forge.git" main:refs/fabriek/record
+	run_fabriek up acme
+	assert_success
+	run git -C "$REPO" remote get-url fabriek-acme
+	assert_output "$TEST_TEMP_DIR/forge.git"
+	run git -C "$REPO" config "credential.$TEST_TEMP_DIR/forge.git.helper"
+	assert_output --partial "cat $TEST_TEMP_DIR/fetch-token"
+	git -C "$REPO" rev-parse --verify -q refs/heads/fabriek/acme/builder/one
+	git -C "$REPO" rev-parse --verify -q refs/fabriek/acme/record
+	[ "$(git -C "$REPO" branch --show-current)" = main ]
+}
+
+@test "in a machine, down takes the forge's credential helper away with the remote" {
+	touch "$TEST_TEMP_DIR/in-a-machine"
+	echo token >"$TEST_TEMP_DIR/fetch-token"
+	git init -q --bare -b main "$TEST_TEMP_DIR/forge.git"
+	git -C "$REPO" push -q "$TEST_TEMP_DIR/forge.git" main
+	run_fabriek up acme
+	assert_success
+	run_fabriek down acme
+	assert_success
+	run git -C "$REPO" config --get-regexp '^credential\.'
+	assert_output ""
 }

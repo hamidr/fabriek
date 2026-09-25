@@ -199,12 +199,23 @@ factory_path() {
 ## so the factory's work is seen with git branch and git log in the
 ## operator's own repository. Nothing in the factory writes the checkout;
 ## this fetch, as the operator, is the one thing that does.
+##
+## With the factory in a machine (ADR-070 point 8) the answer is the
+## forge's repository and a token file on a second line; git reads the
+## token through a helper each fetch, so it is in no URL and no argument.
 checkout_remote() {
-  local factory="$1" path clone
+  local factory="$1" path answer clone token
   path="$(factory_path "$factory")" || return 1
-  clone="$(machine factory-clone "$factory")" || return 1
+  answer="$(machine factory-clone "$factory")" || return 1
+  clone="$(sed -n 1p <<<"$answer")"
+  token="$(sed -n 2p <<<"$answer")"
   git -C "$path" remote remove "fabriek-$factory" >/dev/null 2>&1 || true
   git -C "$path" remote add "fabriek-$factory" "$clone" || return 1
+  if [ -n "$token" ]; then
+    # shellcheck disable=SC2016  # expanded by the helper's shell, each fetch
+    git -C "$path" config --replace-all "credential.$clone.helper" \
+      '!f() { echo username=fetch; echo "password=$(cat '"$token"')"; }; f' || return 1
+  fi
   git -C "$path" config --replace-all "remote.fabriek-$factory.fetch" "+refs/heads/*:refs/heads/fabriek/$factory/*" || return 1
   git -C "$path" config --add "remote.fabriek-$factory.fetch" "+refs/fabriek/*:refs/fabriek/$factory/*" || return 1
 }
@@ -254,6 +265,9 @@ cmd_down() {
   machine factory-down "$factory" || exit 1
   local path
   if path="$(factory_path "$factory" 2>/dev/null)"; then
+    local url
+    url="$(git -C "$path" remote get-url "fabriek-$factory" 2>/dev/null)" &&
+      git -C "$path" config --remove-section "credential.$url" 2>/dev/null || true
     git -C "$path" remote remove "fabriek-$factory" 2>/dev/null || true
   fi
 }

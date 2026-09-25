@@ -399,3 +399,23 @@ EOF
 	run grep -c '^machine down' "$CALLS/nixcage-container"
 	assert_output 0
 }
+
+@test "in a machine, up gives the operator a read-only token for the forge, readable by the fabriek group only" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	[ -s "$ETC/fetch-token" ]
+	[ "$(perms "$ETC/fetch-token")" = 640 ]
+	run grep -c '^acme-operator ' "$FORGE/tokens"
+	assert_output 2
+}
+
+@test "in a machine, the clone the CLI fetches is the forge's repository, with the token that reads it" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	run_fabriek_container factory-clone acme
+	assert_success
+	assert_line --index 0 "$FABRIEK_FORGE_GIT_URL"
+	assert_line --index 1 "$ETC/fetch-token"
+}
