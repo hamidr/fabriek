@@ -65,8 +65,24 @@ fabriek_factory_clone_ensure() {
 	path="$(fabriek_factory_clone_path "$state" "$factory")" || return 1
 	branch="$(fabriek_factory_clone_branch)"
 
+	## Every role's first session asks for the clone, and in a fresh
+	## machine they ask at once (ADR-070): one makes it under a lock beside
+	## it, and the rest find it made. The lock is held to the end of this
+	## function, in a subshell's descriptor, so it ends with it.
+	mkdir -p "$(dirname "$path")"
+	(
+		flock 9 || exit 1
+		fabriek_factory_clone_make "$path" "$repo" "$branch"
+	) 9>"$path.lock" || return 1
+
+	echo "$path"
+}
+
+## The clone made if it is not there: fabriek_factory_clone_ensure's body,
+## run under its lock.
+fabriek_factory_clone_make() {
+	local path="$1" repo="$2" branch="$3"
 	if [ ! -d "$path" ]; then
-		mkdir -p "$(dirname "$path")"
 		local -a git_args=() args=()
 		local arg
 		while IFS= read -r arg; do
@@ -101,6 +117,4 @@ fabriek_factory_clone_ensure() {
 			git -C "$path" branch --quiet "$shared" "origin/$shared" || return 1
 		fi
 	fi
-
-	echo "$path"
 }

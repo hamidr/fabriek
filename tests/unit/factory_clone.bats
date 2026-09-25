@@ -155,3 +155,22 @@ foreign_origin() {
 	run git -C "$STATE/factories/acme3" rev-parse --verify refs/heads/main
 	assert_success
 }
+
+# Found on a host (2026-09-25, ADR-070): in a fresh machine every role's
+# first session asks for the clone at once, and all but one met
+# "destination path already exists" and failed to start.
+@test "sessions asking for the clone at once all get it, and one clone is made" {
+	origin="$TEST_TEMP_DIR/origin"
+	git init -q -b main "$origin"
+	git -C "$origin" -c user.name=o -c user.email=o@x -c commit.gpgsign=false commit -q --allow-empty -m one
+	local i
+	for i in 1 2 3 4 5 6; do
+		(fabriek_factory_clone_ensure "$STATE" acme "$origin" >"$TEST_TEMP_DIR/out-$i" 2>&1; echo $? >"$TEST_TEMP_DIR/rc-$i") &
+	done
+	wait
+	for i in 1 2 3 4 5 6; do
+		[ "$(cat "$TEST_TEMP_DIR/rc-$i")" = 0 ] || { cat "$TEST_TEMP_DIR/out-$i"; return 1; }
+	done
+	run git -C "$STATE/factories/acme" rev-parse --verify HEAD
+	assert_success
+}
