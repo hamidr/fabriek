@@ -298,10 +298,10 @@ in
         What a factory may cost on this host: the [caps] section, the same
         fields a repository may ask for, clamped against these (ADR-020).
         memory bounds RAM: each supervised cage gets it divided by the
-        concurrency (ADR-045, ADR-055). On nspawn a cage past its share
-        swaps rather than being killed, since nixcage bounds a cage's RAM
-        and not its swap (nixcage ADR-012); on a microVM it is the guest's
-        memory, a hard ceiling.
+        concurrency (ADR-045, ADR-055). A cage past its share swaps
+        rather than being killed, since nixcage bounds a cage's RAM and not
+        its swap (nixcage ADR-012); the factory's machine's memory is the
+        hard ceiling on all of them together (ADR-070).
       '';
     };
 

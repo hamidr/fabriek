@@ -28,7 +28,8 @@ fabriek_declaration_program() {
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "verdict"]\n'
 	printf '  , budget:    ["runs"]\n'
-	printf '  , resources: %s\n  };\n' "$(fabriek_resource_field_names_json)"
+	## roleQuota is known here only to be refused by name (ADR-070).
+	printf '  , resources: %s\n  };\n' "$(fabriek_resource_field_names_json | jq -c '. + ["roleQuota"]')"
 	cat <<'JQ'
 
 . as $d
@@ -65,12 +66,12 @@ fabriek_declaration_program() {
           elif ($v.shell | type) != "string"
           then ["role \($r): shell must name one devShell of this flake"]
           else [] end),
-         ## A kernel of its own or the host's (ADR-067 point 4, nixcage
-         ## ADR-019); the operator's floor may raise it, never lower it.
+         ## Every role is an nspawn cage in its factory's machine (ADR-070),
+         ## so a role that still names a substrate is told why, not that the
+         ## key is unknown.
          (if ($v.substrate? // null) == null then []
-          elif ($v.substrate | type) != "string" or (["nspawn", "microvm"] | index($v.substrate)) == null
-          then ["role \($r): substrate must be nspawn or microvm"]
-          else [] end),
+          else ["role \($r): substrate is gone; every role is an nspawn cage in its factory's machine (ADR-070)"]
+          end),
          (if ($v.specialists? // null) == null then []
           elif ($v.specialists | type) != "array"
           then ["role \($r): specialists must be a list of names from the catalogue"]
@@ -164,8 +165,9 @@ fabriek_declaration_program() {
           then ["resources: concurrency must be a number"] else [] end),
          (if ((.memory? // "1G") | type) != "string"
           then ["resources: memory must be a size"] else [] end),
-         (if ((.roleQuota? // "1G") | type) != "string"
-          then ["resources: roleQuota must be a size"] else [] end),
+         (if (.roleQuota? // null) == null then []
+          else ["resources: roleQuota is gone; a factory's roles share its machine's disk (ADR-070)"]
+          end),
          (if ((.tokens? // 1) | type) != "number"
           then ["resources: tokens must be a number"] else [] end),
          (if (.egress? // null) == null then []

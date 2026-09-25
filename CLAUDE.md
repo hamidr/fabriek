@@ -38,12 +38,12 @@ through `sudo`, for that one program and the `fabriek` group (ADR-067).
 
 | Primitive | Used for |
 | --- | --- |
-| `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX] [--no-nix-daemon] [--substrate nspawn\|microvm] [--memory SIZE] [--cpus N] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session, bounded on its scope from the declaration; the cage is `<factory>-<role>` |
+| `nixcage-container enter [--uid n] [--user name] [--home path] [--network BRIDGE:ADDR/PREFIX] [--no-nix-daemon] [--memory SIZE] [--cpus N] [--bind SRC:DST] [--bind-ro SRC:DST] [--setenv K=V] [--no-agent\|--auth-sock path] <name> <project> [cmd]` | Every role session, bounded on its scope from the declaration; the cage is `<factory>-<role>`, planned in the factory's machine and entered from the host with `--machine` (ADR-070) |
+| `nixcage-container machine up\|down <factory>`, `machine exec <factory> fabriek-machine ...`, `--machine <factory>` on the verbs below | A factory's machine (nixcage ADR-026): brought up and down by `up` and `down`, and where every verb touching a role's state runs |
 | `nixcage-container uid <principal>` | A role's uid, allocated once and never reissued; the principal is `<factory>-<role>` |
 | `nixcage-container storage ensure <path> <uid> [quota]` | A factory's state, a role's worktree and the record's dataset, owned and bounded |
 | `nixcage-container status <name>`, `stop <name>` | Whether a role's cage runs and its scope's cgroup (the probes' key); `stop -k` |
 | `nixcage-container exec <name> [-- cmd]` | A person entering a role whose actor is running, inside its cage |
-| `nixcage-container rm <name>` | A role whose declared substrate changed, at `up -u`, so the next enter may choose again |
 
 When something is needed that these cannot express, **the interface changes in
 nixcage first**: two commits in two repositories and a lock bump. Reaching
@@ -105,8 +105,9 @@ A change to what a role session is shows up there as a diff.
   reserved.
   `factory/src/names.ts` mirrors it: a change to the alphabet lands in both.
 - `modules/*.sh`: what the two programs source by store path.
-  `machine-spec.sh` clamps a declaration against the caps at render, the
-  substrate floor included; `factory-render.sh`
+  `machine-spec.sh` clamps a declaration against the caps at render;
+  `in-machine.sh` is what the host's machine program forwards to the
+  factory's machine and how it reads the guest's plan; `factory-render.sh`
   renders the plan, the proxy, the models and the pi directories from the
   declaration and builds a profile per role; `credential.sh` writes the
   factory's credential, the operator's config projected for it plus the

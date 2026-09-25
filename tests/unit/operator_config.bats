@@ -32,7 +32,6 @@ write_config() {
 [caps]
 memory = "16G"
 cores = 8
-roleQuota = "50G"
 concurrency = 4
 
 [factories.acme]

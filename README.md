@@ -126,10 +126,11 @@ forge, a bus and a slice of its own (ADR-067). A cage has one address on
 its factory's bridge, which leads to the proxy and nowhere else, and the
 host forwards nothing from it. The proxy holds the model credentials,
 reaches the endpoints the operator named, and nothing more (ADR-025,
-ADR-037). A role that must not share the host's kernel asks for
-`substrate = "microvm"` and nixcage boots its cage in a kernel of its own;
-the operator may make that the floor for every role. A cage holds no
-credential and no route; `tests/manual/isolation.sh` is the measurement.
+ADR-037). Every factory runs in a nixcage machine of its own, a microVM
+whose kernel its roles share and no other factory does, and every role is
+an nspawn cage inside it (ADR-070): an escape from a role lands in its
+factory's machine, not on the host. A cage holds no credential and no
+route; `tests/manual/isolation.sh` is the measurement.
 
 ### No test, no code
 

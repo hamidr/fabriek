@@ -12,7 +12,7 @@ setup() {
 	source "$FABRIEK_ROOT/modules/resources.sh"
 	CAPS="$TEST_TEMP_DIR/caps.json"
 	cat >"$CAPS" <<'JSON'
-{ "memory": "16G", "cores": 8, "roleQuota": "50G", "concurrency": 4 }
+{ "memory": "16G", "cores": 8, "concurrency": 4 }
 JSON
 }
 
@@ -138,7 +138,7 @@ clamp_refusal() {
 @test "the fields a factory may ask for are one table, so both readers agree" {
 	run fabriek_resource_field_names_json
 	assert_success
-	assert_output '["memory","cores","roleQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
+	assert_output '["memory","cores","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress"]'
 }
 
 # Egress is a permission rather than a size, and it is in the same table so
@@ -202,39 +202,9 @@ JSON
 	[ "$status" -ne 0 ]
 }
 
-# ADR-067 point 4: a role's substrate is nspawn unless it asks for a kernel
-# of its own; the operator's floor raises every role to microvm and lowers
-# none. A floor, not a ceiling: the one field where the operator asks for
-# more than the factory did.
-@test "a substrate floor raises every role below it and leaves one already at it alone, and says so" {
-	echo '{ "substrate": "microvm" }' >"$CAPS"
-	local d='{ "name": "acme", "roles": { "builder": { "provides": ["build"] }, "reviewer": { "provides": ["review"], "substrate": "nspawn" }, "auditor": { "provides": ["audit"], "substrate": "microvm" } } }'
-	run clamp_whole "$d"
-	assert_success
-	run jq -c '[.roles.builder.substrate, .roles.reviewer.substrate, .roles.auditor.substrate]' <<<"$output"
-	assert_output '["microvm","microvm","microvm"]'
-	run clamp_refusal "$d"
-	assert_line "fabriek: substrate: role builder asked for nspawn and this host's floor is microvm; raised to microvm"
-	assert_line "fabriek: substrate: role reviewer asked for nspawn and this host's floor is microvm; raised to microvm"
-	refute_output --partial "auditor"
-}
-
-@test "with no floor a role's substrate is what it asked for, or nothing" {
-	local d='{ "name": "acme", "roles": { "builder": { "provides": ["build"] }, "auditor": { "provides": ["audit"], "substrate": "microvm" } } }'
-	run clamp_whole "$d"
-	assert_success
-	run jq -c '[.roles.builder.substrate, .roles.auditor.substrate]' <<<"$output"
-	assert_output '[null,"microvm"]'
-}
-
-@test "a floor that is not a substrate is the operator's mistake, and is refused" {
-	echo '{ "substrate": "docker" }' >"$CAPS"
-	run clamp_refusal '{ "name": "acme", "roles": { "builder": { "provides": ["build"] } } }'
-	assert_failure
-	assert_output --partial "the floor for substrate is not a substrate: docker"
-}
-
-@test "the operator may cap the substrate floor beside the resources, and a declaration may not name it under resources" {
+# ADR-070: the operator's substrate floor went with the substrate; what an
+# operator may cap is what a factory may ask for, and nothing beside it.
+@test "the operator caps exactly the fields a factory may ask for" {
 	run fabriek_cap_field_names_json
-	assert_output '["memory","cores","roleQuota","tokens","concurrency","taskAttempts","runTimeoutSeconds","egress","substrate"]'
+	assert_output "$(fabriek_resource_field_names_json)"
 }

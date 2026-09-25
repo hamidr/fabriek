@@ -361,12 +361,8 @@ cmd_role_enter() {
 		fi
 		return
 	fi
-	local network substrate
+	local network
 	network="$(fabriek_cage_network "$FABRIEK_ETC/bridge.json" "$role")" || exit 1
-	## A kernel of its own or the host's (ADR-067 point 4): what the role
-	## declared, raised to the operator's floor by the clamp; the decider
-	## runs on the floor. nixcage fixes it at the first enter.
-	substrate="$(fabriek_cage_substrate "$FABRIEK_ETC/declaration.json" "$role")"
 
 	local -a opts=(
 		--uid "$uid"
@@ -374,7 +370,6 @@ cmd_role_enter() {
 		--home "$STATE_DIR/homes/$factory-$role"
 		--network "$network"
 		--no-nix-daemon
-		--substrate "$substrate"
 	)
 
 	## What the cage may take of the machine, set on its scope (nixcage
@@ -501,14 +496,8 @@ cmd_role_worktree() {
 	uid="$(nixcage-container uid "$factory-$role")" ||
 		die "could not get a uid for role $role"
 
-	## How much a role may hold is the factory's to say; whether that can be
-	## enforced at all is the filesystem's, and nixcage answers for it.
-	## Read after the clone exists, because the clone is what carries the
-	## declaration the quota is stated in. A quota is applied on every
-	## preparation rather than at creation (ADR-017), so the first one made
-	## before a declaration existed is bound by the next run.
-	fabriek_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" \
-		"$(factory_limit "$factory" roleQuota "")" ||
+	## No quota: a factory's roles share its machine's disk (ADR-070).
+	fabriek_role_worktree_ensure "$STATE_DIR" "$factory" "$role" "$clone" "$uid" ||
 		die "could not prepare the worktree for role $role"
 }
 
@@ -1017,22 +1006,7 @@ cmd_factory_up() {
 	## ADR-069), and prepare tells each what this factory is.
 	systemctl start "fabriek-$factory-state.service" || die "could not start $factory's state"
 
-	## What each role ran on before this render, so a changed substrate is
-	## seen (ADR-067 point 4): nixcage fixed it at the cage's first enter,
-	## and only rm lets the next enter choose again.
-	local before="{}"
-	[ -f "$FABRIEK_ETC/declaration.json" ] &&
-		before="$(jq -c '.roles | map_values(.substrate // "nspawn")' "$FABRIEK_ETC/declaration.json")"
 	cmd_factory_render
-	local role now
-	while IFS=$'\t' read -r role now; do
-		[ -n "$role" ] || continue
-		echo "$factory: $role now runs on $now; its cage is made anew"
-		fabriek_nixcage rm "$factory-$role" >/dev/null 2>&1 || true
-	done < <(jq -r --argjson before "$before" '
-		.roles | to_entries[] | .key as $r | (.value.substrate // "nspawn") as $now
-		| select($before[$r] != null and $before[$r] != $now) | "\($r)\t\($now)"' \
-		"$FABRIEK_ETC/declaration.json")
 	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
 	## The factory's machine (ADR-070), ready before prepare asks it for
 	## the uids its credentials are given to and before any session.

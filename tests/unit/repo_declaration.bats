@@ -50,7 +50,6 @@ complete_declaration() {
   "resources": {
     "memory": "8G",
     "cores": 4,
-    "roleQuota": "20G",
     "concurrency": 3
   }
 }
@@ -464,13 +463,18 @@ validate_example() {
 	done
 }
 
-# ADR-067 point 4: a role may ask for a kernel of its own.
-@test "a role's substrate is nspawn or microvm, and anything else is refused by name" {
+# ADR-070: every role is an nspawn cage in its factory's machine, and the
+# machine's disk bounds them together, so neither is a role's to ask.
+@test "a role naming a substrate is refused, saying every role is a cage in its factory's machine" {
 	run validate_with '.roles.backend.substrate = "microvm"'
-	assert_success
-	run validate_with '.roles.backend.substrate = "docker"'
 	assert_failure
-	assert_output --partial "role backend: substrate must be nspawn or microvm"
+	assert_output --partial "role backend: substrate is gone; every role is an nspawn cage in its factory's machine (ADR-070)"
+}
+
+@test "a declaration naming roleQuota is refused, saying the machine's disk bounds every role" {
+	run validate_with '.resources.roleQuota = "20G"'
+	assert_failure
+	assert_output --partial "resources: roleQuota is gone; a factory's roles share its machine's disk (ADR-070)"
 }
 
 # ADR-067 point 3: the cage is <factory>-<role>, a machine name to nspawn,

@@ -175,7 +175,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --substrate nspawn --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=~/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:4222 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=acme-operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder acme-builder $STATE/worktrees/acme/builder agent --print"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --memory 4096M --cpus 2 --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --no-agent --bind $TEST_TEMP_DIR/run:/run/fabriek/task --setenv FABRIEK_TASK=/run/fabriek/task --bind-ro $STATE/keys/builder:/run/fabriek/signing-key --bind-ro $STATE/keys/allowed_signers:/run/fabriek/allowed_signers --bind-ro $STATE/keys/builder.gitconfig:/etc/gitconfig --bind $RUN/pi-builder:/run/fabriek/pi --bind-ro $PIDIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=~/.pi/sessions --setenv PI_OFFLINE=1 --bind-ro $STATE/bus/builder:/run/fabriek/bus-password --bind-ro $STATE/forge/builder-token:/run/fabriek/forge-token --setenv FABRIEK_BUS_PASSWORD=/run/fabriek/bus-password --setenv FABRIEK_FORGE_TOKEN=/run/fabriek/forge-token --setenv FABRIEK_ROLE=builder --setenv FABRIEK_CAPABILITIES=build,test --setenv FABRIEK_SPECIALISTS=java,python --setenv FABRIEK_BUS=10.77.0.1:4222 --setenv FABRIEK_FORGE=http://10.77.0.1:3000/api/v1 --setenv FABRIEK_REPOSITORY=acme-operator/acme --setenv FABRIEK_BASE_BRANCH=main --setenv FABRIEK_PROXY=10.77.0.1:8118 --setenv FABRIEK_HOME_HOST=$STATE/homes/acme-builder acme-builder $STATE/worktrees/acme/builder agent --print"
 }
 
 @test "a person entering a role forwards their agent and gets no cage key" {
@@ -183,7 +183,7 @@ recorded() {
 	assert_success
 
 	run recorded
-	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --substrate nspawn --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --auth-sock /tmp/agent.sock acme-builder $STATE/worktrees/acme/builder"
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --auth-sock /tmp/agent.sock acme-builder $STATE/worktrees/acme/builder"
 }
 
 @test "the uid comes from nixcage rather than from a store fabriek keeps" {
@@ -345,7 +345,7 @@ running_cage() {
 	run_fabriek_container role-enter --repository "$REPO" --signing-key decider acme decider
 	assert_success
 	run recorded
-	assert_output --partial "--network fb-0:10.77.0.2/24 --no-nix-daemon --substrate nspawn"
+	assert_output --partial "--network fb-0:10.77.0.2/24 --no-nix-daemon"
 	assert_output --partial "--bind $RUN/pi-decider:/run/fabriek/pi --bind-ro $DECIDER_DIR/extensions:/run/fabriek/pi/extensions --store-root $FABRIEK_FLOOR --setenv PI_CODING_AGENT_DIR=/run/fabriek/pi --setenv PI_AGENT_DIR=/run/fabriek/pi --setenv PI_CODING_AGENT_SESSION_DIR=~/.pi/sessions --setenv PI_OFFLINE=1"
 	assert_output --partial "--bind-ro $STATE/forge/decider-token:/run/fabriek/forge-token"
 	assert_output --partial "--bind-ro $FABRIEK_ETC/declaration.json:/run/fabriek/declaration.json --setenv FABRIEK_DECLARATION=/run/fabriek/declaration.json"
@@ -440,7 +440,7 @@ JSON
 	run recorded
 	refute_output --partial "NIXCAGE_PATH_PREFIX"
 	refute_output --partial "--store-root"
-	assert_output --partial "--no-nix-daemon --substrate nspawn --auth-sock"
+	assert_output --partial "--no-nix-daemon --auth-sock"
 }
 
 
@@ -464,16 +464,12 @@ JSON
 	refute_output --partial "FABRIEK_ROLE_GUIDANCE"
 }
 
-# ADR-067 point 4: a role that asks for a kernel of its own is composed the
-# same way, one flag apart, which nixcage takes to its microVM substrate
-# (nixcage ADR-019). Everything else on the line is the same.
-@test "a role declared microvm reaches nixcage-container with --substrate microvm and nothing else changed" {
-	jq '.roles.builder.substrate = "microvm"' "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/d.new" && mv "$FABRIEK_ETC/d.new" "$FABRIEK_ETC/declaration.json"
+@test "a session names no substrate: every role is an nspawn cage in its factory's machine (ADR-070)" {
 	mkdir -p "$TEST_TEMP_DIR/run"
 	run_fabriek_container role-enter --repository "$REPO" --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
 	assert_success
 	run recorded
-	assert_output --partial "--network fb-0:10.77.0.10/24 --no-nix-daemon --substrate microvm --memory 4096M"
+	refute_output --partial "--substrate"
 }
 
 # Where pi keeps a role's sessions is the role's home, which nixcage binds

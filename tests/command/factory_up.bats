@@ -313,65 +313,6 @@ EOF
 	assert_output "$REPO/fabriek.toml"
 }
 
-# ADR-067 point 4: nixcage fixes a cage's substrate at its first enter, so
-# a role whose declared substrate changed is removed from nixcage's record
-# and entered anew. rm clears nixcage's record only: the role's dataset,
-# home, key and forge account are the factory's and stay.
-@test "up --update removes the cage of a role whose substrate changed, and no other" {
-	run_fabriek_container factory-up acme
-	assert_success
-	sed -i.bak 's/^\[roles.builder\]$/[roles.builder]\nsubstrate = "microvm"/' "$REPO/fabriek.toml" && rm "$REPO/fabriek.toml.bak"
-	git -C "$REPO" add -A && git -C "$REPO" -c commit.gpgsign=false commit -qm kernel
-	: >"$CALLS/nixcage-container"
-	run_fabriek_container factory-up --update acme
-	assert_success
-	assert_output --partial "builder now runs on microvm; its cage is made anew"
-	run grep "^rm " "$CALLS/nixcage-container"
-	assert_output "rm acme-builder"
-	[ -d "$STATE/factories/acme" ]
-}
-
-@test "up --update on an unchanged substrate removes no cage" {
-	run_fabriek_container factory-up acme
-	assert_success
-	: >"$CALLS/nixcage-container"
-	run_fabriek_container factory-up --update acme
-	assert_success
-	run grep -c "^rm " "$CALLS/nixcage-container"
-	assert_output 0
-}
-
-@test "the operator's substrate floor raises every role at up, and says so" {
-	cat >"$FABRIEK_CONFIG" <<TOML
-[caps]
-memory = "16G"
-cores = 8
-egress = ["api.anthropic.com"]
-substrate = "microvm"
-
-[factories.acme]
-path = "$REPO"
-
-[credentials."api.anthropic.com"]
-header = "x-api-key"
-file = "$TEST_TEMP_DIR/anthropic.key"
-TOML
-	run_fabriek_container factory-up acme
-	assert_success
-	assert_output --partial "substrate: role builder asked for nspawn and this host's floor is microvm; raised to microvm"
-	run jq -c '[.roles.builder.substrate, .roles.reviewer.substrate]' "$ETC/declaration.json"
-	assert_output '["microvm","microvm"]'
-}
-
-# The bus's ACL unit reads the plan render wrote, so it starts after render
-# and not before: found on pc 2026-09-22, where a plan that had moved to
-# the factory's own bridge was applied from the old plan on another
-# factory's bus and up died there, never reaching render. The state unit
-# alone goes first, since render writes into what it makes.
-# Found on a host: a second factory's up applied the plan of the first,
-# because the bus's users were written from the plan on disk before render
-# had laid the new one (2026-09-22). The state unit is the only one of the
-# factory's own that goes before render.
 @test "up renders before it writes what reads the render, and only the state unit goes before" {
 	run_fabriek_container factory-up acme
 	assert_success

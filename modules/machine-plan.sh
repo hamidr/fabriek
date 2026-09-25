@@ -45,16 +45,6 @@ fabriek_cage_running() {
 	esac
 }
 
-## What a session's --substrate is (ADR-067 point 4, nixcage ADR-019): the
-## role's, or the lowest when it declared none; the clamp has raised it to
-## the operator's floor already. The decider is not in the declaration and
-## runs on the lowest.
-fabriek_cage_substrate() {
-	local declaration="$1" role="$2" s
-	s="$(jq -r --arg r "$role" '.roles[$r].substrate // empty' "$declaration" 2>/dev/null)"
-	printf '%s\n' "${s:-nspawn}"
-}
-
 ## What a session's --network is: the bridge placement (nixcage ADR-011).
 fabriek_cage_network() {
 	local plan="$1" role="$2" address

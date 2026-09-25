@@ -129,18 +129,9 @@ make_repo() {
 	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 700000
 	assert_success
 	run storage_calls
-	assert_output "storage ensure $STATE/worktrees/acme/builder 700000 "
+	assert_output "storage ensure $STATE/worktrees/acme/builder 700000"
 	refute_output --partial "zfs"
 	refute_output --partial "dataset"
-}
-
-@test "a declared quota is what the worktree is asked to be bounded by" {
-	stub_privileged_tools
-	repo="$(make_repo)"
-	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 700000 20G
-	assert_success
-	run storage_calls
-	assert_output "storage ensure $STATE/worktrees/acme/builder 700000 20G"
 }
 
 @test "a worktree nixcage could not give is not worked around" {

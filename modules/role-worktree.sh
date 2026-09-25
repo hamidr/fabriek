@@ -44,7 +44,7 @@ fabriek_role_acl_targets() {
 ## what makes libgit2 open the repository, and the ACLs are what let a foreign
 ## uid write objects and its own refs with no shared group (ADR-010).
 fabriek_role_worktree_ensure() {
-	local state="$1" factory="$2" role="$3" repo="$4" uid="$5" quota="${6:-}"
+	local state="$1" factory="$2" role="$3" repo="$4" uid="$5"
 
 	local path branch gitdir target
 	path="$(fabriek_role_worktree_path "$state" "$factory" "$role")" || return 1
@@ -57,7 +57,7 @@ fabriek_role_worktree_ensure() {
 	## of the filesystem underneath, which is nixcage's to know (ADR-017,
 	## ADR-018). Asking may mount a dataset here, which is why the worktree is
 	## recognised by its pointer rather than by the directory existing.
-	nixcage-container storage ensure "$path" "$uid" "$quota" >/dev/null || return 1
+	nixcage-container storage ensure "$path" "$uid" >/dev/null || return 1
 
 	if [ ! -e "$path/.git" ]; then
 		mkdir -p "$(dirname "$path")"

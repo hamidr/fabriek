@@ -115,7 +115,6 @@ manager = ["architect"]
 [resources]
 memory = "8G"
 cores = 4
-roleQuota = "20G"
 # Tokens, input and output, the factory may spend before the proxy
 # refuses (ADR-037). The operator's ceiling caps it like the rest.
 tokens = 2000000
