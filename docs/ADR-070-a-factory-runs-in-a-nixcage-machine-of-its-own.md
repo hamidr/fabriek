@@ -122,6 +122,25 @@ invariant: no role is entered in a machine that is not ready. It runs before
 the implementation, with the mutant that enters before ready shown to
 violate it.
 
+Run 2026-09-25, before any code: `models/factory-lifecycle.qnt` gains
+`machine` (off, booting, ready, failed), `machineUp`, `machineReady` and
+`machineFails` (a failure ends every session and is bounded at two a
+trace), clone, prepare and sessions wait for ready, and stop and a host
+death leave the machine off. Two invariants are added, the seventh and
+`stoppedMeansMachineOff`. `quint run --invariant=allInvariants
+--max-steps=60 --max-samples=100000` finds no violation under `step`,
+`witnessStep` or `recoveryStep`; the mutant whose `startSession` does not
+wait for ready violates `noSessionInAMachineNotReady` within 100000
+traces. Every witness is reached, a failure under a write and a recovery
+from one among them, but three only under the narrower steps: the random
+walk of `step` spends `maxPinGen` and the machine's failures before the
+factory is running, and `neverCurrentAgainAfterStale` went unreached in
+four million traces of it, as it needed 300000 of the model ADR-067
+committed, whose "every witness reached in 10000" it contradicts.
+`witnessStep` and `recoveryStep` are subsets of `step` that move the pin
+and fail the machine only once running, so what they reach, `step`
+reaches.
+
 ADR-067 points 4 and 5 and its "the factory as the isolation unit is given
 up" are amended by this ADR once it is implemented; ADR-017, ADR-037,
 ADR-038 and ADR-045 are amended as stated in points 5, 6, 7 and 4. Nothing
