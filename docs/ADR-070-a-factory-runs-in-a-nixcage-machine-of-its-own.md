@@ -1,7 +1,7 @@
 ---
 id: ADR-070
 title: A factory runs in a nixcage machine of its own, and every role is an nspawn cage inside it
-status: proposed
+status: implemented
 date: 2026-09-25
 status_date: 2026-09-25
 summary: a nixcage machine per factory holds its clone, worktrees and nspawn roles; forge, bus, proxy, executor stay on host
@@ -198,3 +198,49 @@ On `pc`, after nixcage ADR-026 is released and pinned, transcripts under
 - The cost: `nixcage-container machine up example` timed, and
   `MemoryCurrent` of the machine's unit plus `fabriek-example.slice` idle,
   against ADR-067's 433 MiB.
+
+## Verification
+
+Implemented 2026-09-25 from the model (`907f3a2`) to the manual proofs'
+adaptation, on nixcage 5.2.1. `bats --recursive tests/`: 493 of 493;
+`factory/`: 224 of 224, in the dev shell and in the package's own build;
+`nix flake check` passes.
+
+The measurement plan ran on `pc` on 2026-09-25, with `example` and
+`widgets` each in a machine (`example` 12 GiB and six cores, `widgets`
+6 GiB and two), transcripts under `/tmp/fabriek-proof/*-070.txt`:
+
+- `two-factories.sh`: 16 ok. Both machines ready and two kernels, neither
+  the host's; a role of `example` reaches its own bus and not `widgets`'s;
+  `down example` leaves `example`'s machine off and `widgets`'s ready.
+  Idle, `machine-example.scope` holds 2.57 GB and `fabriek-example.slice`
+  179 MB, against ADR-067's 433 MiB for the slice alone.
+- `isolation.sh` on `widgets`: 30 ok, nothing gated. Every role on the
+  machine's kernel and none on the host's, the forged source dropped by the
+  guest's pin, spend attributed by address through the hop, the ceiling at
+  the proxy and the decider held at it.
+- `forge-boundary.sh`: 22 ok; `bus-account.sh`: 16 ok; `host-autostart.sh`:
+  9 ok; `specialist.sh` on `backend-1`: 27 ok.
+
+Running a factory in a machine found faults the tests had not, each fixed
+with a test that failed first:
+
+- in fabriek: every role's first session cloned at once into a fresh
+  machine and all but one failed (the clone is made under a lock); a
+  switch either cycled every factory or left sessions on a render of the
+  old floor (the factory's unit reloads, which is up, and the executor is
+  not restarted by a switch); the executor died on SIGTERM before its
+  sessions had stopped their cages (it now ends every session and waits);
+  a supervised session found its role's cage left running by an executor
+  before it (it stops it first); the executor's git test needed git and
+  /bin/sh in the package's build.
+- in nixcage, released as 5.2.1 and recorded in its ADR-026: a connection
+  per forward, a session outliving its caller, a quota ignored inside a
+  machine, a machine restarted by a switch, a uid lock outliving its
+  holder, and an enter under a running cage's name deleting its port.
+
+Not done: `parity.sh`, which wants a factory with a `ship` workflow run by
+real models; and an operator's shell that joined the `fabriek` group
+before its session started reads the fetch token only after a new login
+(`sg fabriek` works meanwhile).
+

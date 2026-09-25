@@ -328,3 +328,9 @@ executor.
 Point 2 is amended twice over, then: a factory's services are still
 NixOS units, and the board and the bus are the host's rather than the
 factory's.
+
+Amended by ADR-070 (implemented 2026-09-25): every factory runs in a nixcage
+machine of its own, so point 4's per-role substrate and floor are gone, point
+5's remote is the forge rather than the clone, and "the factory as the
+isolation unit is given up" is taken back: a factory is one again.
+
