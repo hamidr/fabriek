@@ -99,6 +99,40 @@ refspecs are unchanged. What reached the clone and not the forge,
 pushed to the forge by `mirror` and on every stage move. The checkout
 remains untouched by anything but the operator and this fetch.
 
+**9. Amended before implementation (2026-09-25), from reading the code
+against nixcage 5.2.0.** Four things the points above had wrong or left
+open:
+
+- *The enter is the host's.* A machine's guest has the store without its
+  database and cannot compute a cage's closure (nixcage ADR-026 decision
+  6); only `nixcage-container enter --machine` on the host can. So
+  `role-enter` is split: the host's `fabriek-container role-enter` runs
+  the guest's with `--plan` through `nixcage exec --machine`, which
+  prepares the role where its state is (worktree, key, pi directory) and
+  prints the nixcage words it would have run, NUL-separated; the host
+  refuses a plan whose verb is not `enter` or `exec` or that names
+  `--auth-sock`, adds its own `--auth-sock` when a person entering gave
+  one, and runs `nixcage-container <verb> --machine <name> ...`. What the
+  guest can put in a plan is interpreted in the guest, but for store roots,
+  which are read-only paths it already sees.
+- *A machine's size is the host's.* A factory's resources are read from its
+  repository at `up`, after evaluation, and a machine is evaluated.
+  `services.fabriek.factories.<name>.machine` declares `memory`, `cpus`
+  and `disk`, with defaults; `machine-spec.sh` still bounds each role's
+  cage inside it by the declaration.
+- *Credentials are minted on the host and shared, read-only.* The host
+  keeps `bus/` and `forge/` under the factory's state path on its own
+  filesystem as today, owned by the uid the machine's nixcage allocated
+  for each cage (`uid --machine`), and shares both read-only at the same
+  path; the guest's disk holds everything else under that path: the
+  clone, worktrees, homes, keys, filed tasks and transcripts. `egress/`
+  stays on the host and is shared with nothing. `FABRIEK_ETC` is shared
+  read-only whole: it holds the declaration, the plan and the rendered
+  pi directories, and no secret beyond the bus's password hashes.
+- *The guest's nixcage allocates from its own range*, set by fabriek's
+  guest module, and the host's `principalUidRange` is not consulted for a
+  factory's cages.
+
 ## Consequences
 
 A factory costs a boot at `up` and a memory reservation, where ADR-067's
