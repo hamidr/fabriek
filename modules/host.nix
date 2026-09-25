@@ -523,6 +523,11 @@ in
       name: f:
       lib.nameValuePair "fabriek-${name}" {
         description = "The factory ${name}, brought up at boot";
+        ## A switch that changes the machine program would otherwise take
+        ## the factory down and up, machine and all (found on a host
+        ## 2026-09-25); a changed program takes effect at the next up.
+        restartIfChanged = false;
+        stopIfChanged = false;
         wantedBy = [ "multi-user.target" ];
         after = [
           "network-online.target"

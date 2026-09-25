@@ -522,3 +522,10 @@ set"
 	assert_success
 	assert_output --partial '-nixos-system-acme-'
 }
+
+@test "a switch leaves a running factory alone: up and down move it, as they move its machine" {
+	run host_eval 'factories.acme = { path = "/srv/acme"; autoStart = true; };' \
+		'{ restart = c.systemd.services.fabriek-acme.restartIfChanged; stop = c.systemd.services.fabriek-acme.stopIfChanged; }'
+	assert_success
+	assert_output '{"restart":false,"stop":false}'
+}
