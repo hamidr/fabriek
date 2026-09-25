@@ -95,25 +95,13 @@ scenario "nixcage answers for the running cage (ADR-045)"
 when "the machine is asked about the role's cage through nixcage"
 ## The scope's spelling is nixcage's to know (ADR-012 as amended): read
 ## off status and asked back, never composed here.
-scope="$(onhost "nixcage-container status $F-$ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
+scope="$(cage_verb status "$F-$ROLE" 2>/dev/null | tr -d '\r' | sed -n 's|^running [0-9]* machine.slice/||p')"
 check "status says running with a scope under machine.slice" "yes" "$([ -n "$scope" ] && echo yes)"
-## A microVM is bounded by the guest's own RAM and never by its scope
-## (nixcage ADR-022 point 7), and a hand in it sees the guest's cgroups,
-## not the host's; what both substrates share is the actor's process.
-substrate="$(jq -r --arg r "$ROLE" '.declaration.roles[$r].substrate // "nspawn"' "$(spec_json)")"
-if [ "$substrate" = microvm ]; then
-	check "the scope carries no memory bound, the guest's RAM is it" "yes" \
-		"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qx infinity && echo yes)"
-	guest_kb="$(in_cage "$ROLE" sh -c 'sed -n "s/^MemTotal: *\([0-9]*\).*/\1/p" /proc/meminfo' | tr -d '\r')"
-	host_kb="$(sed -n 's/^MemTotal: *\([0-9]*\).*/\1/p' /proc/meminfo)"
-	check "the guest has less memory than the host" "yes" \
-		"$([ -n "$guest_kb" ] && [ "$guest_kb" -lt "$host_kb" ] && echo yes)"
-else
-	check "the scope carries the memory bound" "yes" \
-		"$(sudo systemctl show -p MemoryMax --value "$scope" 2>/dev/null | grep -qv '^infinity$' && echo yes)"
-	check "a hand lands inside the actor's cage" "yes" \
-		"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
-fi
+## The scope is the machine's (ADR-070), so its bound is read there.
+check "the scope carries the memory bound" "yes" \
+	"$(printf 'systemctl show -p MemoryMax --value %q\n' "$scope" | where_cages_are 2>/dev/null | grep -qv '^infinity$' && echo yes)"
+check "a hand lands inside the actor's cage" "yes" \
+	"$(in_cage "$ROLE" sh -c 'grep -q "'"$scope"'" /proc/1/cgroup && echo yes')"
 # shellcheck disable=SC2016  # expands in the cage
 check "a hand sees the actor's pi" "yes" \
 	"$(in_cage "$ROLE" sh -c 'for p in /proc/[0-9]*; do c="$(tr "\0" " " <"$p/cmdline" 2>/dev/null)"; [ "${c%% *}" = pi ] && echo yes && break; done' | tr -d '\r')"
@@ -150,14 +138,14 @@ if [ "${#replicas[@]}" -ge 2 ]; then
 	when "the machine is asked about each replica"
 	for r in "${replicas[@]}"; do
 		check "$r has a cage of its own" "yes" \
-			"$(onhost "nixcage-container status $F-$r" 2>/dev/null | grep -q '^running ' && echo yes)"
+			"$(cage_verb status "$F-$r" 2>/dev/null | grep -q '^running ' && echo yes)"
 		check "$r has a worktree of its own" "yes" \
 			"$(in_cage "$r" sh -c 'test -d .git -o -f .git && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo yes')"
 	done
 	## Asked of the machine: inside a cage every role is root, mapped onto
 	## its own host uid, and it is the host uid that tells them apart.
 	check "the replicas' uids differ" "yes" \
-		"$([ "$(onhost "nixcage-container uid $F-${replicas[0]}" 2>/dev/null)" != "$(onhost "nixcage-container uid $F-${replicas[1]}" 2>/dev/null)" ] && echo yes)"
+		"$([ "$(cage_verb uid "$F-${replicas[0]}" 2>/dev/null)" != "$(cage_verb uid "$F-${replicas[1]}" 2>/dev/null)" ] && echo yes)"
 	check "no role carries the base name" "absent" \
 		"$(jq -r --arg b "${replicas[0]%-*}" '.declaration.roles | has($b) | if . then "present" else "absent" end' "$(spec_json)")"
 else

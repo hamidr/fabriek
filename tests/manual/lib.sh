@@ -28,12 +28,34 @@ STATE="$(fact FABRIEK_STATE)"
 ETC="$(fact FABRIEK_ETC)"
 # shellcheck disable=SC2034
 BRIDGE="$(fact FABRIEK_BRIDGE)"
+## The factory's nixcage machine (ADR-070), or nothing where its roles are
+## the host's cages.
+MACHINE="$(fact FABRIEK_MACHINE)"
 mkdir -p "$S"
 
 ## A command as root on this host, with the factory's facts in its
 ## environment, the way the units and the machine program have them.
 onhost() {
 	sudo env "FABRIEK_FACTORY=$F" "FABRIEK_LIB=$FABRIEK_LIB" bash -c "set -a; . '$FACTS'; set +a; $*"
+}
+
+## nixcage over one of this factory's cages, through its machine when it
+## has one: the verbs read the same either way (nixcage ADR-026).
+cage_verb() {
+	local verb="$1"
+	shift
+	onhost "nixcage-container $verb ${MACHINE:+--machine $MACHINE} $*"
+}
+
+## A script, read on stdin, run as root where the factory's cages are: its
+## machine, or this host. Stdin rather than argv, since a script crossing
+## sudo, bash -c and ssh would be quoted three times.
+where_cages_are() {
+	if [ -n "$MACHINE" ]; then
+		onhost "nixcage-container machine exec $MACHINE bash -s"
+	else
+		onhost "bash -s"
+	fi
 }
 
 ## What the factory is, as render wrote it: the clamped declaration under
@@ -59,7 +81,7 @@ spec_json() {
 cages_present() {
 	local role
 	for role in "$@"; do
-		onhost "nixcage-container status '$F-$role'" 2>/dev/null | grep -q '^running' || return 1
+		cage_verb status "'$F-$role'" 2>/dev/null | grep -q '^running' || return 1
 		[ "$(in_cage "$role" echo up)" = up ] || return 1
 	done
 }

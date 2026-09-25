@@ -5,10 +5,9 @@
 ## Wants a NixOS host with the factory in services.fabriek, a scratch
 ## directory, and a repository declaring a factory called acme with at least
 ## two roles, an egress ceiling that allows one host, a credential for it,
-## and a token ceiling small enough to reach in a handful of requests. For
-## the substrate scenario, one role declared `substrate = "microvm"` and
-## nixcage.microvm.enable on the host; without it that scenario is gated.
-## For the forward scenario, run once with docker enabled on the host, so
+## and a token ceiling small enough to reach in a handful of requests; the
+## factory's roles run in its nixcage machine (ADR-070). For the forward
+## scenario, run once with docker enabled on the host, so
 ## ip_forward is set and its FORWARD chain present.
 ##
 ##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
@@ -29,14 +28,9 @@ F="${F:-acme}"
 run_start="$(date '+%Y-%m-%d %H:%M:%S')"
 bash fabriek up "$F" || exit 1
 
-## The bridge, proxy and forged-source scenarios enter an nspawn cage's
-## network namespace from the host, which a microVM has none of (nixcage
-## ADR-019), so the first role is one on nspawn; the substrate scenario
-## below asks the microVM role its own questions. The second role is any
-## other, since it is only asked for its address and to be unreachable.
-roles="$(jq -r '.declaration.roles | to_entries | sort_by(.key)
-	| (map(select((.value.substrate // "nspawn") == "nspawn")) + map(select(.value.substrate == "microvm")))
-	| .[].key' "$(spec_json)" 2>/dev/null)"
+## Any two roles: the second is only asked for its address and to be
+## unreachable.
+roles="$(jq -r '.declaration.roles | keys[]' "$(spec_json)" 2>/dev/null)"
 a="$(printf '%s\n' "$roles" | sed -n 1p)"
 b="$(printf '%s\n' "$roles" | sed -n 2p)"
 if [ -z "$a" ] || [ -z "$b" ]; then
@@ -173,14 +167,23 @@ fi
 check "$b's count did not" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "A forged source address is dropped at the bridge"
-given "root on the host inside $a's network namespace"
+given "root where the cages are, inside $a's network namespace"
 ## A cage is not registered with machined, so its leader is found by the
 ## nspawn that holds it: the one whose argv names the cage, and its child.
-pid="$(sudo pgrep -P "$(sudo pgrep -f -- "--machine=$F-$a( |\$)" | head -1)" 2>/dev/null | head -1)"
+## Where the cages are is the factory's machine (ADR-070), which sees this
+## host's store, so curl is named by its store path.
+curl_bin="$(readlink -f "$(command -v curl)")"
+# shellcheck disable=SC2016  # expands where the cages are
+leader_of() {
+	printf 'pgrep -P "$(pgrep -f -- "--machine=%s( |$)" | head -1)" | head -1\n' "$F-$a" | where_cages_are 2>/dev/null | tr -d '\r'
+}
+pid="$(leader_of)"
 check "the actor's cage for $a is running and its leader pid is known" yes "$([ -n "$pid" ] && echo yes || echo no)"
 before_b="$(spent_by "$addr_b")"
 when "a request leaves $a's veth carrying $b's address"
-sudo nsenter -t "$pid" -n sh -c "ip addr add $addr_b/32 dev host0 2>/dev/null; curl -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null" >/dev/null 2>&1
+printf 'nsenter -t %s -n sh -c %q\n' "$pid" \
+	"ip addr add $addr_b/32 dev host0 2>/dev/null; $curl_bin -s -m 3 --interface $addr_b -o /dev/null -X POST $messages; ip addr del $addr_b/32 dev host0 2>/dev/null" |
+	where_cages_are >/dev/null 2>&1
 check "$b's count did not move" still "$([ "$(spent_by "$addr_b")" = "$before_b" ] && echo still || echo moved)"
 
 scenario "The hard limit is the proxy's"
@@ -225,25 +228,25 @@ if [ "$code" = 429 ]; then
 	check "the executor is still running" active "$(systemctl is-active "fabriek-$F-executor" 2>/dev/null)"
 fi
 
-scenario "A role declared microvm runs in a kernel of its own, and one declared nspawn in the host's (ADR-067 point 4)"
-mv_role="$(jq -r '.declaration.roles | to_entries[] | select(.value.substrate == "microvm") | .key' "$(spec_json)" | head -1)"
-ns_role="$(jq -r '.declaration.roles | to_entries[] | select((.value.substrate // "nspawn") == "nspawn") | .key' "$(spec_json)" | head -1)"
-host_kernel="$(uname -r)"
-if [ -n "$ns_role" ]; then
-	check "role $ns_role sees the host's kernel $host_kernel" "$host_kernel" "$(in_cage "$ns_role" uname -r)"
-fi
-if [ -z "$mv_role" ]; then
-	gated "a microvm role sees a kernel of its own" "no role declares substrate = \"microvm\"; declare one and set nixcage.microvm.enable"
+scenario "Every role runs in its factory's machine, a kernel that is not the host's (ADR-070)"
+given "the factory's machine ${MACHINE:-(none)}"
+if [ -z "$MACHINE" ]; then
+	gated "the roles run in a machine" "the factory's facts name no machine; this host predates ADR-070"
 else
-	wait_cages "$mv_role" || true
-	check "role $mv_role sees a kernel that is not the host's" yes "$([ "$(in_cage "$mv_role" uname -r)" != "$host_kernel" ] && echo yes || echo no)"
-	check "nixcage names a machine scope for $mv_role's cage" yes "$(onhost "nixcage-container status '$F-$mv_role'" 2>/dev/null | grep -q 'machine-' && echo yes || echo no)"
-fi
-when "the operator's floor is microvm and a role asked for nspawn"
-if onhost "grep -q '^substrate = \"microvm\"' '$ETC/fabriek.toml'" 2>/dev/null; then
-	check "up printed the clamp for a raised role" yes "$(onhost "cat '$ETC/notes.json'" | grep -q 'raised to microvm' && echo yes || echo no)"
-else
-	gated "up printed the clamp for a raised role" "no substrate floor in the operator's caps; set caps.substrate = \"microvm\" for this"
+	check "the machine is ready" ready "$(onhost "nixcage-container machine status $MACHINE" 2>/dev/null | tr -d '\r')"
+	## nspawn gives a cage a boot id of its own, so a kernel is told by
+	## its uptime: the machine's kernel started when up started it.
+	uptime_of_cage() { in_cage "$1" cut -d' ' -f1 /proc/uptime | tr -d '\r'; }
+	machine_up="$(echo "cut -d' ' -f1 /proc/uptime" | where_cages_are | tr -d '\r')"
+	host_up="$(cut -d' ' -f1 /proc/uptime)"
+	up_a="$(uptime_of_cage "$a")"
+	up_b="$(uptime_of_cage "$b")"
+	near() { awk -v x="$1" -v y="$2" 'BEGIN { d = x - y; if (d < 0) d = -d; print (d < 30) ? "yes" : "no" }'; }
+	check "role $a runs on the machine's kernel" yes "$(near "${up_a:-0}" "${machine_up:-1e9}")"
+	check "role $b runs on the same kernel as $a" yes "$(near "${up_b:-0}" "${up_a:-1e9}")"
+	check "and it is not the host's" no "$(near "${up_a:-0}" "$host_up")"
+	check "the host holds no cage of $a's" yes \
+		"$(onhost "nixcage-container status '$F-$a'" 2>/dev/null | grep -q '^running' && echo no || echo yes)"
 fi
 
 bash fabriek down "$F"

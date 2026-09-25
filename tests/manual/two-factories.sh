@@ -3,7 +3,9 @@
 ## the host's units and bridges for real and so cannot be a bats test: each
 ## factory in a slice of its own on a bridge of its own, a role of one
 ## reaching its own bus and not the other's, one down leaving the other
-## running, and the memory a factory costs idle.
+## running, and the memory a factory costs idle. With ADR-070 each factory
+## is a nixcage machine of its own: both machines up, each a kernel of its
+## own, and one down leaving the other's machine running.
 ##
 ## Wants a NixOS host whose services.fabriek declares two factories, named
 ## by A and B (default acme and widgets), each with at least one role, and
@@ -28,6 +30,10 @@ bridge_b="$(fact_of "$B" FABRIEK_BRIDGE)"
 host_a="$(fact_of "$A" FABRIEK_BRIDGE_HOST)"
 host_b="$(fact_of "$B" FABRIEK_BRIDGE_HOST)"
 port="$(fact_of "$A" FABRIEK_BUS_PORT)"
+machine_a="$(fact_of "$A" FABRIEK_MACHINE)"
+machine_b="$(fact_of "$B" FABRIEK_MACHINE)"
+machine_status() { sudo nixcage-container machine status "$1" 2>/dev/null | tr -d '\r'; }
+boot_of() { sudo nixcage-container machine exec "$1" cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r'; }
 both_down() {
 	bash fabriek down "$A" >/dev/null 2>&1
 	bash fabriek down "$B" >/dev/null 2>&1
@@ -42,6 +48,19 @@ check "$B's slice holds its units" yes "$(systemctl list-units --no-legend "fabr
 check "the bridges differ" yes "$([ "$bridge_a" != "$bridge_b" ] && echo yes || echo no)"
 check "$bridge_a is up at $host_a" yes "$(ip -4 -o addr show "$bridge_a" | grep -q "$host_a/" && echo yes || echo no)"
 check "$bridge_b is up at $host_b" yes "$(ip -4 -o addr show "$bridge_b" | grep -q "$host_b/" && echo yes || echo no)"
+
+scenario "Each factory is a machine of its own (ADR-070)"
+if [ -z "$machine_a" ] || [ -z "$machine_b" ]; then
+	gated "each factory is a machine" "the facts name no machine; this host predates ADR-070"
+else
+	check "$A's machine is ready" ready "$(machine_status "$machine_a")"
+	check "$B's machine is ready" ready "$(machine_status "$machine_b")"
+	boot_a="$(boot_of "$machine_a")"
+	boot_b="$(boot_of "$machine_b")"
+	check "the two machines are two kernels" yes "$([ -n "$boot_a" ] && [ -n "$boot_b" ] && [ "$boot_a" != "$boot_b" ] && echo yes || echo no)"
+	check "and neither is the host's" yes \
+		"$(host_boot="$(cat /proc/sys/kernel/random/boot_id)"; [ "$boot_a" != "$host_boot" ] && [ "$boot_b" != "$host_boot" ] && echo yes || echo no)"
+fi
 
 scenario "A role of one factory reaches its own bus and not the other's"
 role_a="$(jq -r '.declaration.roles | keys[0]' "$(spec_json)")"
@@ -61,12 +80,19 @@ check "the connection fails" refused \
 scenario "What a factory costs idle"
 given "$A up with no task filed"
 echo "  memory of fabriek-$A.slice: $(systemctl show "fabriek-$A.slice" -p MemoryCurrent --value 2>/dev/null) bytes"
+## qemu runs in machined's scope, not the machine's unit (nixcage ADR-026).
+[ -z "$machine_a" ] ||
+	echo "  memory of machine-$machine_a.scope: $(systemctl show "machine-$machine_a.scope" -p MemoryCurrent --value 2>/dev/null) bytes"
 
 scenario "One factory down leaves the other running"
 when "$A is brought down"
 bash fabriek down "$A" >/dev/null 2>&1
 check "$A's executor is inactive" inactive "$(systemctl is-active "fabriek-$A-executor" 2>/dev/null)"
 check "$B's executor is still active" active "$(systemctl is-active "fabriek-$B-executor" 2>/dev/null)"
+if [ -n "$machine_a" ]; then
+	check "$A's machine is off" off "$(machine_status "$machine_a")"
+	check "$B's machine is still ready" ready "$(machine_status "$machine_b")"
+fi
 check "fabriek ps says so" "stopped,running" \
 	"$(bash fabriek ps --json | jq -r --arg a "$A" --arg b "$B" '[(.[] | select(.factory == $a) | .state), (.[] | select(.factory == $b) | .state)] | join(",")')"
 

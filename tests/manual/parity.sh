@@ -67,7 +67,7 @@ check "the executor unit is active" active "$(systemctl is-active "fabriek-$F-ex
 ## 2026-09-22: the decider asked for a few seconds too early), so its cage
 ## is waited for, as isolation.sh waits for the roles'.
 # shellcheck disable=SC2329  # invoked through eventually
-decider_running() { onhost "nixcage-container status '$F-decider'" 2>/dev/null | grep -q '^running' && echo yes || echo no; }
+decider_running() { cage_verb status "'$F-decider'" 2>/dev/null | grep -q '^running' && echo yes || echo no; }
 check "the decider's cage is running" yes "$(eventually 60 yes decider_running)"
 when "the operator files a goal"
 ## Filing is one entry on the operator stream; the executor opens the issue.
