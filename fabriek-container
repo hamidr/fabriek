@@ -56,6 +56,8 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/credential.sh"
 # shellcheck source=modules/factory-up.sh
 . "$FABRIEK_LIB/factory-up.sh"
+# shellcheck source=modules/in-machine.sh
+. "$FABRIEK_LIB/in-machine.sh"
 
 # The factory this program acts for (ADR-067): named in the environment by
 # the CLI and by every unit, and its facts, the file the host module wrote
@@ -126,6 +128,13 @@ die() {
 	exit 1
 }
 
+## This verb, run by the factory's machine rather than here, and its status
+## this program's.
+exec_in_machine() {
+	fabriek_in_machine "$@"
+	exit $?
+}
+
 usage() {
 	cat <<'USAGE'
 usage: fabriek-container
@@ -164,10 +173,91 @@ USAGE
 ## way: nothing a role writes ever reaches a command line. What a role is
 ## told about the cage is in its system prompt, built into its pi directory
 ## (ADR-054).
-cmd_role_enter() {
-	local auth_sock="" task_dir="" signing_role="" from_env="" repository=""
+## On the host of a factory in a machine (ADR-070 point 9): the guest plans
+## the session where the role's state is, and the host enters it, since only
+## the host can compute the closure the cage sees. The plan is checked as
+## data from outside the boundary; a hand's agent is added here and never
+## named to the guest. stdin is the session's, so the plan's call gets none.
+role_enter_on_host() {
+	local auth_sock="" from_env="" signing=""
+	local -a pass=()
 	while [ $# -gt 0 ]; do
 		case "$1" in
+		--auth-sock)
+			auth_sock="${2:-}"
+			shift 2
+			;;
+		--agent)
+			from_env=1
+			shift
+			;;
+		--task-dir)
+			die "--task-dir is not available to a factory in a machine: a task reaches its role by the bus"
+			;;
+		--signing-key | --repository)
+			[ "$1" = --signing-key ] && signing=1
+			pass+=("$1" "${2:-}")
+			shift 2
+			;;
+		*) break ;;
+		esac
+	done
+	if [ -n "$from_env" ]; then
+		[ -n "${SSH_AUTH_SOCK:-}" ] || die "--agent was given but no agent was forwarded"
+		auth_sock="$SSH_AUTH_SOCK"
+	fi
+	if [ -n "$auth_sock" ] && [ -n "$signing" ]; then
+		die "--auth-sock and --signing-key are mutually exclusive"
+	fi
+
+	## The guest has no origin filed, since up files it here; the checkout it
+	## clones is the one the credential names, shared at the same path.
+	if [[ " ${pass[*]-} " != *" --repository "* ]]; then
+		local checkout
+		checkout="$(sed -n 's/^path = "\(.*\)"$/\1/p' "$FABRIEK_ETC/fabriek.toml" 2>/dev/null)"
+		[ -z "$checkout" ] || pass+=(--repository "$checkout")
+	fi
+	local out
+	out="$(mktemp)"
+	fabriek_in_machine role-enter --plan ${pass[@]+"${pass[@]}"} "$@" </dev/null >"$out" || {
+		rm -f "$out"
+		die "the machine $FABRIEK_MACHINE could not plan the session"
+	}
+	local -a plan=()
+	mapfile -d '' -t plan <"$out"
+	rm -f "$out"
+	[ "${#plan[@]}" -gt 0 ] || die "the machine planned nothing"
+	fabriek_machine_plan_check "${plan[@]}" || exit 1
+	local verb="${plan[0]}"
+	plan=("${plan[@]:1}")
+	if [ -n "$auth_sock" ] && [ "$verb" = enter ]; then
+		mapfile -d '' -t plan < <(fabriek_machine_plan_with_agent "$auth_sock" "${plan[@]}")
+	fi
+	exec nixcage-container "$verb" --machine "$FABRIEK_MACHINE" "${plan[@]}"
+}
+
+## The line role-enter would run, printed NUL after each word instead of
+## run, when the host asked for a plan; run otherwise.
+role_enter_run() {
+	if [ -n "$ROLE_ENTER_PLAN" ]; then
+		printf '%s\0' "$@"
+		return
+	fi
+	nixcage-container "$@"
+}
+
+cmd_role_enter() {
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		role_enter_on_host "$@"
+	fi
+	local auth_sock="" task_dir="" signing_role="" from_env="" repository=""
+	ROLE_ENTER_PLAN=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--plan)
+			ROLE_ENTER_PLAN=1
+			shift
+			;;
 		--auth-sock)
 			auth_sock="${2:-}"
 			shift 2
@@ -265,9 +355,9 @@ cmd_role_enter() {
 	## them there; a hand inside a running actor reads and does not sign.
 	if [ -z "$signing_role" ] && fabriek_cage_running "$cage"; then
 		if [ $# -gt 0 ]; then
-			nixcage-container exec "$cage" -- "$@"
+			role_enter_run exec "$cage" -- "$@"
 		else
-			nixcage-container exec "$cage"
+			role_enter_run exec "$cage"
 		fi
 		return
 	fi
@@ -382,7 +472,7 @@ cmd_role_enter() {
 	## The cage is named after its role alone: nspawn names the cage's veth
 	## after the cage, and the bridge's rules are keyed on that name. A hand
 	## beside a running actor is the one exception, named above.
-	nixcage-container enter "${opts[@]}" \
+	role_enter_run enter "${opts[@]}" \
 		"$cage" "$worktree" "$@"
 }
 
@@ -394,6 +484,8 @@ cmd_role_enter() {
 ## operator's repository: role ownership needs a filesystem carrying ownership
 ## and ACLs, and the operator's may not have one (ADR-011).
 cmd_role_worktree() {
+	## Where the worktree lives (ADR-070).
+	[ -z "${FABRIEK_MACHINE:-}" ] || exec_in_machine role-worktree "$@"
 	local factory="$1" role="$2" repo="$3"
 	## A remote is what a machine clones (ADR-032); a path is what a proof
 	## puts on the machine itself. Only a path can be checked before git is.
@@ -728,7 +820,7 @@ cmd_factory_prepare() {
 ## decider is a cage like a role's here.
 cage_owns_credentials() {
 	local factory="$1" cage="$2" uid
-	uid="$(nixcage-container uid "$factory-$cage")" || die "could not get a uid for $cage"
+	uid="$(fabriek_nixcage uid "$factory-$cage")" || die "could not get a uid for $cage"
 	chown "$uid" "$(fabriek_bus_dir "$STATE_DIR")/$cage" \
 		"$(fabriek_forge_token_path "$STATE_DIR" "$cage")" ||
 		die "could not give $cage its credentials"
@@ -763,7 +855,7 @@ cmd_role_stop() {
 	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-stop <factory> <role> [--now]"
 	fabriek_role_name_ok "$role" || die "invalid role name: $role"
 	if [ -n "$now" ]; then
-		nixcage-container stop "$factory-$role" || exit 1
+		fabriek_nixcage stop "$factory-$role" || exit 1
 		echo "$factory: $role stopped at its scope"
 		return
 	fi
@@ -774,6 +866,8 @@ cmd_role_stop() {
 
 ## A role's sessions as pi kept them in its home, read-only.
 cmd_role_transcript() {
+	## Read where the role's home is (ADR-070).
+	[ -z "${FABRIEK_MACHINE:-}" ] || exec_in_machine role-transcript "$@"
 	local factory="${1:-}" role="${2:-}"
 	[ -n "$factory" ] && [ -n "$role" ] || die "usage: fabriek-container role-transcript <factory> <role> [<session>] [--text]"
 	shift 2
@@ -934,12 +1028,17 @@ cmd_factory_up() {
 	while IFS=$'\t' read -r role now; do
 		[ -n "$role" ] || continue
 		echo "$factory: $role now runs on $now; its cage is made anew"
-		nixcage-container rm "$factory-$role" >/dev/null 2>&1 || true
+		fabriek_nixcage rm "$factory-$role" >/dev/null 2>&1 || true
 	done < <(jq -r --argjson before "$before" '
 		.roles | to_entries[] | .key as $r | (.value.substrate // "nspawn") as $now
 		| select($before[$r] != null and $before[$r] != $now) | "\($r)\t\($now)"' \
 		"$FABRIEK_ETC/declaration.json")
 	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
+	## The factory's machine (ADR-070), ready before prepare asks it for
+	## the uids its credentials are given to and before any session.
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		nixcage-container machine up "$FABRIEK_MACHINE" || die "could not bring up $factory's machine"
+	fi
 	cmd_factory_prepare "$factory" "$path"
 }
 
@@ -979,6 +1078,10 @@ cmd_factory_down() {
 		fi
 	fi
 	rm -f "$(fabriek_run_dir)/prepared"
+	## The machine last, once nothing of the factory runs in it (ADR-070).
+	if [ -n "${FABRIEK_MACHINE:-}" ]; then
+		nixcage-container machine down "$FABRIEK_MACHINE" || die "could not stop $factory's machine"
+	fi
 	echo "$factory has stopped"
 }
 

@@ -39,7 +39,7 @@ fabriek_bridge_placement() {
 fabriek_cage_running() {
 	local name="$1"
 	fabriek_name_ok "$name" || return 1
-	case "$(nixcage-container status "$name" 2>/dev/null)" in
+	case "$(fabriek_nixcage status "$name" 2>/dev/null)" in
 	running\ *) return 0 ;;
 	*) return 1 ;;
 	esac

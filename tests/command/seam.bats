@@ -278,6 +278,28 @@ running_cage() {
 	assert_output "exec acme-builder -- git status"
 }
 
+@test "asked for a plan, the guest prints the same line NUL-separated and enters nothing (ADR-070)" {
+	mkdir -p "$TEST_TEMP_DIR/run"
+	run_fabriek_container role-enter --repository "$REPO" --task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder
+	assert_success
+	local entered
+	entered="enter $(recorded)"
+	rm "$CALLS"
+	"$FABRIEK_ROOT/fabriek-container" role-enter --plan --repository "$REPO" \
+		--task-dir "$TEST_TEMP_DIR/run" --signing-key builder acme builder >"$TEST_TEMP_DIR/plan"
+	[ ! -f "$CALLS" ]
+	run bash -c "tr '\\0' ' ' <'$TEST_TEMP_DIR/plan'"
+	assert_output "$entered "
+}
+
+@test "asked for a plan beside a running actor, the guest plans the exec" {
+	running_cage builder
+	"$FABRIEK_ROOT/fabriek-container" role-enter --plan --repository "$REPO" acme builder git log >"$TEST_TEMP_DIR/plan"
+	[ ! -f "$CALLS" ]
+	run bash -c "tr '\\0' '|' <'$TEST_TEMP_DIR/plan'"
+	assert_output "exec|acme-builder|--|git|log|"
+}
+
 @test "a supervised run takes the bridge placement whatever else is running under the role's name" {
 	running_cage builder
 	mkdir -p "$TEST_TEMP_DIR/run"

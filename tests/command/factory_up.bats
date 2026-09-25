@@ -392,3 +392,69 @@ EOF2
 	run grep -c "^start " "$CALLS/systemctl"
 	assert_output 1
 }
+
+# A factory in a nixcage machine of its own (ADR-070): the host's facts name
+# the machine, and every verb over a cage reaches it with --machine.
+in_a_machine() {
+	echo "FABRIEK_MACHINE=acme" >>"$FACTS/acme.env"
+	cat >"$STUB_DIR/nixcage-container" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$CALLS/nixcage-container"
+verb="\$1"; shift
+[ "\$1" = --machine ] && shift 2
+case "\$verb" in
+uid) case "\${1#acme-}" in builder) echo 60000 ;; reviewer) echo 60064 ;; decider) echo 60192 ;; *) exit 1 ;; esac ;;
+storage) echo "\$2" ;;
+status) [ -e "$CALLS/running-\$1" ] && echo "running 4242 machine.slice/\$1.scope" || echo stopped ;;
+esac
+EOF
+	chmod +x "$STUB_DIR/nixcage-container"
+}
+
+@test "in a machine, up brings the machine up before prepare gives out a credential" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	local up uid
+	up="$(grep -n '^machine up acme$' "$CALLS/nixcage-container" | cut -d: -f1)"
+	uid="$(grep -n '^uid ' "$CALLS/nixcage-container" | head -1 | cut -d: -f1)"
+	[ -n "$up" ] && [ -n "$uid" ] && [ "$up" -lt "$uid" ]
+}
+
+@test "in a machine, a cage's credentials are owned by the uid the machine's nixcage gave it" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	run grep '^uid ' "$CALLS/nixcage-container"
+	assert_line "uid --machine acme acme-builder"
+	assert_line "uid --machine acme acme-decider"
+	refute_line --regexp '^uid acme-'
+}
+
+@test "in a machine, down stops the executor, then the machine" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	: >"$CALLS/systemctl"
+	: >"$CALLS/nixcage-container"
+	run_fabriek_container factory-down acme
+	assert_success
+	run cat "$CALLS/nixcage-container"
+	assert_line "machine down acme"
+	assert_line --partial "status --machine acme acme-"
+	run head -1 "$CALLS/systemctl"
+	assert_output "stop fabriek-acme-executor.service"
+}
+
+@test "in a machine, down with a hand's cage still running leaves the machine up" {
+	in_a_machine
+	run_fabriek_container factory-up acme
+	assert_success
+	: >"$CALLS/nixcage-container"
+	touch "$CALLS/running-acme-builder"
+	run_fabriek_container factory-down acme
+	assert_failure
+	assert_output --partial "builder is still running"
+	run grep -c '^machine down' "$CALLS/nixcage-container"
+	assert_output 0
+}
