@@ -11,7 +11,8 @@ No docmeta frontmatter on purpose: this is a plan, not a decision, and
 own; this file is the status beside each.
 
 Status is kept here, one line per item, edited when an item's exit holds.
-Nothing below is started as of 2026-09-12.
+Last brought up to date 2026-09-30; what is still open is under Open,
+at the end.
 
 ## Method
 
@@ -317,7 +318,8 @@ One package, built through the flake, tests in its own runner.
   with real models. One scenario is gated rather than passed: the floor's
   clamp wants `caps.substrate = "microvm"` in `pc`'s operator
   configuration, and the clamp itself is asserted by `resources.bats`
-  and `seam.bats`.
+  and `seam.bats`. The `microvm` substrate and the floor's clamp left
+  with ADR-070 (8.1).
 
 ## Phase 7: the host's own services
 
@@ -341,6 +343,34 @@ One package, built through the flake, tests in its own runner.
   its users are read again without a restart, a file the server cannot
   read never reaches it, and an account's memory stops at its bound
   while the other factory's does not move. Valkey leaves the closure.
+
+## Phase 8: a machine per factory
+
+- 8.1 ADR-070, a factory's roles as nspawn cages inside a nixcage machine
+  of its own; the forge, the bus, the proxy and the executor stay on the
+  host. Done 2026-09-25 on nixcage 5.2.1, recorded in ADR-070's
+  verification: the per-role substrate, its floor and the role quota
+  removed; on `pc`, `two-factories.sh`, `isolation.sh` (nothing gated),
+  `forge-boundary.sh`, `bus-account.sh`, `host-autostart.sh` and
+  `specialist.sh` pass with `example` and `widgets` each in a machine.
+  Five faults in fabriek and six in nixcage were found on the way and
+  fixed test first. Not run: `parity.sh` on machines, which wants a
+  factory with a `ship` workflow and real models.
+
+## Open
+
+- `tests/manual/parity.sh` on a factory in a machine (8.1), with a `ship`
+  workflow and real models.
+- 6.5, ADR-046's dependency cache: proposed, not started. Until it lands a
+  language specialist whose devShell lacks the cache blocks on its first
+  build.
+- The record's comments, which the export does not carry (2.3).
+- The TUI's memory view and pull request list (4.2).
+- The spend count, which starts at zero when the proxy restarts (2.2).
+- The gated scenarios of 6.2 to 6.4: diagnostics after a write, the
+  guard's refusal on the bus, `enter --print-argv`.
+- An operator's shell that joined the `fabriek` group before its session
+  reads the fetch token only after a new login (8.1).
 
 ## Where the log's open items landed (its section 6)
 
