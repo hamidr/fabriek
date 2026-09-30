@@ -356,8 +356,14 @@ carries no comments, so neither does the restored board.
 the declaration as data, the board with the ready set, and the policy file,
 each labelled. Tool calls `assign`, `retry`, `block`, `file`, `push`, `stop`
 and `wait` pass the vocabulary and the declaration before one entry lands on
-`commands`; the executor validates again against the board. It thinks every
-thirty seconds and whenever an actor says something.
+`commands`; the executor validates again against the board. Who is ready
+is the executor's word: the decider takes the ready set from the board
+the executor publishes on `events:executor`, with the executor's start
+beside it, and thinks about nothing until the first board arrives. It
+thinks when a board arrives and every thirty seconds, and only about a
+snapshot unlike the last it thought about, the executor's start
+included, so the same ready set from an executor started again is asked
+about again (`models/decider-ready.qnt`).
 
 ## The operator
 

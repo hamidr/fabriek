@@ -1,5 +1,5 @@
 // The decider bound to the world (ADR-034 point 1): the board read with its
-// read-only token, the ready set kept off every role's control stream, the
+// read-only token, the ready set taken from the executor's own board event, the
 // commands stream written through the core's gate, and a think whenever an
 // actor said something and every so often besides. What judges is the
 // think the caller hands in: pi's model in index.ts, a script in
@@ -57,7 +57,13 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
   let client: DeciderBus | undefined;
   let stopped = false;
   let busy = false;
-  const ready = new Set<string>();
+  // Who is ready is the executor's to say: it refuses an assign to anyone
+  // else. A role's ready left on its control stream by an earlier session
+  // is not the executor's, and a decider that held it assigned, was
+  // refused, and never thought again (models/decider-ready.qnt). Unknown
+  // until the executor's first board arrives.
+  let ready: string[] | null = null;
+  let epoch = "";
   const factory = o.declaration.name;
   const [owner, repo] = [`${factory}-operator`, factory];
   const ceiling = o.declaration.resources.tokens;
@@ -99,7 +105,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
     }
     let routing = true;
     if (ceiling && o.spent) routing = (await o.spent()) < ceiling * 0.9;
-    return { issues, ready: [...ready], routing };
+    return { issues, ready: [...(ready ?? [])], routing };
   }
 
   /** One judgement at a time; a change that lands mid-thought is thought
@@ -109,7 +115,7 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
    *  every thirty seconds spent the factory's whole ceiling answering it. */
   let again = false;
   let last = o.memory?.read() ?? "";
-  async function think(force = false): Promise<void> {
+  async function think(): Promise<void> {
     if (stopped) return;
     if (busy) {
       again = true;
@@ -119,9 +125,12 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
     try {
       do {
         again = false;
+        if (ready === null) break;
         const s = await snapshot();
-        const key = JSON.stringify(s);
-        if (!force && key === last) break;
+        // The executor's start is part of what was thought about: the same
+        // ready set from an executor started again has not been asked.
+        const key = JSON.stringify({ ...s, epoch });
+        if (key === last) break;
         last = key;
         o.memory?.write(key);
         await o.think(core.prompt(s), s);
@@ -133,27 +142,25 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
     }
   }
 
-  /** The ready set, kept from every role's control stream. */
+  /** The ready set and the executor's start, from each board it publishes. */
   async function listen(): Promise<void> {
-    const streams: Record<string, string> = {};
-    for (const role of Object.keys(o.declaration.roles)) streams[`control:${role}`] = "0-0";
+    const streams: Record<string, string> = { "events:executor": "$" };
     while (!stopped) {
       try {
         if (!client || client.closed) client = await o.connect();
         const batches = await client.xreadMany(streams, 5000);
         let changed = false;
-        for (const [stream, entries] of Object.entries(batches)) {
-          const role = stream.slice("control:".length);
-          for (const e of entries) {
-            streams[stream] = e.id;
-            try {
-              const m = parseMessage(e.fields);
-              if (m.kind === "ready") ready.add(role);
-              if (m.kind === "ack") ready.delete(role);
-              changed = true;
-            } catch {
-              // a malformed entry is the writer's problem, not the decider's
-            }
+        for (const e of batches["events:executor"] ?? []) {
+          streams["events:executor"] = e.id;
+          try {
+            const m = parseMessage(e.fields);
+            if (m.kind !== "event" || m.name !== "board") continue;
+            const board = m.payload as { ready?: unknown; epoch?: unknown };
+            ready = Array.isArray(board.ready) ? board.ready.filter((r): r is string => typeof r === "string") : [];
+            epoch = typeof board.epoch === "string" ? board.epoch : "";
+            changed = true;
+          } catch {
+            // a malformed entry is the writer's problem, not the decider's
           }
         }
         if (changed) await think();
@@ -170,9 +177,6 @@ export function bindDecider(o: DeciderBindOptions): BoundDecider {
       client = await o.connect();
       void listen();
       setInterval(() => void think(), o.tickMs ?? 30000).unref();
-      // Forced only when nothing is remembered: a fresh process on the
-      // board the last one decided has nothing new to say.
-      await think(last === "");
     },
     stop() {
       stopped = true;

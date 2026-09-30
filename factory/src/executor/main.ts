@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     ...(machine ? { command: ["nixcage-container", "machine", "exec", machine], recordClone: clone } : {}),
   });
 
-  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed });
+  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed, epoch: new Date().toISOString() });
   const roles = Object.keys(declaration.roles);
   const streams: Record<string, string> = { commands: "$", operator: "$" };
   for (const r of roles) streams[`control:${r}`] = "$";

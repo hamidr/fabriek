@@ -162,7 +162,8 @@ A change to what a role session is shows up there as a diff.
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
   `specialist.sh` is ADR-042's; `lib.sh` is what they share.
 - `models/factory-lifecycle.qnt`: a factory's lifecycle on its host; `models/tdd-guard.qnt`:
-  the loop's test-first guard (ADR-044).
+  the loop's test-first guard (ADR-044); `models/decider-ready.qnt`: who
+  the decider holds ready against the executor, across restarts.
 - `examples/factory-project/`: a repository worked by a factory.
 - `docs/`: ADRs, PRDs, the generated TRACKER.md, `architecture.md`,
   `roadmap.md`.
@@ -214,6 +215,7 @@ docmeta-check docs                   # frontmatter is valid
 docmeta-tracker docs                 # regenerate docs/TRACKER.md, never by hand
 quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
+quint run models/decider-ready.qnt --invariant=allInvariants --max-steps=30 --max-samples=60000
 ```
 
 ## Architecture

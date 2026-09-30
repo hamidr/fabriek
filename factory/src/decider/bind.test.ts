@@ -42,6 +42,11 @@ function scriptedBus(reads: Record<string, Entry[]>[]) {
   return bus;
 }
 
+/** The executor's board event, as the decider reads it off events:executor. */
+function board(id: string, ready: string[], epoch = "e1"): Record<string, Entry[]> {
+  return { "events:executor": [{ id, fields: { kind: "event", name: "board", json: JSON.stringify({ issues: [], ready, routing: true, epoch }) } }] };
+}
+
 const forge: DeciderForge = {
   call: async <T,>(_method: string, path: string): Promise<T> => {
     if (path.includes("/issues?")) {
@@ -60,20 +65,18 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
 describe("binding a decider", () => {
   it("given a start, then it thinks once on the board as the forge shows it, memory issues left out and attempts counted", async () => {
     const thought: Snapshot[] = [];
-    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1 });
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1 });
     await bound.start();
+    await tick();
     bound.stop();
     assert.equal(thought.length, 1);
     assert.deepEqual(thought[0]?.issues, [{ number: 7, title: "Add importer", stage: "build", assignee: null, attempts: 1, blocked: false, lastOutcome: null }]);
     assert.deepEqual(thought[0]?.ready, []);
   });
 
-  it("given a ready on a role's control stream, then the ready set has it and it thinks again; an ack takes it out", async () => {
+  it("given the executor's board, then the ready set is the board's and it thinks again; a later board without the role takes it out", async () => {
     const thought: Snapshot[] = [];
-    const bus = scriptedBus([
-      { "control:builder": [{ id: "1-0", fields: { kind: "ready", capabilities: "build" } }] },
-      { "control:builder": [{ id: "2-0", fields: { kind: "ack", issue: "7" } }] },
-    ]);
+    const bus = scriptedBus([board("1-0", []), board("2-0", ["builder"]), board("3-0", [])]);
     const bound = bindDecider({ declaration, policy: null, connect: async () => bus, forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1 });
     await bound.start();
     try {
@@ -86,12 +89,56 @@ describe("binding a decider", () => {
     }
   });
 
+  // Seen on a host (2026-09-30), and models/decider-ready.qnt: a stale
+  // ready was assigned to and refused, the role then announced under a new
+  // executor, and a decider that had thought about that same ready set
+  // never thought again. A role's old ready on its control stream is not
+  // the executor's.
+  it("given a ready left on a role's control stream by an earlier session, then the decider does not hold that role ready", async () => {
+    const thought: Snapshot[] = [];
+    const bus = scriptedBus([{ "control:builder": [{ id: "1-0", fields: { kind: "ready", capabilities: "build" } }] }, board("2-0", [])]);
+    const bound = bindDecider({ declaration, policy: null, connect: async () => bus, forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1 });
+    await bound.start();
+    try {
+      await tick();
+      assert.ok(thought.length > 0);
+      assert.ok(thought.every((s) => !s.ready.includes("builder")), JSON.stringify(thought.map((s) => s.ready)));
+    } finally {
+      bound.stop();
+    }
+  });
+
+  it("given the same ready set from an executor started again, then it thinks again, since what it asked the last one was not asked of this one", async () => {
+    const thought: Snapshot[] = [];
+    const bus = scriptedBus([board("1-0", ["builder"], "e1"), board("2-0", ["builder"], "e1"), board("3-0", ["builder"], "e2")]);
+    const bound = bindDecider({ declaration, policy: null, connect: async () => bus, forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1 });
+    await bound.start();
+    try {
+      await tick();
+      assert.equal(thought.length, 2, `once per executor, not ${thought.length} times`);
+    } finally {
+      bound.stop();
+    }
+  });
+
+  it("given no board from the executor yet, then it thinks about nothing, since it does not know who is ready", async () => {
+    const thought: Snapshot[] = [];
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
+    await bound.start();
+    try {
+      await tick();
+      assert.equal(thought.length, 0);
+    } finally {
+      bound.stop();
+    }
+  });
+
   // Measured on a machine: a tick every thirty seconds with the whole board
   // in it was nine million tokens in half an hour, the factory's ceiling
   // spent by the one role that does no work.
   it("given a tick with nothing changed on the board or the ready set, then it does not think again", async () => {
     const thought: Snapshot[] = [];
-    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
     await bound.start();
     try {
       await tick();
@@ -112,7 +159,7 @@ describe("binding a decider", () => {
         throw new Error(`unscripted ${path}`);
       },
     };
-    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
+    const bound = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 5, retryMs: 1 });
     await bound.start();
     try {
       await tick();
@@ -133,12 +180,12 @@ describe("binding a decider", () => {
     const thought: Snapshot[] = [];
     let remembered: string | null = null;
     const memory = { read: () => remembered, write: (s: string) => void (remembered = s) };
-    const first = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    const first = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
     await first.start();
     await tick();
     first.stop();
     assert.equal(thought.length, 1);
-    const second = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    const second = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
     await second.start();
     await tick();
     second.stop();
@@ -151,7 +198,7 @@ describe("binding a decider", () => {
         throw new Error(`unscripted ${path}`);
       },
     };
-    const third = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
+    const third = bindDecider({ declaration, policy: null, connect: async () => scriptedBus([board("1-0", [])]), forge: moving, think: async (_p, s) => void thought.push(s), tickMs: 60000, retryMs: 1, memory });
     await third.start();
     await tick();
     third.stop();

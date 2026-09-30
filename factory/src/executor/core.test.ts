@@ -79,6 +79,15 @@ async function executor(f = fakes()) {
 }
 
 describe("the executor", () => {
+  // models/decider-ready.qnt: a reader that sees the same ready set from
+  // two executors cannot tell that the second has not been asked yet.
+  it("given the epoch it was started with, then its board carries it beside the ready set", async () => {
+    const f = fakes();
+    const x = new Executor({ declaration, workflow: "ship", ...f, reconcileTimeoutMs: 10, epoch: "2026-09-30T19:45:10.000Z" });
+    const board = await x.snapshot();
+    assert.equal(board.epoch, "2026-09-30T19:45:10.000Z");
+    assert.deepEqual(board.ready, []);
+  });
   it("given a filed goal, it opens an issue at the workflow's first stage and nothing else", async () => {
     const { x, f } = await executor();
     const r = await x.apply({ verb: "file", titleFile: "/t", bodyFile: "/b", stage: "build" }, { readFile: async (p) => (p === "/t" ? "Add importer" : "handle empty files") });

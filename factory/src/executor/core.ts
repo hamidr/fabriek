@@ -77,6 +77,10 @@ export interface ExecutorOptions {
   reconcileTimeoutMs?: number;
   /** Fraction of the ceiling at which routing stops (ADR-037 point 4). */
   softFraction?: number;
+  /** Which start of the executor this is, published with its board so a
+   *  reader can tell its ready set from an earlier one's
+   *  (models/decider-ready.qnt). */
+  epoch?: string;
 }
 
 export type Result = { ok: true } | { ok: false; reason: string };
@@ -355,7 +359,7 @@ export class Executor {
   }
 
   /** The board as the operator sees it, published for the relay (ADR-039). */
-  async snapshot(): Promise<{ issues: unknown[]; ready: string[]; routing: boolean }> {
+  async snapshot(): Promise<{ issues: unknown[]; ready: string[]; routing: boolean; epoch?: string }> {
     const issues = (await this.o.board.open()).map((i) => ({
       number: i.number,
       title: i.title,
@@ -364,7 +368,7 @@ export class Executor {
       blocked: i.labels.includes(BLOCKED),
       attempts: this.attemptsOf(i),
     }));
-    return { issues, ready: [...this.ready], routing: this.routingOn };
+    return { issues, ready: [...this.ready], routing: this.routingOn, ...(this.o.epoch ? { epoch: this.o.epoch } : {}) };
   }
 }
 
