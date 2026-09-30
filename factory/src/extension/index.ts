@@ -11,6 +11,7 @@ import { bindActor, fromEnvironment, type Bound } from "./bind.js";
 import { readFile } from "node:fs/promises";
 import type { Agent, Checks, Tree } from "./actor.js";
 import { Guard, type TestsDeclaration } from "./guard.js";
+import { eventPayload } from "./events.js";
 
 /** What the role's specialists declared a test to be (ADR-044), beside
  *  the loop in the directory pi reads; absent or empty means no guard. */
@@ -68,8 +69,7 @@ export default function fabriek(pi: ExtensionAPI): void {
   });
 
   const publish = (name: string) => async (event: object) => {
-    const { type: _type, ...payload } = event as { type?: string } & Record<string, unknown>;
-    await actor()?.publish(name, payload);
+    await actor()?.publish(name, eventPayload(event as Record<string, unknown>));
   };
   pi.on("agent_start", publish("agent_start"));
   pi.on("agent_end", publish("agent_end"));
