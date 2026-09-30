@@ -10,12 +10,16 @@ import type { Message } from "../messages.js";
 
 function fakes() {
   const sent: Message[] = [];
+  let eventsRefused = false;
   const bus: Bus & { inbox: Message[] } = {
     inbox: [],
     async announce(m) { sent.push(m); },
     async ack(issue) { sent.push({ kind: "ack", issue }); },
     async held(issues) { sent.push({ kind: "held", issues }); },
-    async event(name, payload) { sent.push({ kind: "event", name, payload }); },
+    async event(name, payload) {
+      if (eventsRefused) throw new Error("bus closed");
+      sent.push({ kind: "event", name, payload });
+    },
     async finding(text) { sent.push({ kind: "finding", text }); },
   };
   const comments: { issue: number; body: string }[] = [];
@@ -40,7 +44,7 @@ function fakes() {
   const checks = { async hasCommit() { return commit; } };
   let guidance: string | null = null;
   const tree = { async guidance() { return guidance; } };
-  return { bus, board, agent, sent, comments, calls, checks, tree, setCommit: (v: boolean) => (commit = v), setBlocked: (v: number | null) => (blocked = v), setGuidance: (v: string | null) => (guidance = v), memory: () => memoryBody };
+  return { bus, board, agent, sent, comments, calls, checks, tree, refuseEvents: () => (eventsRefused = true), setCommit: (v: boolean) => (commit = v), setBlocked: (v: number | null) => (blocked = v), setGuidance: (v: string | null) => (guidance = v), memory: () => memoryBody };
 }
 
 const capabilities = ["build", "test"];
@@ -230,6 +234,39 @@ describe("an actor", () => {
     await actor.start();
     await actor.publish("tool_call", { tool: "bash" });
     assert.deepEqual(f.sent.at(-1), { kind: "event", name: "tool_call", payload: { tool: "bash" } });
+  });
+
+  it("given the bus refuses events, when a turn or tool event is published, then it is dropped and nothing throws into the agent's tool", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    f.refuseEvents();
+    await actor.publish("tool_call", { toolName: "read" });
+    assert.equal(f.sent.filter((m) => m.kind === "event").length, 0);
+  });
+
+  it("given the bus refuses events, when the agent settles having reported blocked, then the outcome is still commented and the actor holds", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    f.refuseEvents();
+    await actor.reportOutcome({ status: "blocked", summary: "needs the schema from design" });
+    await actor.settled();
+    assert.deepEqual(f.comments, [{ issue: 7, body: "outcome: blocked\n\nneeds the schema from design" }]);
+    assert.deepEqual(actor.state, { kind: "blocked", issue: 7, attempt: 1 });
+  });
+
+  it("given the bus refuses events, when the agent settles having reported done, then the outcome is still commented and the process ends", async () => {
+    const f = fakes();
+    const actor = new Actor({ role: "builder", capabilities, ...f });
+    await actor.start();
+    await actor.handle({ kind: "assignment", issue: 7, attempt: 1 });
+    f.refuseEvents();
+    await actor.reportOutcome({ status: "done", summary: "tests pass" });
+    await actor.settled();
+    assert.deepEqual(f.comments, [{ issue: 7, body: "outcome: done\n\ntests pass" }]);
+    assert.equal(f.calls.at(-1), "finish");
   });
 
   it("an attempt is bracketed on the events stream: task_started when it is taken, task_ended with the status when it is reported", async () => {

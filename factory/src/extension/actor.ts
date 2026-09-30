@@ -200,8 +200,11 @@ export class Actor {
     if (outcome.status === "done" && !(await this.o.checks.hasCommit())) {
       body += "\n\nnote: no commit was found on this role's branch for this task";
     }
-    await this.o.bus.event("task_ended", { issue, attempt, status: outcome.status });
+    // The comment is the record the executor judges by; the event only
+    // brackets the attempt for the operator, so the comment goes first and
+    // a bus that is away costs the bracket and never the outcome.
     await this.o.board.comment(issue, body);
+    await this.publish("task_ended", { issue, attempt, status: outcome.status });
     if (outcome.status === "blocked") {
       this.state = { kind: "blocked", issue, attempt };
       return;
@@ -210,9 +213,11 @@ export class Actor {
     this.o.agent.finish();
   }
 
-  /** A turn or tool event, for the operator to watch. */
+  /** A turn or tool event, for the operator to watch. Dropped when the bus
+   *  is away: it is called from inside pi's tool hooks, where a throw blocks
+   *  the tool, and watching must never stop the work. */
   async publish(name: string, payload: unknown): Promise<void> {
-    await this.o.bus.event(name, payload);
+    await this.o.bus.event(name, payload).catch(() => undefined);
   }
 
   /** Something worth every other role's knowing. */
