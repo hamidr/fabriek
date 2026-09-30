@@ -73,6 +73,14 @@ fabriek_role_worktree_ensure() {
 		fi
 	fi
 
+	## A worktree can outlive its branch: an add that failed partway left
+	## the pointer and no ref (seen when every role raced to clone), and the
+	## role cannot make the ref itself. It gets the branch the add would
+	## have given it, from the same place.
+	if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+		git -C "$repo" update-ref "refs/heads/$branch" HEAD "" || return 1
+	fi
+
 	## The index the role's codegraph tools read (ADR-049), built once here
 	## while the tree is still the machine's, so the role's first session
 	## finds it and no session pays for it again. Watching the tree for
@@ -90,8 +98,10 @@ fabriek_role_worktree_ensure() {
 	chown -R "$uid:$uid" "$path" || return 1
 	chown -R "$uid:$uid" "$gitdir/worktrees/$(basename "$path")" || return 1
 
+	## Made rather than skipped when missing: git prunes a ref directory once
+	## it is empty, and only root may make one again.
 	while IFS= read -r target; do
-		[ -e "$target" ] || continue
+		mkdir -p "$target" || return 1
 		setfacl -R -m "u:$uid:rwX" -m "d:u:$uid:rwX" "$target" || return 1
 	done < <(fabriek_role_acl_targets "$gitdir" "$role")
 

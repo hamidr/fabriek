@@ -177,6 +177,40 @@ make_repo() {
 	[ -e "$STATE/worktrees/acme/builder/.git" ]
 }
 
+@test "a role whose worktree lost its branch keeps the worktree and gets the branch back" {
+	# Seen on a host (2026-09-30): the worktrees made while every role raced
+	# to clone kept their pointer and never got a branch, so each later
+	# session found a tree on an unborn branch it could not commit.
+	stub_privileged_tools
+	repo="$(make_repo)"
+	fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	git -C "$repo" update-ref -d refs/heads/builder/work
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	assert_equal "$(git -C "$repo" rev-parse refs/heads/builder/work)" "$(git -C "$repo" rev-parse main)"
+	assert_equal "$(git -C "$STATE/worktrees/acme/builder" symbolic-ref HEAD)" refs/heads/builder/work
+}
+
+@test "a role's ref namespace that git pruned is made again, so its ACL has somewhere to go" {
+	# pack-refs removes a loose ref's directory once it is empty, and only
+	# root may make one under refs/heads: without it the role cannot write
+	# a ref of its own.
+	stub_privileged_tools
+	printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${@: -1}" >>"%s"\n' "$TEST_TEMP_DIR/acl-targets" >"$STUB_DIR/setfacl"
+	chmod +x "$STUB_DIR/setfacl"
+	repo="$(make_repo)"
+	fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	git -C "$repo" pack-refs --all --prune
+	[ ! -e "$repo/.git/refs/heads/builder" ]
+	: >"$TEST_TEMP_DIR/acl-targets"
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	[ -d "$repo/.git/refs/heads/builder" ]
+	run cat "$TEST_TEMP_DIR/acl-targets"
+	assert_line "$repo/.git/refs/heads/builder"
+	assert_line "$repo/.git/logs/refs/heads/builder"
+}
+
 # ADR-049: a role queries the repository through codegraph, and the index is
 # built here, before the tree is handed over, so no role's first session
 # pays for it. Building it again on every entry would be a full index each
