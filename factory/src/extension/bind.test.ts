@@ -85,6 +85,21 @@ describe("binding an actor", () => {
     }
   });
 
+  it("given an event larger than the bus takes in one message, then a stand-in naming the event and its size is written in its place", async () => {
+    const bus = scriptedBus([]);
+    const bound = bindActor({ role: "builder", capabilities: ["build"], connect: async () => bus, forge: scriptedForge({ number: 1, title: "", body: "", labels: [], assignee: null }), agent: { prompt() {}, steer() {}, abort() {}, finish() {} }, checks: { hasCommit: async () => true }, tree: { guidance: async () => null }, retryMs: 1 });
+    await bound.start();
+    bound.stop();
+    await bound.actor.publish("tool_call", { toolName: "write", input: { content: "x".repeat(2 * 1024 * 1024) } });
+    const last = bus.written.at(-1);
+    assert.equal(last?.stream, "events:builder");
+    assert.equal(last?.fields["name"], "tool_call");
+    const payload = JSON.parse(last?.fields["json"] ?? "{}") as { truncated?: boolean; bytes?: number };
+    assert.equal(payload.truncated, true);
+    assert.ok((payload.bytes ?? 0) > 2 * 1024 * 1024);
+    assert.ok(JSON.stringify(last?.fields).length < 1024);
+  });
+
   it("given the bus goes away, then it connects again and announces ready once more", async () => {
     const first = scriptedBus([new Error("bus closed")]);
     const second = scriptedBus([]);

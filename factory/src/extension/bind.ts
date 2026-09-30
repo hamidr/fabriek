@@ -24,6 +24,11 @@ import { Actor, type Agent, type Board, type Bus, type Checks, type Tree } from 
 
 const STREAM_CAP = 10000;
 
+/** The most an event's fields may encode to. The server closes a
+ *  connection that sends more than its max_payload (1 MiB by default), so an
+ *  event is kept well under it and a larger one is replaced by its size. */
+const EVENT_MAX_BYTES = 256 * 1024;
+
 /** What the binding needs of a bus connection. */
 export interface ActorBus {
   closed: boolean;
@@ -74,7 +79,9 @@ class RoleBus implements Bus {
     return this.write(`control:${this.role}`, { kind: "held", issues });
   }
   event(name: string, payload: unknown): Promise<void> {
-    return this.write(`events:${this.role}`, { kind: "event", name, payload });
+    const bytes = Buffer.byteLength(JSON.stringify(toFields({ kind: "event", name, payload })));
+    const bounded = bytes > EVENT_MAX_BYTES ? { truncated: true, bytes } : payload;
+    return this.write(`events:${this.role}`, { kind: "event", name, payload: bounded });
   }
   finding(text: string): Promise<void> {
     return this.write(`findings:${this.role}`, { kind: "finding", text });
