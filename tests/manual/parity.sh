@@ -15,6 +15,15 @@
 ##   export FABRIEK_PROOF_DIR=/tmp/fabriek-proof
 ##   F=acme tests/manual/parity.sh
 ##
+## The goal and its acceptance are GOAL and ACCEPTANCE. A role's branch
+## keeps what it built across runs, and done counts only commits made for
+## the attempt, so a run after one that delivered the default goal needs
+## a goal the repository has not met yet:
+##
+##   GOAL="the importer drops a byte order mark" \
+##   ACCEPTANCE="a UTF-8 BOM before the first cell is not part of it" \
+##   F=acme tests/manual/parity.sh
+##
 ## What the machine must offer for these to pass, and where each is decided:
 ## Forgejo on the machine with an operator token under the state directory
 ## (2.3); a repository <factory>-operator/<factory> whose labels are the
@@ -73,8 +82,8 @@ when "the operator files a goal"
 ## Filing is one entry on the operator stream; the executor opens the issue.
 ## The number is read off the board by title, because task file cannot know
 ## it before the executor has acted.
-title="the importer handles empty files $(date +%s)"
-check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash fabriek -f "$F" file ship "$title" -m "acceptance: an empty file imports as no rows" 2>/dev/null | tail -1)"
+title="${GOAL:-the importer handles empty files} $(date +%s)"
+check "task file is accepted" "$F: filed at ${stages[0]}" "$(bash fabriek -f "$F" file ship "$title" -m "acceptance: ${ACCEPTANCE:-an empty file imports as no rows}" 2>/dev/null | tail -1)"
 # shellcheck disable=SC2329  # invoked through eventually
 issue_by_title() { api GET "$repo/issues?state=all&type=issues&limit=50" | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1 | sed 's/^[0-9][0-9]*$/found/'; }
 check "the executor opens an issue for it" found "$(eventually 60 found issue_by_title)"
