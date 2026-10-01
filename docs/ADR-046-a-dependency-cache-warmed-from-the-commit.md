@@ -1,11 +1,11 @@
 ---
 id: ADR-046
-title: A factory's dependency cache is warmed on the operator's host from the commit's lockfiles
+title: A factory's dependency cache is built on the operator's host from the commit's lockfiles
 status: proposed
 date: 2026-09-14
-status_date: 2026-09-16
-summary: the host fetches the commit's lockfiles into the lower store at up; nothing fetches on a cage's word
-depends_on: [ADR-031, ADR-037, ADR-042, ADR-057]
+status_date: 2026-10-01
+summary: render builds a read-only cache per lockfile on the host, from allowed registries only; nothing fetches on a cage's word
+depends_on: [ADR-037, ADR-042, ADR-067, ADR-070]
 supersedes: []
 superseded_by: []
 ---
@@ -35,6 +35,54 @@ the cage does not. A lockfile at the commit is that description where one
 exists.
 
 ## Decision
+
+Re-decided 2026-10-01, for ADR-070 and after a soundness review. ADR-057,
+whose lower store the 2026-09-16 text below builds on, is superseded: a
+factory now runs in a nixcage machine of its own whose guest sees the
+host's store read-only, and every role's profile is already built by the
+host's daemon at render, from the repository at the pin, and bound into
+the cage as a store root (ADR-070 point 9, `docs/architecture.md`). The
+cache takes the same road. Points 1a to 1e replace point 1 below, and
+point 3 no longer leans on ADR-031, which is still proposed.
+
+**1a. Built at render, on the host, like a profile.** Render reads the
+lockfiles the clone has at the pin and builds, with the host's daemon,
+one fixed-output fetch per artifact they name and one derivation that
+lays them out as the tool's own read-only cache. The result is a store
+path under the factory's directory beside the profiles, bound into every
+role session read-only, with the tool told to resolve offline from it.
+Nothing is fetched in the machine or in a cage, and nothing is fetched
+outside render.
+
+**1b. From allowed registries only.** A fixed-output hash checks what
+came back, not where the request went: a lockfile naming
+`https://attacker.example/<data>` would have the host send that request
+before any hash is compared. So each ecosystem has a fixed list of
+registry hosts (for npm, `registry.npmjs.org`), checked when the
+derivations are generated; a lockfile entry outside it fails render
+naming the entry and its host, and nothing of that lockfile is fetched.
+
+**1c. The operator's commit is the gate.** A role writes lockfiles; the
+host reads them only at the pin, which is the operator's checkout, moved
+by the operator's merge and `fabriek up --update`. A dependency a role
+adds reaches the cache only through that review. This is the rule point 3
+states, decided here rather than borrowed from ADR-031.
+
+**1d. A layout the tool reads and does not write.** The cache is the
+tool's resolution source, not its working directory: anything the tool
+writes (logs, temporary files, its own index) goes under the role's home.
+Measured for npm on 2026-10-01: a cache seeded with `npm cache add` from
+the tarballs and then made read-only lets `npm ci --offline` install a
+registry-resolved dependency by its integrity, and an empty one fails
+with "cache mode is 'only-if-cached'". So for npm the layout is that
+cache, `npm_config_cache` points at it, `npm_config_offline` is set, and
+`npm_config_logs_dir` is under the home.
+
+**1e. npm first.** `package-lock.json` names every artifact with its
+integrity and is JSON, so render reads it without running anything the
+repository wrote. pnpm (YAML, its own store format), Maven and sbt (no
+default lockfile) and Metals' downloads follow, each behind a scenario of
+its own; until then they are where they are today.
 
 Re-decided 2026-09-16: this was written against ADR-040, where every
 factory was a machine build with the host's network, and ADR-057 removed
@@ -113,15 +161,14 @@ scenario each, and the roadmap carries them.
 
 ## Verification
 
-Decision only; no code lands with this document. When implemented:
+Decision only so far. When the npm slice lands:
 
 ```bash
-nix develop --command bats tests/command/vm_up.bats              # up builds a fetch per artifact of the fixture's lockfile, on the host, before the start
-nix develop --command bats tests/command/render.bats             # render lays the cache out from paths the lower store holds and fetches nothing
-nix develop --command bats tests/command/seam.bats               # the cache bound read-only, the offline environment on the line
+nix develop --command bats tests/command/render.bats     # a cache per package-lock.json, built at render; an entry outside the allowlist refused by name
+nix develop --command bats tests/command/seam.bats       # the cache bound read-only, npm told to resolve offline from it
 ```
 
-On a machine: a role on the example repository, given a committed
-`pnpm-lock.yaml`, runs `pnpm install --offline` to completion in its cage
-with no route; the same role, with a dependency added and no new lock, is
-blocked naming it. Recorded in this document when run.
+On the host: a role on the example repository, given a committed
+`package-lock.json`, runs `npm ci --offline` to completion in its cage
+with no route; the same role, with a dependency added and no new lock,
+is blocked naming it. Recorded in this document when run.

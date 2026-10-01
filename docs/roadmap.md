@@ -289,8 +289,9 @@ One package, built through the flake, tests in its own runner.
 - 6.5 ADR-046's cache: a derivation per lockfile the commit has, bound
   read-only into every session with the tools told to work offline; the
   npm shape first, the JVM shapes behind a lockfile convention. Re-decided
-  2026-09-16 for ADR-057: fetched on the host at `up` into the lower
-  store, laid out by the machine at render. Proposed, not started.
+  2026-09-16 for ADR-057, and again 2026-10-01 for ADR-070: built on the
+  host at render like a profile, from allowed registries only, bound
+  read-only; npm first. Proposed, not started.
 - 6.6 The brief's `this factory:` section. Done 2026-09-15 (ADR-054): the
   actor reads `docs/factory-guidance.md` from its worktree into the brief,
   and the role guidance itself moved from a file nothing read into the
