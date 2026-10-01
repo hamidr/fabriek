@@ -10,13 +10,16 @@
 
 ## nixcage-container with --machine when this host forwards to a machine,
 ## and without it where the cages are local: a verb over a cage reads the
-## same on either side.
+## same on either side. No verb here reads input, and forwarding to the
+## machine reads stdin all the same: inside a while-read loop it took the
+## rest of the loop's lines, and prepare handed credentials to its first
+## role only (2026-10-01). So it is given none.
 ## fabriek_nixcage <verb> [args...]
 fabriek_nixcage() {
 	local verb="$1"
 	shift
 	if [ -n "${FABRIEK_MACHINE:-}" ]; then
-		nixcage-container "$verb" --machine "$FABRIEK_MACHINE" "$@"
+		nixcage-container "$verb" --machine "$FABRIEK_MACHINE" "$@" </dev/null
 	else
 		nixcage-container "$verb" "$@"
 	fi

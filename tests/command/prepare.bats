@@ -175,6 +175,22 @@ teardown() {
 	[ "$(stat -c %a "$STATE/forge/builder-token")" = 400 ]
 }
 
+@test "given a factory in a machine, every role's credentials belong to its uid there, not only the first role's" {
+	# Seen on a host (2026-10-01): asking the machine for a uid read the
+	# roles prepare was looping over off its stdin, so only the first role
+	# was prepared, and three roles' pi could not open their own password.
+	cat >"$STUB_DIR/nixcage-container" <<EOF
+#!/usr/bin/env bash
+[[ " \$* " == *" --machine "* ]] && cat >/dev/null
+case "\${*: -1}" in acme-builder) echo 61000 ;; acme-reviewer) echo 61064 ;; acme-decider) echo 61192 ;; *) exit 1 ;; esac
+EOF
+	FABRIEK_MACHINE=acme run_fabriek_container factory-prepare acme
+	assert_success
+	run cat "$FORGE/chown-calls"
+	assert_output --partial "61000 $STATE/bus/builder $STATE/forge/builder-token"
+	assert_output --partial "61064 $STATE/bus/reviewer $STATE/forge/reviewer-token"
+}
+
 @test "given the repository's origin, prepare files it on the machine for every session the executor starts" {
 	run_fabriek_container factory-prepare acme https://forge.example/acme.git
 	assert_success
