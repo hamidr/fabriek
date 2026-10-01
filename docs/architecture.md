@@ -421,8 +421,8 @@ FABRIEK_PROOF_DIR=... tests/manual/two-factories.sh  # and forge-boundary, bus-a
 The manual proofs ask a cage's questions where the factory's cages are:
 through `--machine` for nixcage's verbs, and as the machine's root with a
 script on stdin for what must run beside the cages (`tests/manual/lib.sh`).
-All but `parity.sh` passed on `pc` on 2026-09-25 with both factories in
-machines (ADR-070's verification).
+All of them passed on `pc` with both factories in machines, `parity.sh`
+on 2026-10-01 and the rest on 2026-09-25 (ADR-070's verification).
 
 `tests/command/machine_seam.bats` drives the host's half of a session in a
 machine: the plan asked for, checked and entered with `--machine`, the
@@ -463,10 +463,16 @@ host is the machine, the cage, the bridge, the proxy's count and pi.
   not on the bus.
 - The spend count lives in the proxy's memory and starts at zero when it
   restarts.
-- `tests/manual/parity.sh` passes up to the first assignment and is gated
-  there on a credential the endpoint accepts; see `docs/roadmap.md` 5.1.
-  Everything after the assignment is proved on this host by
-  `tests/system/journey.sh` with scripted actors, on Gitea on a Mac.
+- `fabriek up` keeps the pin the factory was rendered at; a change to the
+  worked repository reaches the factory through `fabriek up --update`. An
+  `up` of a running factory reloads it in place and keeps its machine, so
+  a host switch that changes the machine program takes effect after a
+  `down` and an `up`.
+- A role's branch keeps what it built until it is merged, and done counts
+  only the commits made for the attempt, so a goal already delivered on
+  an unmerged branch is blocked rather than done again.
+- An attempt longer than a role's events stream holds (10000 entries) is
+  traced as not observed.
 - Which model a session starts on is the operator's, per endpoint in
   their config (`[models]`), with a table in `modules/factory-render.sh`
   standing when they name none; a declaration cannot name one.

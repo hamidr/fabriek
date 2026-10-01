@@ -239,8 +239,34 @@ with a test that failed first:
   machine, a machine restarted by a switch, a uid lock outliving its
   holder, and an enter under a running cage's name deleting its port.
 
-Not done: `parity.sh`, which wants a factory with a `ship` workflow run by
-real models; and an operator's shell that joined the `fabriek` group
-before its session started reads the fetch token only after a new login
+`parity.sh` passed on `pc` on 2026-10-01, 31 checks with none failed or
+gated, on `example` with deepseek behind the proxy (transcript
+`parity-070-7.txt` beside the others): a goal filed, assigned by the
+decider, worked through design, plan, build, review and inspect, closed,
+its pull request opened, merged and mirrored into the operator's
+checkout, and its spend counted, with nothing typed after the goal. It
+took seven runs, each stopped by a fault none of the suites had shown,
+each fixed with a scenario that failed first:
+
+- pi 0.84 hands `turn_end` the whole session, and the loop published it
+  whole until the bus closed the role's connection at its 1 MiB limit
+  (`9c01c2b`, `a8bedea`); with the bus away the outcome comment and the
+  role's own tools failed with it (`a348ff4`).
+- the worktrees the clone race had left kept no branch, no ACL on the
+  role's ref namespace and no index (`05b00b5`, `9c61e3b`).
+- the decider held a ready from an earlier session, was refused, and on
+  a snapshot it had already thought about never thought again; it now
+  takes who is ready from the executor's board, with the executor's
+  start (`d1281b5`, `models/decider-ready.qnt`).
+- an executor restart left an acked row assigned with nobody working it
+  (`5551cc0`, `models/orphaned-assignment.qnt`), and a blocked outcome
+  was traced every ten seconds (`17c7102`).
+- prepare asked the machine for each role's uid inside a loop reading the
+  roles off stdin, which the forwarding read too: only the first role was
+  handed its credentials, and the three roles after it whose uid had
+  changed with the machine never started (`1d33aca`).
+
+Not done: an operator's shell that joined the `fabriek` group before its
+session started reads the fetch token only after a new login
 (`sg fabriek` works meanwhile).
 

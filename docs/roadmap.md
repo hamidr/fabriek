@@ -354,13 +354,15 @@ One package, built through the flake, tests in its own runner.
   `forge-boundary.sh`, `bus-account.sh`, `host-autostart.sh` and
   `specialist.sh` pass with `example` and `widgets` each in a machine.
   Five faults in fabriek and six in nixcage were found on the way and
-  fixed test first. Not run: `parity.sh` on machines, which wants a
-  factory with a `ship` workflow and real models.
+  fixed test first.
+- 8.2 `tests/manual/parity.sh` on a factory in a machine, with real
+  models. Done 2026-10-01 on `pc`: 31 checks, none gated, from a filed
+  goal to the record in the operator's checkout with nothing typed after
+  it, recorded in ADR-070's verification with the seven faults the runs
+  before it stopped on. PRD-006's last phase.
 
 ## Open
 
-- `tests/manual/parity.sh` on a factory in a machine (8.1), with a `ship`
-  workflow and real models.
 - 6.5, ADR-046's dependency cache: proposed, not started. Until it lands a
   language specialist whose devShell lacks the cache blocks on its first
   build.
@@ -371,6 +373,15 @@ One package, built through the flake, tests in its own runner.
   guard's refusal on the bus, `enter --print-argv`.
 - An operator's shell that joined the `fabriek` group before its session
   reads the fetch token only after a new login (8.1).
+- `fabriek up` of a running factory keeps its machine and its pin: a
+  host switch reaches the machine program after `down` and `up`, and a
+  change to the worked repository through `up --update` (8.2).
+- An attempt longer than a role's events stream holds is traced as not
+  observed (8.2).
+- A role's branch is never reset, so a goal already delivered on it but
+  not merged is blocked when filed again (8.2).
+- An executor restart frees an acked task for a retry, but the work in
+  flight is lost; the parity proof's own `up` restarts the executor (8.2).
 
 ## Where the log's open items landed (its section 6)
 

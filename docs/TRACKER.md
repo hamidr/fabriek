@@ -4,7 +4,7 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-09-25
+**Generated:** 2026-10-01
 
 **Next PRD number:** 008
 
@@ -19,7 +19,7 @@ document, then regenerate.
 | [PRD-003](PRD-003-software-factory.md) | A software factory of caged roles working one repository | implemented | 8/8 | PRD-002 | named roles in cages work one assigned repository, delegating tasks through the supervisor with herdr as the console |  |
 | [PRD-004](PRD-004-a-factory-of-its-own.md) | A factory brings its own machine and declares itself | implementing | 4/5 | PRD-003 | a factory is declared in the repository it works and runs in a VM fabriek builds for it on either platform |  |
 | [PRD-005](PRD-005-agents-that-take-their-own-work.md) | Agents that take their own work from the record | superseded | 0/5 | PRD-004 | agents poll the record, take work by leased claim and run until stopped; the dispatching supervisor is not built |  |
-| [PRD-006](PRD-006-a-factory-that-runs-itself.md) | A factory that runs itself, and an operator who watches from one place | implementing | 5/6 | PRD-004 | a filed goal is assigned, worked, tested and opened as a pull request with nothing typed after it, trusting no cage |  |
+| [PRD-006](PRD-006-a-factory-that-runs-itself.md) | A factory that runs itself, and an operator who watches from one place | implemented | 6/6 | PRD-004 | a filed goal is assigned, worked, tested and opened as a pull request with nothing typed after it, trusting no cage |  |
 | [PRD-007](PRD-007-a-factory-that-remembers-what-failed.md) | A factory that remembers what failed, and a manager who reads it across threads | proposed | 0/5 | PRD-006 | a role that fails a call is shown what failed that way before and what then worked; the manager sees it summed |  |
 
 ## ADRs
