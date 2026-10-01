@@ -291,7 +291,8 @@ One package, built through the flake, tests in its own runner.
   npm shape first, the JVM shapes behind a lockfile convention. Re-decided
   2026-09-16 for ADR-057, and again 2026-10-01 for ADR-070: built on the
   host at render like a profile, from allowed registries only, bound
-  read-only; npm first. Proposed, not started.
+  read-only; npm first. npm done 2026-10-01 and proved in a cage on
+  `pc` (ADR-046's verification); pnpm, Maven, sbt and Metals not started.
 - 6.6 The brief's `this factory:` section. Done 2026-09-15 (ADR-054): the
   actor reads `docs/factory-guidance.md` from its worktree into the brief,
   and the role guidance itself moved from a file nothing read into the
@@ -364,9 +365,9 @@ One package, built through the flake, tests in its own runner.
 
 ## Open
 
-- 6.5, ADR-046's dependency cache: proposed, not started. Until it lands a
-  language specialist whose devShell lacks the cache blocks on its first
-  build.
+- 6.5, ADR-046's dependency cache beyond npm: pnpm, Maven, sbt and
+  Metals. Until each lands, a role of that ecosystem whose devShell lacks
+  the cache blocks on its first build.
 - The record's comments, which the export does not carry (2.3).
 - The TUI's memory view and pull request list (4.2).
 - The spend count, which starts at zero when the proxy restarts (2.2).

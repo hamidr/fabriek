@@ -161,14 +161,28 @@ scenario each, and the roadmap carries them.
 
 ## Verification
 
-Decision only so far. When the npm slice lands:
+The npm slice landed 2026-10-01 (`727f29d`): `modules/dependency-cache.sh`
+reads the lockfile and refuses by entry, `modules/npm-cache.nix` builds the
+cache, render links it at `cache/npm`, and every session names it as a
+store root with npm told to resolve offline. `bats --recursive tests/`:
+510 of 510, of them `dependency_cache.bats` (7, the allowlist),
+`npm_cache.bats` (2, a cache built for real and installed from read-only
+out of the store), `render.bats` (3 new) and `seam.bats` (1 new).
+
+On `pc` the same day, `example` pinned at a commit whose
+`package-lock.json` names `is-number` 7.0.0: render fetched it from
+`registry.npmjs.org` under `--restrict-eval` and linked
+`/nix/store/1yzzvvxb...-fabriek-npm-cache`; in the frontend's cage, whose
+session carried `npm_config_cache`, `npm_config_offline=true` and
+`npm_config_logs_dir=~/.npm/_logs`, `npm ci` added the package with no
+route, and `npm install left-pad@1.3.0`, which the lockfile lacks, failed
+`ENOTCACHED` naming it. pnpm, Maven, sbt and Metals are not built
+(point 1e).
+
+The checks, for the next slice:
 
 ```bash
 nix develop --command bats tests/command/render.bats     # a cache per package-lock.json, built at render; an entry outside the allowlist refused by name
 nix develop --command bats tests/command/seam.bats       # the cache bound read-only, npm told to resolve offline from it
 ```
 
-On the host: a role on the example repository, given a committed
-`package-lock.json`, runs `npm ci --offline` to completion in its cage
-with no route; the same role, with a dependency added and no new lock,
-is blocked naming it. Recorded in this document when run.
