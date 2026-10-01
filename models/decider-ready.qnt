@@ -105,7 +105,7 @@ module deciderReady {
     mode' = mode, epoch' = epoch, execReady' = execReady,
     replayReady' = replayReady, boardReady' = boardReady, boardEpoch' = boardEpoch,
     assigned' = assigned,
-    inflight' = viewReady and not(assigned),
+    inflight' = (viewReady and not(assigned)),
     viewReady' = viewReady, viewEpoch' = viewEpoch,
     lastReady' = viewReady, lastEpoch' = viewEpoch,
     lastAssigned' = assigned, thoughtOnce' = true,
