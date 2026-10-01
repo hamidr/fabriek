@@ -486,7 +486,8 @@ host is the machine, the cage, the bridge, the proxy's count and pi.
 - A factory's roles share its machine's kernel and disk: no role can be
   kept from its factory's kernel, and none has a quota of its own.
 - A machine reserves its memory while it runs, whatever its roles use; a
-  switch that changes a machine takes effect at its next `up`.
+  switch that changes a machine takes effect after a `down` and an `up`,
+  since an `up` of a running factory keeps its machine.
 - A compromised guest can read the factory owner's forge token through the
   forge share; it reaches that factory's repository and nothing another
   factory owns.
