@@ -331,7 +331,11 @@ at the last stage, labels `blocked`, frees the role on failed; counts
 attempts per stage; refuses an assignment when as many roles hold work
 as `resources.concurrency` allows (ADR-055); stops routing at ninety
 percent of the ceiling. It reads the control streams from where they are before it
-starts the sessions, so no ready is missed. `main.ts` connects as the executor's bus
+starts the sessions, so no ready is missed. It applies what a role says
+in the order it said it, and a ready frees a row the role had acked with
+no outcome since the attempt began: the session that held it ended, when
+the executor stopped or the cage did, and the row goes back to its stage
+for a retry (`models/orphaned-assignment.qnt`). `main.ts` connects as the executor's bus
 user, starts every role's session and the decider's through the machine
 program, reads `control:*`, `commands` and `operator`, checks outcomes every
 ten seconds, and publishes the board and the spend, named by role from the

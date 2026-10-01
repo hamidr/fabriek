@@ -120,6 +120,60 @@ describe("the executor", () => {
     assert.equal(f.issues.get(1)?.assignee, "builder");
   });
 
+  // models/orphaned-assignment.qnt, and a host (2026-09-30): the executor
+  // stopped, ending the session that held an acked task, and the role's
+  // next session announced ready holding nothing. The row stayed assigned
+  // and the decider waited on it for good.
+  async function acked(x: Executor, f: ReturnType<typeof fakes>) {
+    await f.board.create("t", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    x.heard("builder", { kind: "ack", issue: 1 });
+    await x.settle();
+  }
+
+  it("given a row its role acked, when the role announces ready with no outcome since the attempt began, then the row is freed for a retry and the thread says why", async () => {
+    const { x, f } = await executor();
+    await acked(x, f);
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.settle();
+    assert.deepEqual(f.issues.get(1)?.labels, ["build"]);
+    assert.equal(f.issues.get(1)?.assignee, "builder");
+    assert.match(f.issues.get(1)?.thread.at(-1)?.body ?? "", /^attempt 1 abandoned: builder started again without it/);
+    assert.deepEqual(await x.apply({ verb: "retry", issue: 1 }), { ok: true });
+  });
+
+  it("given a ready the role said before it acked, when both are read in one batch, then the row it acked stays assigned", async () => {
+    const { x, f } = await executor();
+    await f.board.create("t", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    x.heard("builder", { kind: "ack", issue: 1 });
+    await x.settle();
+    assert.deepEqual(f.issues.get(1)?.labels.sort(), ["assigned", "build"]);
+  });
+
+  it("given a role that commented its outcome and then announced ready, then the ready frees nothing and the outcome is judged as ever", async () => {
+    const { x, f } = await executor();
+    await acked(x, f);
+    f.roleComment(1, "builder", "outcome: done\n\nbuilt");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.settle();
+    assert.deepEqual(f.issues.get(1)?.labels.sort(), ["assigned", "build"]);
+    await x.checkOutcomes();
+    assert.deepEqual(f.issues.get(1)?.labels, ["test"]);
+  });
+
+  it("given a row blocked on another, when its role announces ready, then the row stays as it is", async () => {
+    const { x, f } = await executor();
+    await acked(x, f);
+    await f.board.setLabels(1, ["build", "assigned", "blocked"]);
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    await x.settle();
+    assert.deepEqual(f.issues.get(1)?.labels.sort(), ["assigned", "blocked", "build"]);
+  });
+
   it("assign is refused for a role that does not exist, does not provide the stage, is not ready, or holds work", async () => {
     const { x, f } = await executor();
     await f.board.create("t", "b", "build");

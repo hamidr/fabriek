@@ -99,7 +99,8 @@ export function workBranch(role: string): string {
 
 export class Executor {
   private readonly ready = new Set<string>();
-  private readonly acks: number[] = [];
+  /** Acks and readies in the order the roles said them, applied by settle. */
+  private readonly said: ({ kind: "ack"; issue: number } | { kind: "ready"; role: string })[] = [];
   private readonly heldAnswers = new Map<string, number[]>();
   private readonly timeoutMs: number;
   private readonly softFraction: number;
@@ -115,9 +116,10 @@ export class Executor {
     switch (m.kind) {
       case "ready":
         this.ready.add(role);
+        this.said.push({ kind: "ready", role });
         return;
       case "ack":
-        this.acks.push(m.issue);
+        this.said.push({ kind: "ack", issue: m.issue });
         return;
       case "held":
         this.heldAnswers.set(role, m.issues);
@@ -131,12 +133,37 @@ export class Executor {
     return this.routingOn;
   }
 
-  /** Move acked rows from assigning to assigned. Called after heard(). */
+  /** Apply what the roles said since the last call, in the order they
+   *  said it: an ack moves its row from assigning to assigned, and a ready
+   *  frees a row its role had acked and holds no more. Called after heard(). */
   async settle(): Promise<void> {
-    for (const issue of this.acks.splice(0)) {
-      const i = await this.o.board.issue(issue);
+    for (const s of this.said.splice(0)) {
+      if (s.kind === "ready") {
+        await this.abandon(s.role);
+        continue;
+      }
+      const i = await this.o.board.issue(s.issue);
       if (!i.labels.includes(ASSIGNING)) continue;
-      await this.o.board.setLabels(issue, swap(i.labels, ASSIGNING, ASSIGNED));
+      await this.o.board.setLabels(s.issue, swap(i.labels, ASSIGNING, ASSIGNED));
+    }
+  }
+
+  /** A role that announces ready holds nothing (ADR-035): a row it had
+   *  acked with no outcome since the attempt began was lost with its last
+   *  session, when the executor stopped or the cage ended. The row goes
+   *  back to its stage with the role kept, so a retry returns it there; a
+   *  blocked row is held on purpose and stays. In the order said, since a
+   *  ready from before the ack is not about that row
+   *  (models/orphaned-assignment.qnt). */
+  private async abandon(role: string): Promise<void> {
+    for (const i of await this.o.board.open()) {
+      if (i.assignee !== role || !i.labels.includes(ASSIGNED) || i.labels.includes(BLOCKED)) continue;
+      const started = i.thread.map((c, k) => ({ c, k })).filter(({ c }) => c.by === "executor" && isAttemptLine(c.body)).at(-1);
+      if (i.thread.some((c, k) => c.by === role && c.body.startsWith("outcome:") && k > (started?.k ?? -1))) continue;
+      const stage = this.stageLabel(i);
+      const attempt = stage ? attemptsAt(i.thread, stage) : 1;
+      await this.o.board.comment(i.number, `attempt ${attempt} abandoned: ${role} started again without it, so no outcome will come`);
+      await this.o.board.setLabels(i.number, i.labels.filter((l) => l !== ASSIGNED));
     }
   }
 
