@@ -165,6 +165,20 @@ describe("the executor", () => {
     assert.deepEqual(f.issues.get(1)?.labels, ["test"]);
   });
 
+  // Seen on a host (2026-10-01): a blocked outcome stays on an assigned
+  // row, and every ten seconds the executor wrote its trace under it
+  // again, nine times before anyone looked.
+  it("given a blocked outcome, when outcomes are checked again and again, then it is judged once: one trace, the row blocked", async () => {
+    const { x, f } = await executor();
+    await acked(x, f);
+    f.roleComment(1, "builder", "outcome: blocked\n\nno pytest in this shell");
+    await x.checkOutcomes();
+    await x.checkOutcomes();
+    await x.checkOutcomes();
+    assert.equal(f.issues.get(1)?.thread.filter((c) => c.body.startsWith("trace:")).length, 1);
+    assert.deepEqual(f.issues.get(1)?.labels.sort(), ["assigned", "blocked", "build"]);
+  });
+
   it("given a row blocked on another, when its role announces ready, then the row stays as it is", async () => {
     const { x, f } = await executor();
     await acked(x, f);

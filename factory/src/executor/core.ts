@@ -341,6 +341,9 @@ export class Executor {
         .filter(({ c, k }) => c.by === i.assignee && c.body.startsWith("outcome:") && k > (started?.k ?? -1))
         .at(-1);
       if (!outcome) continue;
+      // Judged once: a blocked outcome leaves the row assigned, so the
+      // trace written under it is what says it was seen.
+      if (i.thread.some((c, k) => c.by === "executor" && c.body.startsWith("trace:") && k > outcome.k)) continue;
       const status = outcome.c.body.split("\n")[0]?.replace(/^outcome:\s*/, "").trim();
       const stage = this.stageLabel(i);
       const bare = i.labels.filter((l) => !STATE_LABELS.has(l));
