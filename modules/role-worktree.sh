@@ -76,9 +76,12 @@ fabriek_role_worktree_ensure() {
 	## A worktree can outlive its branch: an add that failed partway left
 	## the pointer and no ref (seen when every role raced to clone), and the
 	## role cannot make the ref itself. It gets the branch the add would
-	## have given it, from the same place.
+	## have given it, from the same place. The failed add left no index
+	## either, so the index is read from the branch; the tree is left as
+	## the role had it.
 	if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
 		git -C "$repo" update-ref "refs/heads/$branch" HEAD "" || return 1
+		git -C "$path" reset -q || return 1
 	fi
 
 	## The index the role's codegraph tools read (ADR-049), built once here

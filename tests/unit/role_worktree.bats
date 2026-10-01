@@ -191,6 +191,23 @@ make_repo() {
 	assert_equal "$(git -C "$STATE/worktrees/acme/builder" symbolic-ref HEAD)" refs/heads/builder/work
 }
 
+@test "a worktree given back its branch has an index that matches it, and keeps the files on disk" {
+	# Seen on a host (2026-10-01): an add that failed partway left no index,
+	# so once the branch was back the role found every file staged as
+	# deleted. The index is read from the branch; the tree is not touched.
+	stub_privileged_tools
+	repo="$(make_repo)"
+	echo kept >"$repo/file" && git -C "$repo" add file && git -C "$repo" -c user.email=t@t -c user.name=t commit -q -m file
+	fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	git -C "$repo" update-ref -d refs/heads/builder/work
+	rm "$repo/.git/worktrees/builder/index"
+	echo work >"$STATE/worktrees/acme/builder/new"
+	run fabriek_role_worktree_ensure "$STATE" acme builder "$repo" 0
+	assert_success
+	run git -C "$STATE/worktrees/acme/builder" status --porcelain
+	assert_output "?? new"
+}
+
 @test "a role's ref namespace that git pruned is made again, so its ACL has somewhere to go" {
 	# pack-refs removes a loose ref's directory once it is empty, and only
 	# root may make one under refs/heads: without it the role cannot write
