@@ -124,6 +124,9 @@ A change to what a role session is shows up there as a diff.
   and command; `repo-declaration.sh`, `schema.sh`, `resources.sh`, `sizes.sh`,
   `operator-config.sh` are the declaration's and the operator's schemas and
   the clamp between them;
+  `dependency-cache.sh` and `npm-cache.nix` are a factory's npm cache,
+  built at render from the commit's `package-lock.json`, from allowed
+  registries only (ADR-046);
   `check.sh` is `fabriek check`, `ls` and `show`:
   the declaration and every specialist resolved at the commit, evaluation
   only.

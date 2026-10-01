@@ -86,6 +86,16 @@ fabriek_role_profile() {
 	readlink -f "$link"
 }
 
+## The store path of the factory's dependency cache for one ecosystem
+## (ADR-046), resolved like a profile; fails quietly when the commit had
+## no lockfile for it.
+## fabriek_factory_cache <etc> <ecosystem>
+fabriek_factory_cache() {
+	local link="$1/cache/$2"
+	[ -L "$link" ] || return 1
+	readlink -f "$link"
+}
+
 ## A role's pi directory, rendered by prepare beside its profile
 ## (factory-render.sh), resolved like the profile.
 fabriek_role_pi_dir() {

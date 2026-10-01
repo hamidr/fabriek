@@ -1,7 +1,7 @@
 ---
 id: ADR-046
 title: A factory's dependency cache is built on the operator's host from the commit's lockfiles
-status: proposed
+status: implementing
 date: 2026-09-14
 status_date: 2026-10-01
 summary: render builds a read-only cache per lockfile on the host, from allowed registries only; nothing fetches on a cage's word

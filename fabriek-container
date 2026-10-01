@@ -40,6 +40,8 @@ FABRIEK_LIB="${FABRIEK_LIB:-@lib@}"
 . "$FABRIEK_LIB/machine-spec.sh"
 # shellcheck source=modules/factory-render.sh
 . "$FABRIEK_LIB/factory-render.sh"
+# shellcheck source=modules/dependency-cache.sh
+. "$FABRIEK_LIB/dependency-cache.sh"
 # shellcheck source=modules/transcript.sh
 . "$FABRIEK_LIB/transcript.sh"
 # shellcheck source=modules/forge.sh
@@ -401,6 +403,17 @@ cmd_role_enter() {
 		opts+=(--setenv "NIXCAGE_PATH_PREFIX=$profile/bin" --store-root "$profile")
 	fi
 
+	## The commit's npm artifacts, fetched at render (ADR-046): npm resolves
+	## from them offline and read-only, and writes its logs under the home,
+	## since a cage has no route to fetch what the cache lacks.
+	local npm_cache
+	if npm_cache="$(fabriek_factory_cache "$FABRIEK_ETC" npm)"; then
+		opts+=(--store-root "$npm_cache"
+			--setenv "npm_config_cache=$npm_cache"
+			--setenv "npm_config_offline=true"
+			--setenv "npm_config_logs_dir=~/.npm/_logs")
+	fi
+
 	if [ -n "$auth_sock" ]; then
 		opts+=(--auth-sock "$auth_sock")
 	else
@@ -603,6 +616,21 @@ render_profiles() {
 		'{ rev: $rev, roles: $roles, decider: $decider }' >"$FABRIEK_ETC/profiles.json"
 }
 
+## The repository's dependency caches (ADR-046), built here from the
+## lockfiles at the pin and linked where a session's composer finds them;
+## one an earlier pin left is unlinked when this one has no lockfile.
+render_caches() {
+	local clone="$1" rev="$2" cache
+	cache="$(fabriek_npm_cache_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_NIXPKGS" "$FABRIEK_SYSTEM")" ||
+		die "could not build the npm cache from package-lock.json at $rev"
+	if [ -n "$cache" ]; then
+		mkdir -p "$FABRIEK_ETC/cache"
+		ln -sfn "$cache" "$FABRIEK_ETC/cache/npm"
+	else
+		rm -f "$FABRIEK_ETC/cache/npm"
+	fi
+}
+
 ## What the build did, at boot, from the credential (ADR-057 point 4): the
 ## repository at the pin, its declaration clamped against the caps, the
 ## files the services include, the bridge's set, the record's bound, a
@@ -649,6 +677,7 @@ cmd_factory_render() {
 	printf '%s\n' "$catalogues_list" >"$FABRIEK_ETC/catalogues"
 	render_files "$spec" "$clone" "$rev"
 	render_profiles "$clone" "$rev"
+	render_caches "$clone" "$rev"
 	systemctl restart "fabriek-$factory-egress-credentials.service"
 	## Reloaded rather than restarted where it can be: a restart drops
 	## every connection a cage has open through it, and counts against

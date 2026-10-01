@@ -125,6 +125,12 @@ stub_nix_build() {
 #!/usr/bin/env bash
 if [ "\$1" = build ]; then
 	printf '%s\n' "\$*" >>"$CALLS/nix-build"
+	case "\$*" in *npm-cache.nix*)
+		if [ -e "$CALLS/fail-npm-cache" ]; then echo "error: hash mismatch in fixed-output derivation" >&2; exit 1; fi
+		mkdir -p "$STORE/fabriek-npm-cache/_cacache"
+		echo "$STORE/fabriek-npm-cache"
+		exit 0 ;;
+	esac
 	role="\$(printf '%s\n' "\$*" | sed -n 's/.*role = "\([^"]*\)".*/\1/p')"
 	if [ -e "$CALLS/fail-\$role" ]; then echo "error: role \$role names devShell backend, which the repository does not define" >&2; exit 1; fi
 	out="$STORE/fabriek-role-\$role"

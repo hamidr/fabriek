@@ -433,6 +433,19 @@ JSON
 	assert_output --partial "role builder has no pi directory"
 }
 
+# ADR-046 point 1d: the cache render built from the commit's lockfile is
+# the store path npm resolves from, read-only and offline; what npm writes
+# goes under the role's home.
+@test "given the factory's npm cache, a session sees it as a store root and npm resolves from it offline" {
+	mkdir -p "$FABRIEK_ETC/cache" "$TEST_TEMP_DIR/store/npm-cache"
+	ln -s "$TEST_TEMP_DIR/store/npm-cache" "$FABRIEK_ETC/cache/npm"
+	CACHE="$(readlink -f "$TEST_TEMP_DIR/store/npm-cache")"
+	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder
+	assert_success
+	run recorded
+	assert_output "--uid 60000 --user builder --home $STATE/homes/acme-builder --network fb-0:10.77.0.10/24 --no-nix-daemon --setenv NIXCAGE_PATH_PREFIX=$PROFILE/bin --store-root $PROFILE --store-root $CACHE --setenv npm_config_cache=$CACHE --setenv npm_config_offline=true --setenv npm_config_logs_dir=~/.npm/_logs --auth-sock /tmp/agent.sock acme-builder $STATE/worktrees/acme/builder"
+}
+
 @test "a role whose build realised no profile enters with the floor alone" {
 	rm "$FABRIEK_ETC/roles/builder/profile"
 	run_fabriek_container role-enter --repository "$REPO" --auth-sock /tmp/agent.sock acme builder

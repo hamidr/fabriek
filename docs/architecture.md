@@ -213,7 +213,12 @@ factory's directory `declaration.json`, `rev`, `notes.json`,
 `bridge.json`, `proxy/endpoints.conf`, `endpoints.json`, `model.json`,
 `decider-policy.md`, `pi-decider/`, and per role `roles/<role>/profile`,
 built by the host's daemon from the repository at the pin under
-`--restrict-eval`, and `roles/<role>/pi`; then `profiles.json`), files
+`--restrict-eval`, and `roles/<role>/pi`; then `profiles.json`; and
+`cache/npm`, the npm cache built the same way from the commit's
+`package-lock.json`, each artifact fetched by its integrity and only from
+an allowed registry, a lockfile naming any other host refused by entry
+before anything is fetched: `modules/dependency-cache.sh`,
+`modules/npm-cache.nix`, ADR-046), files
 each model credential the rendered factory reaches under the factory's
 state for the proxy's user (`modules/factory-up.sh`), brings the
 factory's machine up with `machine up`, prepares, and writes the mark
@@ -272,7 +277,9 @@ by the bus. Then `nixcage-container <verb> --machine <factory> ...`.
 The planned line is `cmd_role_enter`'s, in a fixed order asserted whole
 by `seam.bats`: `--uid`, `--user`, `--home`, `--network` (the plan's
 placement on the factory's bridge), `--no-nix-daemon`, the profile on
-`NIXCAGE_PATH_PREFIX` when render realised one, then `--auth-sock` (by
+`NIXCAGE_PATH_PREFIX` when render realised one, the npm cache as a store
+root with npm told to resolve from it offline when render built one,
+then `--auth-sock` (by
 hand) or `--no-agent` (supervised), the task bind if given, the signing
 binds, and for a supervised run the actor's part: the role's own pi
 directory bound at `PI_CODING_AGENT_DIR` and `PI_AGENT_DIR`, the bus
