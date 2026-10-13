@@ -34,10 +34,13 @@ journal socket (nixcage ADR-011).
 
 **1. One detector per factory, on the host.** A unit
 `fabriek-<name>-detector` in the factory's slice, beside the executor
-(`modules/host/executor.nix`). A detector that fails blinds one factory,
-and the unit's state is what `fabriek ps` shows. It is uncaged and reads
-what a role wrote only as data: nothing it reads reaches a command line
-(invariant 1).
+(`modules/host/executor.nix`), as its own unprivileged user in the
+`systemd-journal` group, holding only the detector's own NATS
+credential: it issues no command, so root buys it nothing the executor's
+root needs for binds and signing. A detector that fails blinds one
+factory, and the unit's state is what `fabriek ps` shows. It is uncaged
+and reads what a role wrote only as data: nothing it reads reaches a
+command line (invariant 1).
 
 **2. A feeder merges the factory's sources into one line per event.**
 `fabriek-container detector-feed` follows the host's journal and the
@@ -51,18 +54,24 @@ source's own fields. The sources:
   `bridge.json` so the rules need no factory's addresses.
 - `proxy`: the factory's nginx server, whose `fabriek_egress` log format
   becomes `escape=json`. Nothing reads that log today.
-- `firewall`: the host's forward chain drops from and to `fb-*` with a
-  rate-limited `log prefix "fabriek-drop "` (`modules/host/proxy.nix`).
+- `firewall`: the host's forward chain drops from and to `fb-*`
+  (`modules/host/proxy.nix`), today silent; this decision adds a
+  rate-limited `log prefix "fabriek-drop "` to both rules.
 - `bridge`: nixcage's `nixcage-drop <reason>` lines from the machine
   unit's journal, the role named from the port through `list --json`.
 - `bus`, `forge`: the host's nats-server and Forgejo lines that name one
   of this factory's users (`<factory>-<role>`). A shared service's line
   that names no user of this factory never enters this detector.
 - `executor`: the factory's slice units.
-- `session`: what a role's session writes on stdout and stderr, which the
-  executor tags with the role it started (`executor/sessions.ts`). A cage
-  has no journal of its own, so this is the only place a role's own words
-  reach the detector, and every such line is `role_claimed: true`.
+- `session`: what a role's session writes on stdout and stderr. Today
+  `sessions.ts` spawns `role-enter` with `stdio: ["pipe", "inherit",
+  "inherit"]`, so every role's output lands untagged on the one
+  per-factory executor unit's own stdout (`modules/host/executor.nix`);
+  this decision changes that spawn to pipe stdout and stderr and prefix
+  each line with the role before the executor logs it, which is what the
+  feeder then reads. A cage has no journal of its own, so this is the
+  only place a role's own words reach the detector, and every such line
+  is `role_claimed: true`.
 
 **3. rsigma is a filter, and fabriek owns the bus.** The unit runs the
 feeder into `rsigma engine daemon --input stdin --output stdout` and its
@@ -91,9 +100,14 @@ violation, a forge login that failed. `low` is noisy, or claimed: a 403 or
 404 at the proxy, and every rule over `session`, which a role can forge
 or flood and which therefore never rises above `low`.
 
-**6. The operator sees every detection; nothing acts on one.** Each goes
-to the factory's `detections` stream, capped at 10000 entries as `probes`
-is, as `{rule, rule_id, level, role, source, role_claimed, ts, event}`.
+**6. The operator sees every detection; nothing acts on one.** The
+executor's per-connect stream set (ADR-069 point 5) grows by one:
+`detections`, capped at 10000 entries as `probes` is, created and owned
+by the executor alone, which stays the account's one manager. The
+detector connects, subscribes and publishes idempotently on start and
+retries if `detections` is not yet there, as a role retries an absent
+`probes` today. Each entry goes to that stream as
+`{rule, rule_id, level, role, source, role_claimed, ts, event}`.
 The relay forwards it; the TUI keeps the last fifty, marks the claimed
 ones, counts each role's high detections beside its name, and strips
 control characters from every field before it renders one, since `event`
@@ -115,7 +129,10 @@ argv from every reader but the detector.
 
 The probes stream changes shape: its entries carry fields instead of one
 `event` line, and `executor/trace.ts`, `tui/model.ts` and
-`relay/format.ts` move with it in the same change. Each factory's bus
+`relay/format.ts` move with it in the same change. `executor/sessions.ts`
+changes its spawn from inherited stdio to a piped, role-prefixed one, and
+the forward chain in `modules/host/proxy.nix` gains the two log lines the
+feeder reads. Each factory's bus
 gains a user and a stream; each host gains a unit per factory and a
 binary that is not in nixpkgs, packaged from its release archive with its
 provenance checked, as `modules/codegraph/` is.
@@ -141,6 +158,9 @@ machine already works.
 - The feeder's bats, with `journalctl` and `nats` stubbed: each source
   becomes its line, a shared service's line naming another factory's user
   is dropped, a session line is claimed.
+- `sessions.test.ts`: a role's stdout and stderr lines each carry that
+  role's prefix in what the executor logs; two roles' interleaved output
+  never cross-tags.
 - `prepare.bats`: the detector may subscribe to `probes` and publish to
   `detections` only; the executor may subscribe to `detections`.
 - `host_module.bats`: a detector unit per declared factory, in its slice.
