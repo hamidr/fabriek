@@ -1,7 +1,7 @@
 ---
 id: ADR-071
 title: A detector per factory reads its logs and probes with rsigma and shows the operator what its rules match
-status: proposed
+status: accepted
 date: 2026-10-13
 status_date: 2026-10-13
 summary: rsigma per factory on the host over its logs and probes; detections to the TUI and the trace, never acted on
