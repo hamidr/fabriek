@@ -83,7 +83,16 @@ catalogue_build() {
 @test "the shipped catalogue offers its specialists by directory name" {
 	run catalogue_eval 'builtins.attrNames cat.specialists'
 	assert_success
-	assert_output '["architect","committer","developer","django","flask","frontend","java","manager","python","react","reviewer","scala","springboot"]'
+	assert_output '["architect","committer","developer","django","flask","frontend","java","manager","playwright","python","react","reviewer","scala","springboot"]'
+}
+
+@test "the shipped playwright specialist runs the project's playwright against browsers from the store" {
+	run catalogue_build '(cat.compose { role = "e2e"; specialists = [ "playwright" ]; })'
+	assert_success
+	run cat "$output/bin/playwright"
+	assert_output --partial 'PLAYWRIGHT_BROWSERS_PATH=/nix/store/'
+	assert_output --partial 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1'
+	assert_output --partial 'npx --no-install playwright'
 }
 
 @test "the shipped java and python specialists declare their language servers, composed into one lsp.json" {
