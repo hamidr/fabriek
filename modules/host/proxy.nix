@@ -117,22 +117,8 @@ in
     }
     // lib.mapAttrs' (
       name: p:
-      lib.nameValuePair "fabriek-${name}-egress-credentials" {
-        description = "Compose the factory ${name}'s credential headers for the proxy";
-        wantedBy = [ "multi-user.target" ];
-        before = [ "nginx.service" ];
-        requiredBy = [ "nginx.service" ];
-        after = [ "fabriek-${name}-state.service" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          Slice = "fabriek-${name}.slice";
-        };
-        path = [
-          pkgs.coreutils
-          pkgs.jq
-        ];
-        script = ''
+      let
+        compose = ''
           set -eu
           install -d -m 0750 -o ${egress} -g ${egress} /run/fabriek-egress /run/fabriek-egress/${name}
           endpoints=${p.etc}/endpoints.json
@@ -149,6 +135,26 @@ in
             chmod 0400 "$conf"
           done
         '';
+      in
+      lib.nameValuePair "fabriek-${name}-egress-credentials" {
+        description = "Compose the factory ${name}'s credential headers for the proxy";
+        wantedBy = [ "multi-user.target" ];
+        before = [ "nginx.service" ];
+        requiredBy = [ "nginx.service" ];
+        after = [ "fabriek-${name}-state.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          Slice = "fabriek-${name}.slice";
+        };
+        path = [
+          pkgs.coreutils
+          pkgs.jq
+        ];
+        script = compose;
+        ## A reload composes the headers again and restarts nothing: nginx
+        ## requires this unit, so a restart of it would be one of nginx.
+        reload = compose;
       }
     ) cfg.plan;
 

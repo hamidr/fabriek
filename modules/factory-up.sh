@@ -120,15 +120,27 @@ fabriek_up_credential() {
 ## factory's state for the proxy's user alone (ADR-025): a copy of the
 ## file the operator named, never its path in the credential and never a
 ## value on a command line. One for an endpoint the clamp dropped is not
-## filed.
+## filed. Up calls this, and so does credential-refresh when a file the
+## operator keeps changes (ADR-072 point 3), so a token renewed on the host
+## reaches the proxy by the same road it first took.
 ##
-## fabriek_up_secrets <factory> <state-dir> <endpoints.json>
-fabriek_up_secrets() {
-	local factory="$1" state="$2" endpoints="$3" config creds host file
+## A copy goes in beside its place and is renamed over it, so a failed one
+## leaves the header that was there. The egress unit is reloaded, which
+## composes the headers again, and never restarted: nginx requires it, and
+## a restart of it is a restart of nginx, which drops every connection a
+## cage has open, resets the spend count and counts against systemd's start
+## limit. nginx is reloaded for the same reason, and started only when it
+## is not running. The stamp each credential's age is read from is touched
+## last, so it moves only when the proxy has the new header.
+##
+## fabriek_credential_refresh <factory> <state-dir> <endpoints.json>
+fabriek_credential_refresh() {
+	local factory="$1" state="$2" endpoints="$3" config creds host file copy filed=()
 	[ -f "$endpoints" ] || return 0
 	config="$(fabriek_operator_config_path)"
 	creds="$(fabriek_operator_credentials "$config")" || return 1
 	install -d -m 0700 "$state/egress"
+	install -d -m 0755 "$state/egress-age"
 	while IFS= read -r host; do
 		[ -n "$host" ] || continue
 		file="$(printf '%s' "$creds" | jq -r --arg h "$host" '.[$h].file // empty')"
@@ -136,14 +148,22 @@ fabriek_up_secrets() {
 			echo "fabriek-container: the credential for $host is not at $file" >&2
 			return 1
 		fi
-		cp "$file" "$state/egress/$host"
-		chmod 0400 "$state/egress/$host"
-		chown fabriek-egress:fabriek-egress "$state/egress/$host" || return 1
+		copy="$state/egress/.$host.new"
+		if ! { cp "$file" "$copy" && chmod 0400 "$copy" && chown fabriek-egress:fabriek-egress "$copy"; }; then
+			rm -f "$copy"
+			return 1
+		fi
+		mv -f "$copy" "$state/egress/$host"
+		filed+=("$host")
 	done < <(jq -r '.credentials | keys[]' "$endpoints")
-	## The proxy read its headers when it started, which was before this.
-	systemctl restart "fabriek-$factory-egress-credentials.service"
-	## Reloaded rather than restarted where it can be: a restart drops
-	## every connection a cage has open through it, and counts against
-	## systemd's start limit.
-	systemctl reload nginx.service || systemctl restart nginx.service
+	systemctl reload-or-restart "fabriek-$factory-egress-credentials.service" || return 1
+	if systemctl is-active --quiet nginx.service; then
+		systemctl reload nginx.service || return 1
+	else
+		systemctl start nginx.service || return 1
+	fi
+	for host in ${filed[@]+"${filed[@]}"}; do
+		touch "$state/egress-age/$host"
+		chmod 0644 "$state/egress-age/$host"
+	done
 }

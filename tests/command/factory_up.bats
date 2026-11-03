@@ -180,10 +180,10 @@ perms() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 	[ ! -e "$STATE/egress/api.openai.com" ]
 	run perms "$STATE/egress/api.anthropic.com"
 	assert_output 400
-	run grep -c "fabriek-egress:fabriek-egress $STATE/egress/api.anthropic.com" "$CALLS/chown"
+	run grep -c "fabriek-egress:fabriek-egress $STATE/egress/.api.anthropic.com.new" "$CALLS/chown"
 	assert_output 1
 	run cat "$CALLS/systemctl"
-	assert_line --partial 'restart fabriek-acme-egress-credentials.service'
+	assert_line --partial 'reload-or-restart fabriek-acme-egress-credentials.service'
 	assert_line --partial 'reload nginx.service'
 	assert_line --partial 'reload nats.service'
 	run cat "$FORGE/users"

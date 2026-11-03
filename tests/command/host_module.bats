@@ -366,6 +366,15 @@ set"
 # the host forwards nothing from or to one, whatever docker or a VPN has
 # set ip_forward to. A drop in this chain holds beside any other table's
 # accept, which is nftables' rule for base chains.
+@test "a factory's egress unit composes its headers again on reload, which restarts nothing that requires it" {
+	run host_eval 'factories.acme.path = "/srv/acme";' \
+		'{ script = c.systemd.services.fabriek-acme-egress-credentials.script;
+		   reload = c.systemd.services.fabriek-acme-egress-credentials.reload; }'
+	assert_success
+	run jq -r '.reload == .script and (.reload | length > 0)' <<<"$output"
+	assert_output true
+}
+
 @test "the host forwards nothing from or to a factory's bridge" {
 	run host_eval 'factories.acme.path = "/srv/acme";' \
 		'{ on = c.networking.nftables.enable; content = c.networking.nftables.tables.fabriek.content; }'

@@ -1072,13 +1072,32 @@ cmd_factory_up() {
 	systemctl start "fabriek-$factory-state.service" || die "could not start $factory's state"
 
 	cmd_factory_render
-	fabriek_up_secrets "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
+	fabriek_credential_refresh "$factory" "$STATE_DIR" "$FABRIEK_ETC/endpoints.json" || exit 1
 	## The factory's machine (ADR-070), ready before prepare asks it for
 	## the uids its credentials are given to and before any session.
 	if [ -n "${FABRIEK_MACHINE:-}" ]; then
 		nixcage-container machine up "$FABRIEK_MACHINE" || die "could not bring up $factory's machine"
 	fi
 	cmd_factory_prepare "$factory" "$path"
+}
+
+## Every rendered factory's credentials, filed again from the files the
+## operator keeps: what the host's path unit runs when one of them changed
+## (ADR-072 point 3). A factory not rendered yet holds nothing to file, and
+## one that fails does not keep the rest from theirs.
+cmd_credential_refresh() {
+	local facts failed=0
+	for facts in "$FABRIEK_FACTORIES"/*.env; do
+		[ -f "$facts" ] || continue
+		(
+			set -a
+			# shellcheck disable=SC1090  # the host's file for the factory named
+			. "$facts"
+			set +a
+			fabriek_credential_refresh "$FABRIEK_FACTORY" "$FABRIEK_STATE" "$FABRIEK_ETC/endpoints.json"
+		) || failed=1
+	done
+	[ "$failed" -eq 0 ] || exit 1
 }
 
 ## fabriek down: refused while a role's cage runs, since ADR-017 exists
@@ -1183,6 +1202,7 @@ main() {
 	role-transcript) cmd_role_transcript "$@" ;;
 	factory-mirror) cmd_factory_mirror "$@" ;;
 	factory-up) cmd_factory_up "$@" ;;
+	credential-refresh) cmd_credential_refresh "$@" ;;
 	factory-down) cmd_factory_down "$@" ;;
 	factory-status) cmd_factory_status "$@" ;;
 	factory-clone) cmd_factory_clone "$@" ;;
