@@ -329,6 +329,109 @@ TOML
 	assert_output --partial "api.anthropic.com"
 }
 
+# An endpoint is declared once, by name (ADR-072 point 1): its host, the
+# provider that answers it, the credential's header and file, and the model
+# names. The readers below see it as the host-keyed rows the rest of fabriek
+# already reads, and a name in an egress list as its host.
+with_named_endpoint() {
+	cat >"$CONFIG" <<TOML
+[caps]
+egress = ["zd-gateway", "api.anthropic.com"]
+
+[endpoints.zd-gateway]
+host = "gw.example.test"
+provider = "anthropic"
+header = "Authorization"
+file = "/var/lib/fabriek-credentials/zd-gateway"
+
+[endpoints.zd-gateway.models]
+default = "claude-sonnet-5"
+opus = "claude-opus-5"
+
+[endpoints.zd-gateway.compat]
+supportsStrictTools = false
+
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+}
+
+@test "a named endpoint expands to its host's credential, start model and endpoint row" {
+	with_named_endpoint
+	run fabriek_operator_credentials "$CONFIG"
+	assert_success
+	run jq -cS . <<<"$output"
+	assert_output '{"gw.example.test":{"file":"/var/lib/fabriek-credentials/zd-gateway","header":"Authorization"}}'
+	run fabriek_operator_models "$CONFIG"
+	run jq -cS . <<<"$output"
+	assert_output '{"gw.example.test":"claude-sonnet-5"}'
+	run fabriek_operator_endpoints "$CONFIG"
+	run jq -cS . <<<"$output"
+	assert_output '{"gw.example.test":{"compat":{"supportsStrictTools":false},"models":{"default":"claude-sonnet-5","opus":"claude-opus-5"},"provider":"anthropic"}}'
+}
+
+@test "a named endpoint in the operator's egress is its host, and the name is kept beside it" {
+	with_named_endpoint
+	run fabriek_operator_caps "$CONFIG"
+	assert_success
+	run jq -c .egress <<<"$output"
+	assert_output '["gw.example.test","api.anthropic.com"]'
+	run jq -c .names <<<"$(fabriek_operator_config "$CONFIG")"
+	assert_output '{"zd-gateway":"gw.example.test"}'
+}
+
+@test "an operator declaring no named endpoint declares none" {
+	write_config
+	run fabriek_operator_endpoints "$CONFIG"
+	assert_success
+	assert_output "{}"
+}
+
+@test "a named endpoint with a dotted name, no host, no default model, a header without a file, or a host another entry holds is refused" {
+	local body name
+	for case in 'dotted.name|host = "gw.example.test"
+provider = "anthropic"
+[endpoints."dotted.name".models]
+default = "m"' 'gw|provider = "anthropic"
+[endpoints.gw.models]
+default = "m"' 'gw|host = "gw.example.test"
+provider = "anthropic"
+[endpoints.gw.models]
+opus = "m"' 'gw|host = "gw.example.test"
+provider = "anthropic"
+header = "Authorization"
+[endpoints.gw.models]
+default = "m"'; do
+		name="${case%%|*}"
+		body="${case#*|}"
+		cat >"$CONFIG" <<TOML
+[caps]
+[endpoints.${name/./\".\"}]
+$body
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+		run fabriek_operator_endpoints "$CONFIG"
+		assert_failure
+	done
+	cat >"$CONFIG" <<TOML
+[caps]
+[credentials."gw.example.test"]
+header = "x-api-key"
+file = "/run/secrets/k"
+[endpoints.gw]
+host = "gw.example.test"
+provider = "anthropic"
+[endpoints.gw.models]
+default = "m"
+[factories.acme]
+path = "/home/me/Src/acme"
+TOML
+	run fabriek_operator_endpoints "$CONFIG"
+	assert_failure
+	assert_output --partial "gw.example.test"
+}
+
 # ADR-048: FABRIEK_CONFIG, then the person's own file, then the host's,
 # which a NixOS module renders.
 @test "the host's config is read when the person has none, and the person's wins when both exist" {

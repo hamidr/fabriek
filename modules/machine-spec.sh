@@ -23,6 +23,12 @@ fabriek_machine_spec() {
 
 	declaration="$(fabriek_declaration_validate <"$declaration_file")" || return 1
 
+	## An endpoint is named in the operator's file and the declaration may
+	## say the name; the clamp and everything after it work in hosts.
+	declaration="$(printf '%s' "$declaration" | jq -c --slurpfile local "$local_file" '
+	  ($local[0].names // {}) as $names
+	  | if .resources.egress? then .resources.egress |= map($names[.] // .) else . end')" || return 1
+
 	## What the clamp changed is kept in the spec rather than printed: this
 	## runs inside a build, whose log the operator never sees when it
 	## succeeds, and a dropped endpoint is something they must see.
@@ -65,6 +71,9 @@ fabriek_machine_spec() {
 		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
 		     , egressModels:
 		         ( ($l.models // {})
+		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
+		     , egressEndpoints:
+		         ( ($l.endpoints // {})
 		         | with_entries(select(.key as $k | ($d.resources.egress | index($k)))) )
 		     }
 		   else {} end)'

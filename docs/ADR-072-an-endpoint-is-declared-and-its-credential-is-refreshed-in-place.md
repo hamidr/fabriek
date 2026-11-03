@@ -189,7 +189,7 @@ built-in hosts render byte-identical to before, and the proxy's location for
 a non-`x-api-key` endpoint clears the incoming `x-api-key`.
 
 ```bash
-nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats
+nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats tests/unit/repo_declaration.bats
 ```
 Passes when a named endpoint expands to its host's credential, models and
 endpoint row, a name in `caps.egress` or a declaration's `egress` becomes its
@@ -241,7 +241,7 @@ docmeta-check docs && docmeta-tracker --check docs
 ## Tasks
 
 - [x] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
-- [ ] T2 Named endpoints: the operator's `endpoints.<name>` schema, its expansion into the host-keyed credential, models and endpoint rows, names in `caps.egress` and a declaration's `egress` resolved to hosts before the clamp, a repository's declared endpoint refused (after: T1)
+- [x] T2 Named endpoints: the operator's `endpoints.<name>` schema, its expansion into the host-keyed credential, models and endpoint rows, names in `caps.egress` and a declaration's `egress` resolved to hosts before the clamp, a repository's declared endpoint refused (after: T1)
 - [ ] T3 A role and a specialist name a model: `model` on a role and a catalogue specialist, resolved against the start endpoint's `models` at render, refused when unlisted, composed per role in `fabriek_actor_command` (after: T2)
 - [ ] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
 - [ ] T5 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
@@ -251,7 +251,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [ ] T9 `maxAge` on an endpoint reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T6)
 - [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
 - [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T5)
-- [ ] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats` (after: T2)
+- [ ] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats tests/unit/repo_declaration.bats` (after: T2)
 - [ ] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats` (after: T3)
 - [ ] G4 `nix develop --command bats tests/command/egress_refresh.bats` (after: T6)
 - [ ] G5 `nix develop --command bats tests/command/host_module.bats` (after: T4, T7)

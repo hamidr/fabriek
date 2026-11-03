@@ -59,6 +59,8 @@ fabriek_credential_toml() {
 	  table("caps"; .caps // {}),
 	  table("credentials"; (.credentials // {}) | map_values(.header)),
 	  table("models"; .models // {}),
+	  (if (.names // {}) == {} then empty else table("names"; .names) end),
+	  (if (.endpoints // {}) == {} then empty else ({endpoints: .endpoints} | tables("")) end),
 	  (if .embedder.url then ("[embedder]", "url = \(.embedder.url | tojson)", "") else empty end),
 	  ## The factory declared whole in the operator'"'"'s file, when it is
 	  ## (ADR-061): the entry less the register'"'"'s keys, named. The

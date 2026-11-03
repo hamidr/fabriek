@@ -206,7 +206,8 @@ fabriek_render_credential() {
 fabriek_render_local() {
 	local credential="$1"
 	jq -c '{ factory: .factory.name, hostSystem: .factory.hostSystem,
-	         caps: (.caps // {}), credentials: (.credentials // {}), models: (.models // {}) }' "$credential"
+	         caps: (.caps // {}), credentials: (.credentials // {}), models: (.models // {}),
+	         names: (.names // {}), endpoints: (.endpoints // {}) }' "$credential"
 }
 
 ## The URIs a profile's evaluation may reach (ADR-057 point 6): the clone at

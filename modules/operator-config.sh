@@ -45,9 +45,10 @@ fabriek_operator_config_program() {
 ## own schema checks once the entry is one. Specialists and skills are
 ## ADR-042's keys spelled in TOML, less lsp, which a bare name cannot say.
 def schema:
-  { top: ["caps", "factories", "credentials", "models", "specialists", "skills", "catalogues"]
+  { top: ["caps", "factories", "credentials", "models", "endpoints", "specialists", "skills", "catalogues"]
   , factory: ["path", "roles", "workflows", "resources", "decider", "catalogue"]
   , credential: ["header", "file"]
+  , endpoint: ["host", "provider", "api", "compat", "header", "file", "models"]
   , specialist: ["extends", "tools", "skills", "prompt"]
   , skill: ["tools", "skill"]
   , catalogue: ["git", "rev", "narHash", "dir"]
@@ -123,6 +124,37 @@ def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") |
          (if ($v.file? | type) != "string" or ($v.file | length) == 0
           then ["credential \($e): says no file to read it from"] else [] end)
        ] | cat) | cat),
+    ## An endpoint declared once, by name (ADR-072 point 1): where it is,
+    ## which pi provider answers it, the credential's header and file, and
+    ## the model names a role may pick. A name has no dot, so it cannot be
+    ## taken for a host, and no host is declared twice, here or in the
+    ## credentials and models tables.
+    ((if ($c.endpoints | type) == "object" then $c.endpoints else {} end) as $e
+     | [ ($e | to_entries[] | select(.key | test("^[a-zA-Z0-9][a-zA-Z0-9-]*$") | not)
+          | "endpoint \(.key): is not a name (letters, digits and dashes, no dot)"),
+         ($e | to_entries[] | .key as $n | .value as $v |
+          if ($v | type) != "object" then "endpoint \($n): is not a table" else
+          ( unknown($v; schema.endpoint; "endpoint \($n)")[],
+            (if ($v.host? | type) != "string" or ($v.host | length) == 0
+             then "endpoint \($n): says no host" else empty end),
+            (if ($v.provider? | type) != "string" or ($v.provider | test("^[a-z][a-z0-9-]*$") | not)
+             then "endpoint \($n): says no provider that answers it" else empty end),
+            (if ($v.api? // null) != null and (($v.api | type) != "string" or ($v.api | test("^[a-z][a-z0-9-]*$") | not))
+             then "endpoint \($n): api is not an api name" else empty end),
+            (if ($v.compat? // null) != null
+                and (($v.compat | type) != "object" or ($v.compat | [.[] | type | select(. == "object" or . == "array")] | length > 0))
+             then "endpoint \($n): compat must be a table of plain values" else empty end),
+            (if (($v.header? // null) == null) != (($v.file? // null) == null)
+             then "endpoint \($n): carries a header or a file without the other" else empty end),
+            (if ($v.models? | type) != "object" or ($v.models.default? | type) != "string"
+             then "endpoint \($n): models says no default" else
+             ($v.models | to_entries[] | select((.value | type) != "string" or (.value | test("^[A-Za-z0-9][A-Za-z0-9._:-]*$") | not))
+              | "endpoint \($n): model \(.key) is not a model id") end)
+          ) end),
+         ([$e[]? | .host? | strings] | group_by(.) | .[] | select(length > 1) | "host \(.[0]) is declared by two endpoints"),
+         ($e[]? | .host? | strings | select(. as $h | (($c.credentials // {}) | has($h)) or (($c.models // {}) | has($h)))
+          | "host \(.) is an endpoint and also has a credential or a model of its own; declare it in one place")
+       ] | map([.]) | cat),
     ## The model a session starts on, per endpoint, the operator's to name
     ## beside what it allows and holds a credential for (ADR-029 pins the
     ## agent, not the model). A model id is one word.
@@ -134,6 +166,26 @@ def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") |
   ] | cat | .[]
 JQ
 }
+
+## What a named endpoint stands for everywhere else (ADR-072 point 1): its
+## host's credential, start model and endpoint row, where the proxy, the
+## credential files and the clamp already look, and its name in an egress
+## list turned into its host. `names` stays beside, so a repository's egress
+## can be turned the same way where the declaration is read. A config naming
+## no endpoint passes through untouched.
+# shellcheck disable=SC2016 # a jq program, not a shell expansion
+FABRIEK_OPERATOR_EXPAND='
+  (.endpoints // {}) as $e
+  | if $e == {} then . else
+    ($e | with_entries({ key: .key, value: .value.host })) as $names
+    | def host: if type == "string" then ($names[.] // .) else . end;
+      .names = $names
+    | .credentials = ((.credentials // {}) + ([$e[] | select(.header != null) | { key: .host, value: { header: .header, file: .file } }] | from_entries))
+    | .models = ((.models // {}) + ([$e[] | { key: .host, value: .models.default }] | from_entries))
+    | .endpoints = ([$e[] | { key: .host, value: del(.host, .header, .file) }] | from_entries)
+    | (if .caps.egress? then .caps.egress |= map(host) else . end)
+    | (if .factories then .factories |= map_values(if .resources.egress? then .resources.egress |= map(host) else . end) else . end)
+    end'
 
 ## The operator's config as JSON, checked. Absent is refused rather than read
 ## as empty: no ceilings would mean a repository gets whatever it asked for,
@@ -235,8 +287,24 @@ fabriek_operator_config() {
 		fi
 	done < <(printf '%s' "$json" | jq -r '(.models // {}) | keys[]?')
 
+	## An endpoint's host reaches the proxy's locations and its header the
+	## directive beside them, as a credential's key and header do.
+	local named_host named_header
+	while IFS=$'\t' read -r named_host named_header; do
+		[ -n "$named_host" ] || continue
+		if ! fabriek_host_ok "$named_host"; then
+			echo "fabriek: $file declares an endpoint at $named_host, which is not a host" >&2
+			failed=1
+		fi
+		if [ -n "$named_header" ] && ! fabriek_header_name_ok "$named_header"; then
+			echo "fabriek: $file carries the credential for $named_host in $named_header, which is not a header name" >&2
+			failed=1
+		fi
+	done < <(printf '%s' "$json" |
+		jq -r '(.endpoints // {}) | to_entries[]? | "\(.value.host? // "")\t\(.value.header? // "")"')
+
 	[ "$failed" -eq 0 ] || return 1
-	printf '%s\n' "$json"
+	printf '%s' "$json" | jq -c "$FABRIEK_OPERATOR_EXPAND"
 }
 
 ## Each reader below captures the config before shaping it rather than piping
@@ -290,6 +358,14 @@ fabriek_operator_models() {
 	local json
 	json="$(fabriek_operator_config "${1:-}")" || return 1
 	printf '%s' "$json" | jq '.models // {}'
+}
+
+## The endpoints this operator declares beyond the shipped three, as rows
+## keyed by host; none is not an error.
+fabriek_operator_endpoints() {
+	local json
+	json="$(fabriek_operator_config "${1:-}")" || return 1
+	printf '%s' "$json" | jq -c '.endpoints // {}'
 }
 
 ## A factory's declaration from the operator's file (ADR-061 point 1): the

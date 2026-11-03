@@ -64,6 +64,24 @@ spec() { fabriek_machine_spec "$DECL" "$LOCAL" 2>/dev/null; }
 	assert_output '{"api.anthropic.com":"claude-opus-5"}'
 }
 
+@test "a named endpoint in a declaration's egress is its host before the clamp, and rides in the spec with its row" {
+	jq '.resources.egress = ["zd-gateway"]' "$DECL" >"$DECL.new" && mv "$DECL.new" "$DECL"
+	jq '.caps.egress = ["gw.example.test"] | .names = {"zd-gateway": "gw.example.test"}
+	  | .credentials = {"gw.example.test": "Authorization"}
+	  | .endpoints = {"gw.example.test": {"provider": "anthropic", "models": {"default": "m"}}}' "$LOCAL" >"$LOCAL.new" && mv "$LOCAL.new" "$LOCAL"
+	run jq -cS '.egress, .egressHeaders, .egressEndpoints, .declaration.resources.egress' <<<"$(spec)"
+	assert_line --index 0 '["gw.example.test"]'
+	assert_line --index 1 '{"gw.example.test":"Authorization"}'
+	assert_line --index 2 '{"gw.example.test":{"models":{"default":"m"},"provider":"anthropic"}}'
+	assert_line --index 3 '["gw.example.test"]'
+}
+
+@test "a named endpoint rides in the spec only for an endpoint the factory reaches" {
+	jq '.endpoints = {"api.anthropic.com": {"compat": {"supportsStrictTools": false}}, "gw.example.test": {"provider": "anthropic"}}' "$LOCAL" >"$LOCAL.new" && mv "$LOCAL.new" "$LOCAL"
+	run jq -c '.egressEndpoints' <<<"$(spec)"
+	assert_output '{"api.anthropic.com":{"compat":{"supportsStrictTools":false}}}'
+}
+
 @test "the spec carries the clamped declaration, so the machine reads it from a file and never evaluates it" {
 	run jq -r '.declaration.resources.cores, .declaration.roles.builder.shell, (.declaration.resources.egress | length)' <<<"$(spec)"
 	assert_line --index 0 8

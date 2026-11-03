@@ -330,6 +330,12 @@ validate_example() {
 	assert_output --partial colour
 }
 
+@test "a named endpoint cannot be declared by a repository: the endpoints are the operator's alone" {
+	run validate_with '.endpoints = {"zd-gateway": {host: "gw.example.test", provider: "anthropic"}}'
+	assert_failure
+	assert_output --partial endpoints
+}
+
 @test "a declaration may name the endpoints its agents reach" {
 	run validate_with '.resources.egress = ["api.anthropic.com"]'
 	assert_success

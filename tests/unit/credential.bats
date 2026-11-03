@@ -28,6 +28,17 @@ teardown() {
 	teardown_temp_dir
 }
 
+@test "a named endpoint reaches the credential as its host's row and a names table" {
+	jq '.names = {"zd-gateway": "gw.example.test"} | .endpoints = {"gw.example.test": {"provider": "anthropic", "models": {"default": "m", "opus": "o"}, "compat": {"supportsStrictTools": false}}}' "$CONFIG" >"$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
+	run fabriek_credential_toml "$CONFIG" acme "git+file:///home/me/Src/acme" 3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0 x86_64-linux
+	assert_success
+	printf '%s\n' "$output" >"$TEST_TEMP_DIR/fabriek.toml"
+	run fabriek_toml_json "$TEST_TEMP_DIR/fabriek.toml"
+	assert_success
+	run jq -cS '[.names, .endpoints]' <<<"$output"
+	assert_output '[{"zd-gateway":"gw.example.test"},{"gw.example.test":{"compat":{"supportsStrictTools":false},"models":{"default":"m","opus":"o"},"provider":"anthropic"}}]'
+}
+
 @test "the credential carries the factory, the pin, the caps, the headers, the models and the embedder, and never a secret's value or path" {
 	run fabriek_credential_toml "$CONFIG" acme "git+file:///home/me/Src/acme" 3f1c2ab9e0d4b6c7f8a9e1d2c3b4a5f6e7d8c9b0 x86_64-linux
 	assert_success
