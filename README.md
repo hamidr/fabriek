@@ -14,6 +14,14 @@ your host is one file you keep. Everything between the two, the cages,
 the board, the bus, the decider, the executor, the guard and the meter, is
 fabriek's, and none of it trusts a cage.
 
+## Needs
+
+A NixOS host with [nixcage](https://github.com/hamidr/nixcage)'s machines
+(microVMs) and the `services.fabriek` module (ADR-048, ADR-067). The CLI
+reaches the host's machine program through `sudo`, for that one program and
+the `fabriek` group; it opens no SSH connection. Model credentials stay
+on the host, in the proxy.
+
 ## Build one
 
 A Rust shop with two trades: a builder and a reviewer. Nothing below is
@@ -202,8 +210,8 @@ starts on, and where each factory's repository is. On NixOS the same
 file is `services.fabriek`, where each factory's machine is sized
 (`machine.memory`, `cpus`, `disk`) and a factory can come up at boot
 (ADR-048, ADR-070).
-A declaration names no endpoint, credential or model; those are the
-operator's alone.
+A declaration may ask for egress hosts, and the operator's endpoints cap
+what it gets; credentials and models are the operator's alone.
 
 Both files are closed schemas: a key fabriek does not recognise is refused
 by name. `docs/architecture.md` is the whole floor as built;
@@ -263,7 +271,12 @@ nix develop --command tests/system/journey.sh   # the whole factory on this host
 docmeta-check docs && docmeta-tracker --check docs
 quint run models/factory-lifecycle.qnt --invariant=allInvariants --max-steps=60 --max-samples=10000
 quint run models/tdd-guard.qnt --invariant=allInvariants --max-steps=40 --max-samples=10000
+quint run models/decider-ready.qnt --invariant=allInvariants --max-steps=30 --max-samples=60000
+quint run models/orphaned-assignment.qnt --invariant=allInvariants --max-steps=30 --max-samples=60000
 ```
+
+`CLAUDE.md` has the layout, the conventions and what each test directory
+drives.
 
 ADR-001 through ADR-008 describe code that now lives in nixcage; a change
 to cage behaviour is proposed there rather than here.
