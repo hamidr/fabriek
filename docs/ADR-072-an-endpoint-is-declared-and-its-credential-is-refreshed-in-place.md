@@ -258,4 +258,4 @@ docmeta-check docs && docmeta-tracker --check docs
 - [x] G5 `nix develop --command bats tests/command/host_module.bats` (after: T4, T7)
 - [x] G6 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T9)
 - [ ] G7 `FABRIEK_PROOF_DIR=/tmp/proof tests/manual/gateway.sh` on the host with a real token (after: T3, T4, T5, T7, T8, T9, T10)
-- [ ] G8 `docmeta-check docs && docmeta-tracker --check docs` (after: G1, G2, G3, G4, G5, G6)
+- [x] G8 `docmeta-check docs && docmeta-tracker --check docs` (after: G1, G2, G3, G4, G5, G6)
