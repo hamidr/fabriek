@@ -45,25 +45,41 @@ connection (ADR-067). The Mac holds a key devbox accepts.
 
 ## Decision
 
-**1. An endpoint is declared, and the built-in three become data.** A new
-operator table `endpoints.<host>` (`services.fabriek.endpoints` and the
-`endpoints` key of `config.toml`, beside `credentials` and `models`, ADR-061)
-names per host the pi provider that answers it, its `api` where that is not the
-provider's own, and a `compat` map copied into the provider's entry in
-`models.json`. The gateway needs `supportsEagerToolInputStreaming = false` and
+**1. An endpoint is declared once, by name, and carries all it needs.** A new
+operator table `endpoints.<name>` (`services.fabriek.endpoints` and the
+`endpoints` key of `config.toml`, ADR-061) holds, for one endpoint: its `host`,
+the pi `provider` that answers it, an `api` where that is not the provider's
+own, a `compat` map for `models.json`, the credential's `header` and `file`,
+and a `models` table of names to model ids with a `default`. The host is
+written once. `caps.egress` and a factory's `egress` name the endpoint by its
+name, so a repository never carries a company hostname. A name has no dot, so
+it cannot be taken for a host, and the operator's table wins over a one-word
+host. The three built-in hosts stay as they are, addressable by host through
+`credentials` and `models`, and ship as rows of `modules/endpoints.json`, the
+table the render merges the declared rows into; both hard-coded constants are
+deleted. A name is turned into its host before the clamp reads the
+declaration, so the proxy, the credential files and the firewall stay keyed by
+host. The gateway needs `supportsEagerToolInputStreaming = false` and
 `supportsStrictTools = false`, which pi's `models.json` takes for
-`anthropic-messages` (pi `docs/models-configuration.md`). The starting model
-stays `models.<host>`; a declared endpoint outside the shipped three with no
-`models` entry fails the render rather than starting pi on no model.
-fabriek ships the three current hosts as default entries in the same table, so
-nothing changes for an operator who declares none, and both constants are
-deleted. The table is the operator's alone: a repository's `fabriek.toml`
-cannot declare an endpoint, since that would widen its own reach (ADR-020). An
-endpoint is still routed only if the declaration's `egress` allows it and the
-operator's ceiling does. `models.json` keys a provider by name, so two allowed
-endpoints answering as one provider are refused by the render, naming it.
+`anthropic-messages` (pi `docs/models-configuration.md`). The table is the
+operator's alone: a repository's `fabriek.toml` cannot declare an endpoint,
+since that would widen its own reach (ADR-020). An endpoint is still routed
+only if the declaration's `egress` allows it and the operator's ceiling does.
+`models.json` keys a provider by name, so two allowed endpoints answering as
+one provider are refused by the render, naming it.
 
-**2. A credential file is re-read when it changes.** One function, called by
+**2. A role and a specialist name a model, and only by the operator's names.**
+A role may say `model = "opus"` in `fabriek.toml`, and a catalogue specialist
+may carry a `model` of its own. The order is the role's, then its first
+specialist that sets one, then the endpoint's `default`. The name is looked up
+in the `models` table of the endpoint the session starts on; one the operator
+did not list is refused at render, so a repository reaches no model the
+operator did not offer and the cost range stays the operator's. A session's
+`--model` is composed per role (`fabriek_actor_command`), where it was one
+`model.json` for the factory. ADR-029 pins pi as the agent and says nothing
+about who names the model; this is that rule, stated.
+
+**3. A credential file is re-read when it changes.** One function, called by
 `fabriek_up_secrets` and by a systemd path unit on each declared
 `credentials.<host>.file`, copies the file into the state of every factory
 whose clamped endpoints hold that host (credentials are the host's, the
@@ -75,7 +91,7 @@ is what `factory-up` already does). The file is the whole header value, as
 today (`Bearer <token>` for the gateway). A copy that fails leaves the
 previous header in place.
 
-**3. The token's source is the operator's, and it pushes.** fabriek names a
+**4. The token's source is the operator's, and it pushes.** fabriek names a
 file on its host and knows nothing about `az`. The operator's Mac runs the
 existing `zd-gateway-token` on a timer, about every forty-five minutes, and
 writes the file on the host through the operator's own SSH to it, to a
@@ -86,25 +102,32 @@ watch holds, and a directory sees the create and the move. The operator's key
 gains write access to that one directory and no root. That keeps ADR-067:
 fabriek opens no connection, and the `az login` stays where a browser is.
 
-**4. A credential carries an age, and past its `maxAge` the executor holds new
+**5. A credential carries an age, and past its `maxAge` the executor holds new
 work.** The refresh function touches a stamp per credential in the factory's
 state, readable by the executor (the credential's own copy is the proxy
 user's alone), so its mtime is the last successful refresh. `fabriek ps` gains
 a line per credential with its age (today it prints a factory's state and
-revision only). A credential may declare `maxAge`; past it the executor stops
+revision only). An endpoint may declare `maxAge`; past it the executor stops
 routing new assignments to roles whose endpoint uses that credential, running
 turns finish, and routing resumes when a refresh moves the stamp, as the soft
 limit does (ADR-037 point 4). Without `maxAge` the age is shown and nothing
 reads it. The executor reads a time, never a token: it stays content-blind and
 the token's own expiry is not parsed.
 
-**5. The proxy strips the placeholder key.** pi sends `models.json`'s
+**6. The proxy strips the placeholder key.** pi sends `models.json`'s
 placeholder `apiKey` as `x-api-key`. For every endpoint whose credential
 header is not `x-api-key`, the proxy removes the incoming one before it adds
 the credential, so the gateway sees `Authorization` alone and no endpoint
 depends on how an upstream treats a header it did not ask for.
 
 **Rejected alternatives.**
+- Host-keyed tables for the operator's endpoint (credentials, models,
+  endpoints, egress): the long host is written five times and a repository
+  carries it too.
+- One start model for the whole factory: a reviewer and a builder want
+  different models, and the declaration already names roles.
+- A role naming a raw model id: a repository would pick any model the
+  gateway serves, and cost is the operator's to bound.
 - A gateway entry in `FABRIEK_PROVIDERS`: puts a company host in this
   repository, and the next operator's host is another edit here.
 - `az` on the host with a device-code login: a second interactive login to
@@ -161,9 +184,24 @@ both read, so a new built-in endpoint is one entry rather than two edits.
 nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats
 ```
 Passes when `models.json` routes a declared host through the proxy with its
-`compat`, the render refuses a declared host with no `models` entry, the
-three built-in hosts render byte-identical to before, and the proxy's
-location for a non-`x-api-key` endpoint clears the incoming `x-api-key`.
+`compat`, the render refuses a declared host with no model, the three
+built-in hosts render byte-identical to before, and the proxy's location for
+a non-`x-api-key` endpoint clears the incoming `x-api-key`.
+
+```bash
+nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats
+```
+Passes when a named endpoint expands to its host's credential, models and
+endpoint row, a name in `caps.egress` or a declaration's `egress` becomes its
+host before the clamp, an unknown or dotted name and a repository's declared
+endpoint are refused.
+
+```bash
+nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats
+```
+Passes when a role's `model` beats its specialist's, which beats the
+endpoint's `default`, a name the operator did not list is refused at render,
+and each role's session line carries its own `--model`.
 
 ```bash
 nix develop --command bats tests/command/egress_refresh.bats
@@ -203,17 +241,20 @@ docmeta-check docs && docmeta-tracker --check docs
 ## Tasks
 
 - [x] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
-- [ ] T2 The operator's `endpoints` key reaches the render: schema, credential projection, clamp to allowed egress, `endpoints.json`; a repository's declaration carrying one is refused (after: T1)
-- [ ] T3 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
-- [ ] T4 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
-- [ ] T5 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
-- [ ] T6 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T5)
-- [ ] T7 `fabriek ps` prints a line per credential with its age (after: T5)
-- [ ] T8 `credentials.<host>.maxAge` reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T5)
-- [ ] T9 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T6)
-- [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T4)
-- [ ] G2 `nix develop --command bats tests/command/egress_refresh.bats` (after: T5)
-- [ ] G3 `nix develop --command bats tests/command/host_module.bats` (after: T3, T6)
-- [ ] G4 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T8)
-- [ ] G5 `FABRIEK_PROOF_DIR=/tmp/proof tests/manual/gateway.sh` on the host with a real token (after: T1, T2, T3, T4, T6, T7, T8, T9)
-- [ ] G6 `docmeta-check docs && docmeta-tracker --check docs` (after: G1, G2, G3, G4)
+- [ ] T2 Named endpoints: the operator's `endpoints.<name>` schema, its expansion into the host-keyed credential, models and endpoint rows, names in `caps.egress` and a declaration's `egress` resolved to hosts before the clamp, a repository's declared endpoint refused (after: T1)
+- [ ] T3 A role and a specialist name a model: `model` on a role and a catalogue specialist, resolved against the start endpoint's `models` at render, refused when unlisted, composed per role in `fabriek_actor_command` (after: T2)
+- [ ] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
+- [ ] T5 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
+- [ ] T6 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
+- [ ] T7 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T6)
+- [ ] T8 `fabriek ps` prints a line per credential with its age (after: T6)
+- [ ] T9 `maxAge` on an endpoint reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T6)
+- [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
+- [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T5)
+- [ ] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats` (after: T2)
+- [ ] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats` (after: T3)
+- [ ] G4 `nix develop --command bats tests/command/egress_refresh.bats` (after: T6)
+- [ ] G5 `nix develop --command bats tests/command/host_module.bats` (after: T4, T7)
+- [ ] G6 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T9)
+- [ ] G7 `FABRIEK_PROOF_DIR=/tmp/proof tests/manual/gateway.sh` on the host with a real token (after: T3, T4, T5, T7, T8, T9, T10)
+- [ ] G8 `docmeta-check docs && docmeta-tracker --check docs` (after: G1, G2, G3, G4, G5, G6)
