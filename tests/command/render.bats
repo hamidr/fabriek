@@ -166,6 +166,14 @@ teardown() {
 	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.1:4222"]'
 }
 
+@test "the proxy clears pi's placeholder key for an endpoint whose credential travels in another header" {
+	sed -i.bak 's/^"api.anthropic.com" = "x-api-key"/"api.anthropic.com" = "authorization"/' "$CRED"
+	run_fabriek_container factory-render
+	assert_success
+	run cat "$ETC/proxy/endpoints.conf"
+	assert_output --partial 'proxy_set_header x-api-key "";'
+}
+
 @test "the proxy's ceiling and locations, the endpoints and the model are written, and nginx reloaded after the headers" {
 	run_fabriek_container factory-render
 	assert_success

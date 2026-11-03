@@ -55,6 +55,22 @@ teardown() {
 	refute_output --partial 'api.openai.com'
 }
 
+# pi sends its placeholder key as x-api-key to an anthropic-api endpoint. An
+# endpoint whose credential travels in another header would receive both,
+# and a gateway may refuse the placeholder before it reads the real one.
+@test "the proxy clears the placeholder x-api-key where the credential travels in another header" {
+	jq '.resources.egress = ["api.anthropic.com", "gw.example.test", "api.deepseek.com"]' "$DECL" >"$DECL.2"
+	run fabriek_render_proxy "$DECL.2" '{"api.anthropic.com":"x-api-key","gw.example.test":"Authorization"}'
+	assert_success
+	run awk '/^location \/gw.example.test\//,/^}/' <<<"$output"
+	assert_output --partial 'proxy_set_header x-api-key "";'
+	run fabriek_render_proxy "$DECL.2" '{"api.anthropic.com":"x-api-key","gw.example.test":"Authorization"}'
+	run awk '/^location \/api.anthropic.com\//,/^}/' <<<"$output"
+	refute_output --partial 'proxy_set_header x-api-key'
+	run awk '/^location \/api.deepseek.com\//,/^}/' <<<"$(fabriek_render_proxy "$DECL.2" '{"api.anthropic.com":"x-api-key","gw.example.test":"Authorization"}')"
+	refute_output --partial 'proxy_set_header x-api-key'
+}
+
 @test "with no endpoint allowed the proxy gets the ceiling and no location" {
 	jq '.resources.egress = []' "$DECL" >"$DECL.2"
 	run fabriek_render_proxy "$DECL.2"

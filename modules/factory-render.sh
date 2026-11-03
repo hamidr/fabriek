@@ -50,15 +50,22 @@ fabriek_render_bridge_plan() {
 ## the ceiling. Included by the factory's server on the host. Zero is no
 ## ceiling. The credential header comes from the file the factory's own
 ## egress-credentials unit writes under its name (host/proxy.nix), so two
-## factories allowing one endpoint never read each other's.
+## factories allowing one endpoint never read each other's. pi sends its
+## placeholder key as x-api-key whatever the endpoint wants, so an endpoint
+## whose credential travels in another header has the placeholder cleared
+## (ADR-072 point 6); a gateway may refuse it before reading the real one.
 ##
-## fabriek_render_proxy <declaration.json>
+## fabriek_render_proxy <declaration.json> [<credential-headers-json>]
 fabriek_render_proxy() {
-	local declaration="$1" host factory
+	local declaration="$1" headers="${2:-}" host factory header strip
+	[ -n "$headers" ] || headers='{}'
 	factory="$(jq -r .name "$declaration")"
 	printf "set \$spend_ceiling %s;\n" "$(jq -r '.resources.tokens // 0' "$declaration")"
 	while IFS= read -r host; do
 		[ -n "$host" ] || continue
+		header="$(jq -r --arg h "$host" '.[$h] // "x-api-key" | ascii_downcase' <<<"$headers")"
+		strip=""
+		[ "$header" = "x-api-key" ] || strip=$'  proxy_set_header x-api-key "";\n'
 		cat <<CONF
 location /$host/ {
   if (\$spend_over = 1) {
@@ -69,7 +76,7 @@ location /$host/ {
   proxy_ssl_server_name on;
   proxy_buffering off;
   proxy_set_header Accept-Encoding "";
-  js_body_filter spend.count;
+$strip  js_body_filter spend.count;
   include /run/fabriek-egress/$factory/$host.conf;
 }
 CONF
