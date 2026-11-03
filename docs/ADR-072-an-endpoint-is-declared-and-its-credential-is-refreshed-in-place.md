@@ -253,7 +253,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
 - [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T5)
 - [x] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats tests/unit/repo_declaration.bats` (after: T2)
-- [ ] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats tests/command/catalogue.bats` (after: T3)
+- [x] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats tests/command/catalogue.bats` (after: T3)
 - [ ] G4 `nix develop --command bats tests/command/egress_refresh.bats` (after: T6)
 - [ ] G5 `nix develop --command bats tests/command/host_module.bats` (after: T4, T7)
 - [ ] G6 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T9)
