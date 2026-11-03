@@ -121,3 +121,18 @@ mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"; }
 	[ ! -e "$TEST_TEMP_DIR/widgets/state/egress" ]
 	[ -f "$TEST_TEMP_DIR/acme/state/egress/gw.example.test" ]
 }
+
+@test "factory-credentials says each credential's age in seconds from its stamp, and never for one with none" {
+	run_fabriek_container credential-refresh
+	assert_success
+	touch -t 202001010000 "$TEST_TEMP_DIR/acme/state/egress-age/gw.example.test"
+	rm "$TEST_TEMP_DIR/acme/state/egress-age/api.anthropic.com"
+	FABRIEK_FACTORY=acme run_fabriek_container factory-credentials acme
+	assert_success
+	assert_line --regexp '^api\.anthropic\.com	never$'
+	assert_line --regexp '^gw\.example\.test	[0-9]{9,}$'
+	run_fabriek_container credential-refresh
+	FABRIEK_FACTORY=widgets run_fabriek_container factory-credentials widgets
+	assert_success
+	assert_line --regexp '^api\.anthropic\.com	[0-9]{1,2}$'
+}

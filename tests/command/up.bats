@@ -40,6 +40,7 @@ factory-up)
 	;;
 factory-down) rm -f "$TEST_TEMP_DIR/running"; echo "acme has stopped" ;;
 factory-status) [ -e "$TEST_TEMP_DIR/running" ] && echo "acme: running at abc" || echo "acme: stopped" ;;
+factory-credentials) printf 'api.anthropic.com\tnever\ngw.example.test\t3125\n' ;;
 factory-clone)
 	if [ -e "$TEST_TEMP_DIR/in-a-machine" ]; then
 		printf '%s\n%s\n' "$TEST_TEMP_DIR/forge.git" "$TEST_TEMP_DIR/fetch-token"
@@ -144,6 +145,21 @@ EOF
 	assert_success
 	run jq -c 'map([.factory, .state, .rev])' <<<"$output"
 	assert_output '[["acme","running","abc"]]'
+}
+
+@test "ps says how long ago each credential of a running factory was refreshed, and never for one not yet" {
+	run_fabriek ps
+	assert_success
+	refute_output --partial "credential"
+	run_fabriek up acme
+	run_fabriek ps
+	assert_success
+	assert_line "acme	credential api.anthropic.com never refreshed"
+	assert_line "acme	credential gw.example.test refreshed 52m ago"
+	run_fabriek ps --json
+	assert_success
+	run jq -c '.[0].credentials' <<<"$output"
+	assert_output '[{"host":"api.anthropic.com","age":null},{"host":"gw.example.test","age":3125}]'
 }
 
 @test "a declaration the machine program refuses stops up naming the key, and adds no remote" {

@@ -1100,6 +1100,24 @@ cmd_credential_refresh() {
 	[ "$failed" -eq 0 ] || exit 1
 }
 
+## How long ago each credential of this factory was last filed, in seconds
+## from its stamp (ADR-072 point 5): `never` for one with no stamp. What
+## `fabriek ps` prints, and the age the executor holds new work by.
+cmd_factory_credentials() {
+	local factory="${1:-}" host stamp now
+	[ -n "$factory" ] || die "usage: fabriek-container factory-credentials <factory>"
+	[ -f "$FABRIEK_ETC/endpoints.json" ] || return 0
+	now="$(date +%s)"
+	while IFS= read -r host; do
+		stamp="$STATE_DIR/egress-age/$host"
+		if [ -f "$stamp" ]; then
+			printf '%s\t%s\n' "$host" "$((now - $(stat -c %Y "$stamp" 2>/dev/null || stat -f %m "$stamp")))"
+		else
+			printf '%s\tnever\n' "$host"
+		fi
+	done < <(jq -r '.credentials | keys[]' "$FABRIEK_ETC/endpoints.json")
+}
+
 ## fabriek down: refused while a role's cage runs, since ADR-017 exists
 ## because a factory was ended rather than stopped; then the executor,
 ## then the units in reverse, and the mark gone so nothing starts on a
@@ -1203,6 +1221,7 @@ main() {
 	factory-mirror) cmd_factory_mirror "$@" ;;
 	factory-up) cmd_factory_up "$@" ;;
 	credential-refresh) cmd_credential_refresh "$@" ;;
+	factory-credentials) cmd_factory_credentials "$@" ;;
 	factory-down) cmd_factory_down "$@" ;;
 	factory-status) cmd_factory_status "$@" ;;
 	factory-clone) cmd_factory_clone "$@" ;;

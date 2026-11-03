@@ -280,6 +280,24 @@ cmd_fetch() {
   checkout_fetch "$factory" || exit 1
 }
 
+## A credential's line under its factory in ps: how long ago the proxy
+## got its header, or that it has not (ADR-072 point 5).
+credential_lines() {
+  local factory="$1" host age
+  while IFS=$'\t' read -r host age; do
+    [ -n "$host" ] || continue
+    if [[ "$age" =~ ^[0-9]+$ ]]; then
+      if [ "$age" -lt 60 ]; then age="refreshed ${age}s ago"
+      elif [ "$age" -lt 3600 ]; then age="refreshed $((age / 60))m ago"
+      elif [ "$age" -lt 86400 ]; then age="refreshed $((age / 3600))h ago"
+      else age="refreshed $((age / 86400))d ago"; fi
+    else
+      age="never refreshed"
+    fi
+    printf '%s\tcredential %s %s\n' "$factory" "$host" "$age"
+  done <<<"$2"
+}
+
 ## ps [--json]: every factory the operator declared, and what the machine
 ## program says of it. Each running factory's branches are fetched on the
 ## way, so the checkout is as current as the answer.
@@ -292,20 +310,26 @@ cmd_ps() {
     *) usage_error ps ;;
     esac
   done
-  local factory answer state rev rows=()
+  local factory answer state rev ages rows=()
   while IFS= read -r factory; do
     [ -n "$factory" ] || continue
     answer="$(machine factory-status "$factory" 2>/dev/null)" || answer="$factory: stopped"
     answer="${answer#"$factory": }"
+    ages=""
     case "$answer" in
-    running\ at\ *) state=running; rev="${answer#running at }"; checkout_fetch "$factory" || true ;;
+    running\ at\ *)
+      state=running; rev="${answer#running at }"; checkout_fetch "$factory" || true
+      ages="$(machine factory-credentials "$factory" 2>/dev/null)" || ages=""
+      ;;
     *) state=stopped; rev="" ;;
     esac
     if [[ -n "$json" ]]; then
-      rows+=("$(jq -cn --arg f "$factory" --arg s "$state" --arg r "$rev" \
-        '{factory: $f, state: $s, rev: (if $r == "" then null else $r end)}')")
+      rows+=("$(jq -cn --arg f "$factory" --arg s "$state" --arg r "$rev" --arg a "$ages" \
+        '{factory: $f, state: $s, rev: (if $r == "" then null else $r end),
+          credentials: ($a | split("\n") | map(select(length > 0) | split("\t") | { host: .[0], age: (.[1] | tonumber? // null) }))}')")
     else
       printf '%s\t%s\n' "$factory" "$answer"
+      credential_lines "$factory" "$ages"
     fi
   done < <(fabriek_operator_factories "$(fabriek_operator_config_path)" 2>/dev/null)
   if [[ -n "$json" ]]; then
