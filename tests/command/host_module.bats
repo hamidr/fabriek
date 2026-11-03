@@ -375,6 +375,34 @@ set"
 	assert_output true
 }
 
+@test "a change in the operator's credential directory runs credential-refresh, and the directory is the operator's alone" {
+	run host_eval 'credentialsOwner = "hamid"; factories.acme.path = "/srv/acme";' \
+		'{ path = c.systemd.paths.fabriek-credentials.pathConfig;
+		   wanted = c.systemd.paths.fabriek-credentials.wantedBy;
+		   exec = c.systemd.services.fabriek-credential-refresh.serviceConfig.ExecStart;
+		   type = c.systemd.services.fabriek-credential-refresh.serviceConfig.Type;
+		   env = c.systemd.services.fabriek-credential-refresh.environment.FABRIEK_CONFIG;
+		   rules = c.systemd.tmpfiles.rules; }'
+	assert_success
+	run jq -r '.path.PathChanged, .path.Unit, .wanted[0], .type, .env' <<<"$output"
+	assert_line --index 0 '/var/lib/fabriek-credentials'
+	assert_line --index 1 'fabriek-credential-refresh.service'
+	assert_line --index 2 'multi-user.target'
+	assert_line --index 3 'oneshot'
+	assert_line --index 4 '/etc/fabriek/config.toml'
+	run host_eval 'credentialsOwner = "hamid"; factories.acme.path = "/srv/acme";' \
+		'c.systemd.services.fabriek-credential-refresh.serviceConfig.ExecStart'
+	assert_output --regexp '/bin/fabriek-container credential-refresh"$'
+	run host_eval 'credentialsOwner = "hamid"; factories.acme.path = "/srv/acme";' 'c.systemd.tmpfiles.rules'
+	assert_output --partial '"d /var/lib/fabriek-credentials 0700 hamid root -"'
+}
+
+@test "without an owner the credential directory is root's, and its place can be moved" {
+	run host_eval 'credentialsDir = "/srv/creds"; factories.acme.path = "/srv/acme";' 'c.systemd.tmpfiles.rules'
+	assert_success
+	assert_output --partial '"d /srv/creds 0700 root root -"'
+}
+
 @test "the host forwards nothing from or to a factory's bridge" {
 	run host_eval 'factories.acme.path = "/srv/acme";' \
 		'{ on = c.networking.nftables.enable; content = c.networking.nftables.tables.fabriek.content; }'

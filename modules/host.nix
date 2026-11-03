@@ -249,6 +249,7 @@ in
     ./host/bus.nix
     ./host/board.nix
     ./host/proxy.nix
+    ./host/credentials.nix
     ./host/floor.nix
     ./host/executor.nix
   ];
@@ -355,6 +356,20 @@ in
         "api.anthropic.com" = "claude-opus-5";
       };
       description = "Per endpoint, the model a session starts on; a declaration cannot name one (ADR-029).";
+    };
+
+    ## Where the operator puts a credential that changes (ADR-072 point 4):
+    ## a directory of theirs, watched as a directory because a rename
+    ## replaces the inode a watch on the file would hold.
+    credentialsDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/fabriek-credentials";
+      description = "A directory the operator writes credential files into; a change in it files every factory's credentials again.";
+    };
+    credentialsOwner = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "The user who writes there, over SSH or otherwise; root's when null.";
     };
 
     ## An endpoint declared once, by name (ADR-072 point 1). The CLI checks

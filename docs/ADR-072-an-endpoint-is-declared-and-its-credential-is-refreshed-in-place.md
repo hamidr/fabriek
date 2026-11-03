@@ -247,7 +247,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [x] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
 - [x] T5 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
 - [x] T6 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
-- [ ] T7 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T6)
+- [x] T7 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T6)
 - [ ] T8 `fabriek ps` prints a line per credential with its age (after: T6)
 - [ ] T9 `maxAge` on an endpoint reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T6)
 - [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
