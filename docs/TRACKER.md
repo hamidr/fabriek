@@ -4,11 +4,11 @@ GENERATED FILE -- do not edit. Rebuild with `docmeta-tracker <docs-root>`.
 Every fact here comes from the frontmatter of the document it names; change the
 document, then regenerate.
 
-**Generated:** 2026-10-13
+**Generated:** 2026-11-03
 
 **Next PRD number:** 008
 
-**Next ADR number:** 072
+**Next ADR number:** 073
 
 ## PRDs
 
@@ -97,3 +97,4 @@ document, then regenerate.
 | [ADR-069](ADR-069-one-nats-on-the-host-and-an-account-per-factory.md) | One NATS server on the host, and an account per factory, replaces a Valkey per factory | implemented | -- | ADR-033, ADR-037, ADR-038, ADR-039, ADR-051, ADR-067 | the bus is one nats-server per host; a factory is an account with its own JetStream memory streams and limits |  |
 | [ADR-070](ADR-070-a-factory-runs-in-a-nixcage-machine-of-its-own.md) | A factory runs in a nixcage machine of its own, and every role is an nspawn cage inside it | implemented | -- | ADR-010, ADR-017, ADR-034, ADR-037, ADR-038, ADR-045, ADR-067, ADR-068, ADR-069 | a nixcage machine per factory holds its clone, worktrees and nspawn roles; forge, bus, proxy, executor stay on host |  |
 | [ADR-071](ADR-071-a-detector-per-factory-shows-the-operator-what-its-rules-match.md) | A detector per factory reads its logs and probes with rsigma and shows the operator what its rules match | accepted | -- | ADR-037, ADR-038, ADR-051, ADR-067, ADR-069, ADR-070 | rsigma per factory on the host over its logs and probes; detections to the TUI and the trace, never acted on |  |
+| [ADR-072](ADR-072-an-endpoint-is-declared-and-its-credential-is-refreshed-in-place.md) | An endpoint is declared by the operator and its credential is refreshed in place | proposed | -- | ADR-020, ADR-029, ADR-037, ADR-061, ADR-067, ADR-070 | the operator declares endpoints beyond the built-in three; a changed credential file reaches the proxy, no restart |  |
