@@ -77,6 +77,9 @@ let
         catalogues = cfg.catalogues;
       }
       // lib.optionalAttrs (cfg.models != { }) { inherit (cfg) models; }
+      // lib.optionalAttrs (cfg.endpoints != { }) {
+        endpoints = lib.mapAttrs (_: e: lib.filterAttrs (_: v: v != null && v != { }) e) cfg.endpoints;
+      }
       // lib.optionalAttrs (cfg.specialists != { }) {
         specialists = lib.mapAttrs (_: s: lib.filterAttrs (_: v: v != null && v != [ ]) s) cfg.specialists;
       }
@@ -352,6 +355,66 @@ in
         "api.anthropic.com" = "claude-opus-5";
       };
       description = "Per endpoint, the model a session starts on; a declaration cannot name one (ADR-029).";
+    };
+
+    ## An endpoint declared once, by name (ADR-072 point 1). The CLI checks
+    ## the table and expands it, so these options only say its shape.
+    endpoints = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            host = lib.mkOption {
+              type = lib.types.str;
+              description = "The host the proxy reaches for this endpoint.";
+            };
+            provider = lib.mkOption {
+              type = lib.types.str;
+              description = "The pi provider that answers it.";
+            };
+            api = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "The pi api, when it is not the provider's own.";
+            };
+            compat = lib.mkOption {
+              type = lib.types.attrsOf (
+                lib.types.oneOf [
+                  lib.types.bool
+                  lib.types.int
+                  lib.types.str
+                ]
+              );
+              default = { };
+              description = "pi's compat flags for an endpoint that does not take everything the provider does.";
+            };
+            header = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "The header the credential travels in, at the proxy.";
+            };
+            file = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "A path on this host holding the credential; never the value (ADR-025).";
+            };
+            models = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              description = "The model names a role may pick; `default` is where a session starts.";
+            };
+          };
+        }
+      );
+      default = { };
+      example = {
+        gateway = {
+          host = "ai-gateway.example.test";
+          provider = "anthropic";
+          header = "authorization";
+          file = "/var/lib/fabriek-credentials/gateway";
+          models.default = "claude-sonnet-5";
+        };
+      };
+      description = "Endpoints by name beyond the shipped three; roles, specialists and egress lists use the name.";
     };
 
     factories = lib.mkOption {

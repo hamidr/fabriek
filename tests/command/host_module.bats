@@ -131,6 +131,29 @@ host_eval() {
 }
 
 
+@test "the module renders a named endpoint the CLI reads back as that host's credential, model and endpoint row" {
+	run host_eval 'caps.egress = [ "gateway" ];
+	               endpoints.gateway = {
+	                 host = "gw.example.test"; provider = "anthropic";
+	                 header = "authorization"; file = "/var/lib/fabriek-credentials/gateway";
+	                 compat.supportsStrictTools = false;
+	                 models = { default = "claude-sonnet-5"; opus = "claude-opus-5"; };
+	               };
+	               factories.acme.path = "/srv/acme";' \
+		'c.environment.etc."fabriek/config.toml".text'
+	assert_success
+	source "$FABRIEK_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
+	source "$FABRIEK_ROOT/modules/operator-config.sh"
+	jq -r . <<<"$output" >"$TEST_TEMP_DIR/config.toml"
+	run fabriek_operator_config "$TEST_TEMP_DIR/config.toml"
+	assert_success
+	run jq -cS '{ c: .credentials["gw.example.test"], m: .models["gw.example.test"], e: .endpoints["gw.example.test"], n: .names, egress: .caps.egress }' <<<"$output"
+	assert_output '{"c":{"file":"/var/lib/fabriek-credentials/gateway","header":"authorization"},"e":{"compat":{"supportsStrictTools":false},"models":{"default":"claude-sonnet-5","opus":"claude-opus-5"},"provider":"anthropic"},"egress":["gw.example.test"],"m":"claude-sonnet-5","n":{"gateway":"gw.example.test"}}'
+}
+
 # ADR-067: a factory is declared on the host and its services are NixOS
 # configuration. Every name the machine had as a constant is a function of
 # the factory's name here, and the bridge's index is the factory's position

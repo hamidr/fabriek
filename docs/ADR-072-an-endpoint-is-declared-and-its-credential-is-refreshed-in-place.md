@@ -244,7 +244,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [x] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
 - [x] T2 Named endpoints: the operator's `endpoints.<name>` schema, its expansion into the host-keyed credential, models and endpoint rows, names in `caps.egress` and a declaration's `egress` resolved to hosts before the clamp, a repository's declared endpoint refused (after: T1)
 - [x] T3 A role and a specialist name a model: `model` on a role and a catalogue specialist, resolved against the start endpoint's `models` at render, refused when unlisted, composed per role in `fabriek_actor_command` (after: T2)
-- [ ] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
+- [x] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
 - [ ] T5 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
 - [ ] T6 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
 - [ ] T7 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T6)
