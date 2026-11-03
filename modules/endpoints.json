@@ -1,0 +1,5 @@
+{
+  "api.anthropic.com": { "provider": "anthropic", "model": "claude-sonnet-4-5" },
+  "api.openai.com": { "provider": "openai", "model": "gpt-5" },
+  "api.deepseek.com": { "provider": "deepseek", "model": "deepseek-v4-flash" }
+}

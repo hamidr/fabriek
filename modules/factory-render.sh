@@ -76,53 +76,82 @@ CONF
 	done < <(jq -r '.resources.egress // [] | .[]' "$declaration")
 }
 
-## Which of pi's built-in providers answers at which endpoint, and the model
-## each starts on when the operator names none. Only the endpoints fabriek
-## knows; one outside this table is reachable through the proxy but pi is
-## not pointed at it.
-FABRIEK_PROVIDERS='{"api.anthropic.com":"anthropic","api.openai.com":"openai","api.deepseek.com":"deepseek"}'
-FABRIEK_DEFAULT_MODELS='{"anthropic":"claude-sonnet-4-5","openai":"gpt-5","deepseek":"deepseek-v4-flash"}'
+## The endpoints pi can be pointed at (ADR-072 point 1): the table fabriek
+## ships in endpoints.json, a row per host with the pi provider that answers
+## it and the model a session starts on when the operator names none, with
+## the operator's own rows on top. A declared row names a provider, and may
+## name an api and a compat map; one for a shipped host changes the fields it
+## names and keeps the rest. An endpoint outside the table is reachable
+## through the proxy and pi is not pointed at it.
+##
+## fabriek_render_endpoints <declared-endpoints-json>
+fabriek_render_endpoints() {
+	jq -cn --slurpfile shipped "$FABRIEK_LIB/endpoints.json" --argjson declared "$1" '$shipped[0] * $declared'
+}
 
 ## The endpoints the declaration allows that pi has a provider for, in the
-## table's order. Prints "host<TAB>provider" lines.
+## table's order. Prints "host<TAB>provider" lines. Two hosts answering as one
+## provider are refused: models.json keys a provider by name, so the second
+## would replace the first and a session would reach the wrong host.
+##
+## fabriek_render_routed <declaration.json> <endpoints-json>
 fabriek_render_routed() {
-	local declaration="$1"
-	jq -r --argjson providers "$FABRIEK_PROVIDERS" '
+	local declaration="$1" endpoints="$2" routed twice
+	routed="$(jq -r --argjson endpoints "$endpoints" '
 	  (.resources.egress // []) as $allowed
-	  | $providers | to_entries[] | select(.key as $h | $allowed | index($h) != null)
-	  | "\(.key)\t\(.value)"' "$declaration"
+	  | $endpoints | to_entries[] | select(.key as $h | $allowed | index($h) != null)
+	  | "\(.key)\t\(.value.provider)"' "$declaration")" || return 1
+	twice="$(printf '%s\n' "$routed" | cut -f2 | sort | uniq -d | head -n1)"
+	if [ -n "$twice" ]; then
+		echo "fabriek: two allowed endpoints answer as provider $twice; allow one" >&2
+		return 1
+	fi
+	[ -z "$routed" ] || printf '%s\n' "$routed"
 }
 
 ## Where a session starts: the first routed provider, on the model the
-## operator named for its endpoint, else fabriek's default. pi starts on no
-## model unless told one, and a session with nobody at the keyboard cannot
-## be asked; a declaration cannot name one (ADR-029).
+## operator named for its endpoint, else the table's. pi starts on no model
+## unless told one, and a session with nobody at the keyboard cannot be
+## asked; a declaration cannot name one (ADR-029). A routed endpoint with no
+## model at all is refused here, by name, rather than started on nothing.
 ##
-## fabriek_render_model <declaration.json> <models-json>
+## fabriek_render_model <declaration.json> <models-json> <endpoints-json>
 fabriek_render_model() {
-	local declaration="$1" models="$2" host provider
-	## A declaration allowing no endpoint routes nothing, and read says so
-	## by its status, which is not a failure here.
-	IFS=$'\t' read -r host provider < <(fabriek_render_routed "$declaration") || true
+	local declaration="$1" models="$2" endpoints="$3" routed host provider missing
+	routed="$(fabriek_render_routed "$declaration" "$endpoints")" || return 1
+	missing="$(printf '%s\n' "$routed" | cut -f1 | jq -Rr --argjson models "$models" --argjson endpoints "$endpoints" '
+	  select(length > 0 and (($models[.] // $endpoints[.].model) == null))' | head -n1)"
+	if [ -n "$missing" ]; then
+		echo "fabriek: endpoint $missing has no model; name one under models" >&2
+		return 1
+	fi
+	## A declaration allowing no endpoint routes nothing, and a session then
+	## starts on the first shipped row.
+	IFS=$'\t' read -r host provider <<<"$routed"
 	[ -n "$provider" ] || {
 		host="api.anthropic.com"
 		provider="anthropic"
 	}
-	jq -cn --arg p "$provider" --arg h "$host" --argjson models "$models" --argjson defaults "$FABRIEK_DEFAULT_MODELS" \
-		'{ model: ($models[$h] // $defaults[$p]), provider: $p }'
+	jq -cn --arg p "$provider" --arg h "$host" --argjson models "$models" --argjson endpoints "$endpoints" \
+		'{ model: ($models[$h] // $endpoints[$h].model), provider: $p }'
 }
 
 ## models.json for pi: each routed provider at its path on the proxy, with a
-## placeholder key so pi considers it configured. The credential is the
-## proxy's to add (ADR-025).
+## placeholder key so pi considers it configured, and the api and compat the
+## endpoint's row names. The credential is the proxy's to add (ADR-025).
 ##
-## fabriek_render_models <declaration.json> <proxy host:port>
+## fabriek_render_models <declaration.json> <proxy host:port> <endpoints-json>
 fabriek_render_models() {
-	local declaration="$1" proxy="$2"
-	fabriek_render_routed "$declaration" |
-		jq -Rsc --arg proxy "$proxy" '
+	local declaration="$1" proxy="$2" endpoints="$3" routed
+	routed="$(fabriek_render_routed "$declaration" "$endpoints")" || return 1
+	printf '%s\n' "$routed" |
+		jq -Rsc --arg proxy "$proxy" --argjson endpoints "$endpoints" '
 		  split("\n") | map(select(length > 0) | split("\t"))
-		  | { providers: (map({ key: .[1], value: { apiKey: "fabriek", baseUrl: "http://\($proxy)/\(.[0])" } }) | from_entries) }'
+		  | { providers: (map(. as [$host, $provider]
+		      | { key: $provider,
+		          value: ({ apiKey: "fabriek", baseUrl: "http://\($proxy)/\($host)" }
+		                  + ($endpoints[$host] | with_entries(select(.key == "api" or .key == "compat")))) })
+		      | from_entries) }'
 }
 
 ## A role's pi directory (ADR-042 point 5): the floor's extensions, the

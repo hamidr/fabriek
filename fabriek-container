@@ -579,7 +579,10 @@ render_files() {
 	fabriek_render_proxy "$FABRIEK_ETC/declaration.json" >"$FABRIEK_ETC/proxy/endpoints.conf"
 	jq -cS '{ credentials: (.egressHeaders // {}), models: (.egressModels // {}), embedder: .embedder }' "$spec" \
 		>"$FABRIEK_ETC/endpoints.json"
-	fabriek_render_model "$FABRIEK_ETC/declaration.json" "$(jq -c '.egressModels // {}' "$spec")" >"$FABRIEK_ETC/model.json"
+	fabriek_render_endpoints "$(jq -c '.egressEndpoints // {}' "$spec")" >"$FABRIEK_ETC/endpoint-table.json" ||
+		die "could not merge the declared endpoints into the table"
+	fabriek_render_model "$FABRIEK_ETC/declaration.json" "$(jq -c '.egressModels // {}' "$spec")" "$(<"$FABRIEK_ETC/endpoint-table.json")" \
+		>"$FABRIEK_ETC/model.json" || die "could not choose the model a session starts on"
 	policy="$(jq -r '.declaration.decider.policy // empty' "$spec")"
 	if [ -n "$policy" ]; then
 		git -C "$clone" show "$rev:$policy" >"$FABRIEK_ETC/decider-policy.md" ||
@@ -588,7 +591,8 @@ render_files() {
 		rm -f "$FABRIEK_ETC/decider-policy.md"
 	fi
 	plan="$(jq -r .proxy "$FABRIEK_ETC/bridge.json")"
-	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$plan")"
+	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$plan" "$(<"$FABRIEK_ETC/endpoint-table.json")")" ||
+		die "could not point pi at the proxy"
 	fabriek_render_decider_dir "$FABRIEK_FLOOR" "$models" "$FABRIEK_ETC/pi-decider"
 }
 
@@ -600,7 +604,8 @@ render_files() {
 render_profiles() {
 	local clone="$1" rev="$2" role profile models built="{}"
 	rm -f "$FABRIEK_ETC/profiles.json"
-	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")")"
+	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")" "$(<"$FABRIEK_ETC/endpoint-table.json")")" ||
+		die "could not point pi at the proxy"
 	while IFS= read -r role; do
 		profile="$(fabriek_profile_build "$clone" "$rev" "$FABRIEK_SELF" "$FABRIEK_NIXPKGS" "$FABRIEK_SYSTEM" "$role" "$FABRIEK_ETC/declaration.json" "$FABRIEK_ETC/declared.json" "$FABRIEK_ETC/catalogues")" || {
 			rm -f "$FABRIEK_ETC/roles/$role/profile"

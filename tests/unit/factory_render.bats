@@ -14,6 +14,7 @@ setup() {
 	# shellcheck source=../../modules/factory-render.sh
 	source "$FABRIEK_ROOT/modules/factory-render.sh"
 	DECL="$TEST_TEMP_DIR/declaration.json"
+	ENDPOINTS="$(fabriek_render_endpoints '{}')"
 	cat >"$DECL" <<'JSON'
 { "name": "acme",
   "roles": { "reviewer": { "provides": ["review"] }, "builder": { "provides": ["build"], "specialists": ["python"] } },
@@ -62,20 +63,70 @@ teardown() {
 }
 
 @test "the model a session starts on is the operator's for the first routed endpoint, else fabriek's table" {
-	run fabriek_render_model "$DECL" '{"api.anthropic.com": "claude-opus-5"}'
+	run fabriek_render_model "$DECL" '{"api.anthropic.com": "claude-opus-5"}' "$ENDPOINTS"
 	assert_success
 	assert_output '{"model":"claude-opus-5","provider":"anthropic"}'
-	run fabriek_render_model "$DECL" '{}'
+	run fabriek_render_model "$DECL" '{}' "$ENDPOINTS"
 	assert_output '{"model":"claude-sonnet-4-5","provider":"anthropic"}'
 	jq '.resources.egress = ["api.deepseek.com"]' "$DECL" >"$DECL.2"
-	run fabriek_render_model "$DECL.2" '{}'
+	run fabriek_render_model "$DECL.2" '{}' "$ENDPOINTS"
 	assert_output '{"model":"deepseek-v4-flash","provider":"deepseek"}'
 }
 
 @test "models.json points each routed provider at its path on the proxy with a placeholder key" {
-	run fabriek_render_models "$DECL" 10.77.0.1:8118
+	run fabriek_render_models "$DECL" 10.77.0.1:8118 "$ENDPOINTS"
 	assert_success
 	assert_output '{"providers":{"anthropic":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.anthropic.com"},"deepseek":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/api.deepseek.com"}}}'
+}
+
+# An endpoint the operator declares (ADR-072): the shipped three are the
+# table's defaults and a declared host is one more row, answered by a pi
+# provider with the compat the endpoint needs.
+@test "an operator-declared endpoint is routed through the proxy with its compat" {
+	local decl="$TEST_TEMP_DIR/gateway.json" table
+	jq '.resources.egress = ["gw.example.test"]' "$DECL" >"$decl"
+	table="$(fabriek_render_endpoints '{"gw.example.test":{"provider":"anthropic","compat":{"supportsStrictTools":false}}}')"
+	run fabriek_render_models "$decl" 10.77.0.1:8118 "$table"
+	assert_success
+	assert_output '{"providers":{"anthropic":{"apiKey":"fabriek","baseUrl":"http://10.77.0.1:8118/gw.example.test","compat":{"supportsStrictTools":false}}}}'
+	run fabriek_render_model "$decl" '{"gw.example.test":"claude-sonnet-5"}' "$table"
+	assert_success
+	assert_output '{"model":"claude-sonnet-5","provider":"anthropic"}'
+}
+
+@test "an operator-declared endpoint names its api when it is not the provider's own" {
+	local decl="$TEST_TEMP_DIR/gateway.json" table
+	jq '.resources.egress = ["gw.example.test"]' "$DECL" >"$decl"
+	table="$(fabriek_render_endpoints '{"gw.example.test":{"provider":"anthropic","api":"anthropic-messages"}}')"
+	run fabriek_render_models "$decl" 10.77.0.1:8118 "$table"
+	assert_success
+	assert_output --partial '"api":"anthropic-messages"'
+}
+
+@test "an operator-declared endpoint with no model is refused by name" {
+	local decl="$TEST_TEMP_DIR/gateway.json" table
+	jq '.resources.egress = ["gw.example.test"]' "$DECL" >"$decl"
+	table="$(fabriek_render_endpoints '{"gw.example.test":{"provider":"anthropic"}}')"
+	run fabriek_render_model "$decl" '{}' "$table"
+	assert_failure
+	assert_output --partial 'gw.example.test'
+	assert_output --partial 'no model'
+}
+
+@test "two allowed endpoints answering as one provider are refused" {
+	local decl="$TEST_TEMP_DIR/gateway.json" table
+	jq '.resources.egress = ["api.anthropic.com", "gw.example.test"]' "$DECL" >"$decl"
+	table="$(fabriek_render_endpoints '{"gw.example.test":{"provider":"anthropic"}}')"
+	run fabriek_render_models "$decl" 10.77.0.1:8118 "$table"
+	assert_failure
+	assert_output --partial 'provider anthropic'
+}
+
+@test "an operator entry for a shipped host changes the fields it names and keeps the model" {
+	local table
+	table="$(fabriek_render_endpoints '{"api.anthropic.com":{"compat":{"supportsStrictTools":false}}}')"
+	run jq -c '.["api.anthropic.com"]' <<<"$table"
+	assert_output '{"provider":"anthropic","model":"claude-sonnet-4-5","compat":{"supportsStrictTools":false}}'
 }
 
 # The floor is what the image carries for every role (ADR-030): the loop and

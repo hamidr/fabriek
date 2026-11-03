@@ -60,7 +60,8 @@ nothing changes for an operator who declares none, and both constants are
 deleted. The table is the operator's alone: a repository's `fabriek.toml`
 cannot declare an endpoint, since that would widen its own reach (ADR-020). An
 endpoint is still routed only if the declaration's `egress` allows it and the
-operator's ceiling does.
+operator's ceiling does. `models.json` keys a provider by name, so two allowed
+endpoints answering as one provider are refused by the render, naming it.
 
 **2. A credential file is re-read when it changes.** One function, called by
 `fabriek_up_secrets` and by a systemd path unit on each declared
@@ -201,7 +202,7 @@ docmeta-check docs && docmeta-tracker --check docs
 
 ## Tasks
 
-- [ ] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
+- [x] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
 - [ ] T2 The operator's `endpoints` key reaches the render: schema, credential projection, clamp to allowed egress, `endpoints.json`; a repository's declaration carrying one is refused (after: T1)
 - [ ] T3 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
 - [ ] T4 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)

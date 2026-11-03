@@ -16,7 +16,7 @@ let
     cp ${
       pkgs.lib.fileset.toSource {
         root = ../modules;
-        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "sh") ../modules;
+        fileset = pkgs.lib.fileset.fileFilter (f: f.hasExt "sh" || f.name == "endpoints.json") ../modules;
       }
     }/* $out/
   '';
