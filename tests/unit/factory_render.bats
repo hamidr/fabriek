@@ -129,6 +129,54 @@ teardown() {
 	assert_output '{"provider":"anthropic","model":"claude-sonnet-4-5","compat":{"supportsStrictTools":false}}'
 }
 
+# A role names a model, and only by a name the operator's endpoint lists
+# (ADR-072 point 2): the role's own, else its specialist's, else the
+# endpoint's default.
+role_model_json() {
+	printf '%s' '{"model":"m-default","provider":"anthropic","models":{"default":"m-default","opus":"m-opus","fast":"m-fast"}}' >"$TEST_TEMP_DIR/model.json"
+	jq '.roles.builder.model = "opus"' "$DECL" >"$DECL.2"
+}
+
+@test "a role model beats its specialist's, which beats the endpoint's default" {
+	role_model_json
+	run fabriek_render_role_model "$DECL.2" "$TEST_TEMP_DIR/model.json" builder fast
+	assert_success
+	assert_output m-opus
+	run fabriek_render_role_model "$DECL" "$TEST_TEMP_DIR/model.json" builder fast
+	assert_output m-fast
+	run fabriek_render_role_model "$DECL" "$TEST_TEMP_DIR/model.json" builder ""
+	assert_output m-default
+}
+
+@test "a role model the endpoint does not list is refused by role and name" {
+	role_model_json
+	jq '.roles.builder.model = "huge"' "$DECL" >"$DECL.2"
+	run fabriek_render_role_model "$DECL.2" "$TEST_TEMP_DIR/model.json" builder ""
+	assert_failure
+	assert_output --partial "role builder"
+	assert_output --partial "huge"
+	run fabriek_render_role_model "$DECL" "$TEST_TEMP_DIR/model.json" builder huge
+	assert_failure
+	assert_output --partial "huge"
+}
+
+@test "a role model on an endpoint that lists no names is refused" {
+	printf '%s' '{"model":"claude-sonnet-4-5","provider":"anthropic"}' >"$TEST_TEMP_DIR/model.json"
+	jq '.roles.builder.model = "opus"' "$DECL" >"$DECL.2"
+	run fabriek_render_role_model "$DECL.2" "$TEST_TEMP_DIR/model.json" builder ""
+	assert_failure
+	assert_output --partial "lists no model names"
+}
+
+@test "the model a session starts on carries the endpoint's model names when it lists some" {
+	local decl="$TEST_TEMP_DIR/gateway.json" table
+	jq '.resources.egress = ["gw.example.test"]' "$DECL" >"$decl"
+	table="$(fabriek_render_endpoints '{"gw.example.test":{"provider":"anthropic","models":{"default":"m","opus":"o"}}}')"
+	run fabriek_render_model "$decl" '{"gw.example.test":"m"}' "$table"
+	assert_success
+	assert_output '{"model":"m","provider":"anthropic","models":{"default":"m","opus":"o"}}'
+}
+
 # The floor is what the image carries for every role (ADR-030): the loop and
 # the two extensions' index files, and the guidance. A role's directory is
 # the floor plus what its profile says it is.

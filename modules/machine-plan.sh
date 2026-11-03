@@ -113,15 +113,21 @@ fabriek_role_pi_dir() {
 ## in is bound read-only, so a session with nobody at the keyboard started
 ## on no model. One word per line, like a declared command.
 ##
-## fabriek_actor_command <etc>
+## A role starts on the model render chose for it (ADR-072 point 2), else the
+## factory's.
+##
+## fabriek_actor_command <etc> [role]
 fabriek_actor_command() {
-	local etc="$1" provider model
+	local etc="$1" role="${2:-}" provider model
 	if [ ! -s "$etc/model.json" ]; then
 		echo "fabriek: this machine's build wrote no model at $etc/model.json; a session cannot start on none" >&2
 		return 1
 	fi
 	provider="$(jq -r '.provider // empty' "$etc/model.json")"
 	model="$(jq -r '.model // empty' "$etc/model.json")"
+	if [ -n "$role" ] && [ -s "$etc/roles/$role/model" ]; then
+		model="$(<"$etc/roles/$role/model")"
+	fi
 	if [ -z "$provider" ] || [ -z "$model" ]; then
 		echo "fabriek: $etc/model.json names no provider and model" >&2
 		return 1

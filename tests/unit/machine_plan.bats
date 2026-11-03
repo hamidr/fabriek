@@ -62,3 +62,20 @@ declare_resources() {
 	assert_success
 	assert_output ""
 }
+
+# A role starts on the model render chose for it (ADR-072 point 2), else on
+# the factory's.
+@test "a role model: a session starts on the model render chose for the role, else the factory's" {
+	local etc="$TEST_TEMP_DIR/etc"
+	mkdir -p "$etc/roles/builder"
+	echo '{"provider":"anthropic","model":"m-default"}' >"$etc/model.json"
+	echo m-opus >"$etc/roles/builder/model"
+	run fabriek_actor_command "$etc" builder
+	assert_success
+	assert_output --partial "--model"
+	assert_line "m-opus"
+	run fabriek_actor_command "$etc" reviewer
+	assert_line "m-default"
+	run fabriek_actor_command "$etc"
+	assert_line "m-default"
+}

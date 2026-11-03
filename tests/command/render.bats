@@ -219,6 +219,9 @@ teardown() {
 	run cat "$ETC/roles/builder/pi/APPEND_SYSTEM.md"
 	assert_line --index 0 '# Working as a factory role'
 	assert_line --index 1 '## builder'
+	# A role that names no model starts on the endpoint's own (ADR-072).
+	[ "$(cat "$ETC/roles/builder/model")" = "claude-opus-5" ]
+	[ "$(cat "$ETC/roles/reviewer/model")" = "claude-opus-5" ]
 	run jq -c '[.rev, .roles, .decider]' "$ETC/profiles.json"
 	assert_output "[\"$REV\",{\"builder\":\"$TEST_TEMP_DIR/store/fabriek-role-builder\",\"reviewer\":\"$TEST_TEMP_DIR/store/fabriek-role-reviewer\"},\"$ETC/pi-decider\"]"
 }

@@ -49,7 +49,7 @@ def schema:
   , factory: ["path", "roles", "workflows", "resources", "decider", "catalogue"]
   , credential: ["header", "file"]
   , endpoint: ["host", "provider", "api", "compat", "header", "file", "models"]
-  , specialist: ["extends", "tools", "skills", "prompt"]
+  , specialist: ["extends", "tools", "skills", "prompt", "model"]
   , skill: ["tools", "skill"]
   , catalogue: ["git", "rev", "narHash", "dir"]
   };

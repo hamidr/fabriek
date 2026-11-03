@@ -70,8 +70,9 @@ one provider are refused by the render, naming it.
 
 **2. A role and a specialist name a model, and only by the operator's names.**
 A role may say `model = "opus"` in `fabriek.toml`, and a catalogue specialist
-may carry a `model` of its own. The order is the role's, then its first
-specialist that sets one, then the endpoint's `default`. The name is looked up
+may carry a `model` of its own. The order is the role's, then the last
+specialist in composition order that sets one (a child over its parents), then
+the endpoint's `default`. The name is looked up
 in the `models` table of the endpoint the session starts on; one the operator
 did not list is refused at render, so a repository reaches no model the
 operator did not offer and the cost range stays the operator's. A session's
@@ -197,7 +198,7 @@ host before the clamp, an unknown or dotted name and a repository's declared
 endpoint are refused.
 
 ```bash
-nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats
+nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats tests/command/catalogue.bats
 ```
 Passes when a role's `model` beats its specialist's, which beats the
 endpoint's `default`, a name the operator did not list is refused at render,
@@ -242,7 +243,7 @@ docmeta-check docs && docmeta-tracker --check docs
 
 - [x] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
 - [x] T2 Named endpoints: the operator's `endpoints.<name>` schema, its expansion into the host-keyed credential, models and endpoint rows, names in `caps.egress` and a declaration's `egress` resolved to hosts before the clamp, a repository's declared endpoint refused (after: T1)
-- [ ] T3 A role and a specialist name a model: `model` on a role and a catalogue specialist, resolved against the start endpoint's `models` at render, refused when unlisted, composed per role in `fabriek_actor_command` (after: T2)
+- [x] T3 A role and a specialist name a model: `model` on a role and a catalogue specialist, resolved against the start endpoint's `models` at render, refused when unlisted, composed per role in `fabriek_actor_command` (after: T2)
 - [ ] T4 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
 - [ ] T5 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
 - [ ] T6 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
@@ -252,7 +253,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
 - [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T5)
 - [ ] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats tests/unit/repo_declaration.bats` (after: T2)
-- [ ] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats` (after: T3)
+- [ ] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats tests/command/catalogue.bats` (after: T3)
 - [ ] G4 `nix develop --command bats tests/command/egress_refresh.bats` (after: T6)
 - [ ] G5 `nix develop --command bats tests/command/host_module.bats` (after: T4, T7)
 - [ ] G6 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T9)

@@ -351,7 +351,7 @@ cmd_role_enter() {
 	## Only a supervised run is an actor; a person entering by hand runs
 	## what they asked and needs no model to have been chosen.
 	if [ -n "$signing_role" ] && [ -z "$declared_cmd" ]; then
-		declared_cmd="$(fabriek_actor_command "$FABRIEK_ETC")" || exit 1
+		declared_cmd="$(fabriek_actor_command "$FABRIEK_ETC" "$role")" || exit 1
 	fi
 
 	## Where on the factory's bridge this cage is (ADR-037). The plan is the
@@ -602,7 +602,7 @@ render_files() {
 ## A role that does not build ends render by name, with no link for it and
 ## no profiles.json, so no session starts on it.
 render_profiles() {
-	local clone="$1" rev="$2" role profile models built="{}"
+	local clone="$1" rev="$2" role profile models built="{}" specialist_model
 	rm -f "$FABRIEK_ETC/profiles.json"
 	models="$(fabriek_render_models "$FABRIEK_ETC/declaration.json" "$(jq -r .proxy "$FABRIEK_ETC/bridge.json")" "$(<"$FABRIEK_ETC/endpoint-table.json")")" ||
 		die "could not point pi at the proxy"
@@ -615,6 +615,10 @@ render_profiles() {
 		ln -sfn "$profile" "$FABRIEK_ETC/roles/$role/profile"
 		fabriek_render_pi_dir "$FABRIEK_FLOOR" "$profile" "$models" "$FABRIEK_ETC/roles/$role/pi" ||
 			die "could not compose the pi directory for role $role"
+		specialist_model=""
+		[ ! -f "$profile/share/fabriek/specialist/model" ] || specialist_model="$(<"$profile/share/fabriek/specialist/model")"
+		fabriek_render_role_model "$FABRIEK_ETC/declaration.json" "$FABRIEK_ETC/model.json" "$role" "$specialist_model" \
+			>"$FABRIEK_ETC/roles/$role/model" || die "could not choose the model for role $role"
 		built="$(jq -c --arg r "$role" --arg p "$profile" '. + {($r): $p}' <<<"$built")"
 	done < <(jq -r '.roles | keys[]' "$FABRIEK_ETC/declaration.json")
 	jq -cn --arg rev "$rev" --argjson roles "$built" --arg decider "$FABRIEK_ETC/pi-decider" \

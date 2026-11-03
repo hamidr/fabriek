@@ -133,7 +133,33 @@ fabriek_render_model() {
 		provider="anthropic"
 	}
 	jq -cn --arg p "$provider" --arg h "$host" --argjson models "$models" --argjson endpoints "$endpoints" \
-		'{ model: ($models[$h] // $endpoints[$h].model), provider: $p }'
+		'{ model: ($models[$h] // $endpoints[$h].model), provider: $p }
+		 + (if $endpoints[$h].models then { models: $endpoints[$h].models } else {} end)'
+}
+
+## The model one role starts on (ADR-072 point 2): the name the role gives,
+## else the name its specialists give, looked up among the names the start
+## endpoint lists; else the endpoint's own start model. A name the endpoint
+## does not list is refused by role and name, so a repository reaches no
+## model the operator did not offer.
+##
+## fabriek_render_role_model <declaration.json> <model.json> <role> <specialist's name or empty>
+fabriek_render_role_model() {
+	local declaration="$1" model_file="$2" role="$3" specialist="$4" name
+	name="$(jq -r --arg r "$role" '.roles[$r].model // empty' "$declaration")" || return 1
+	[ -n "$name" ] || name="$specialist"
+	if [ -z "$name" ]; then
+		jq -r .model "$model_file"
+		return
+	fi
+	if [ "$(jq -r '(.models // {}) | length' "$model_file")" -eq 0 ]; then
+		echo "fabriek: role $role names model $name, and the endpoint lists no model names" >&2
+		return 1
+	fi
+	jq -er --arg n "$name" '.models[$n]' "$model_file" 2>/dev/null || {
+		echo "fabriek: role $role names model $name, which the endpoint does not list" >&2
+		return 1
+	}
 }
 
 ## models.json for pi: each routed provider at its path on the proxy, with a

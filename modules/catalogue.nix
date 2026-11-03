@@ -126,6 +126,7 @@ let
         ) (entry.skills or [ ]);
       }
       // lib.optionalAttrs (entry ? prompt) { prompt = fileOf "PROMPT.md" entry.prompt; }
+      // lib.optionalAttrs (entry ? model) { model = entry.model; }
     ) (declared.specialists or { });
 
   ## The keys an entry may carry. Anything else is a misspelling or a
@@ -138,6 +139,7 @@ let
       "prompt"
       "lsp"
       "tests"
+      "model"
     ];
     skills = [
       "tools"
@@ -290,6 +292,20 @@ let
       skills = lib.foldl (acc: s: if lib.any (t: t.name == s.name) acc then acc else acc ++ [ s ]) [ ] (
         lib.concatMap skillsOf order
       );
+      ## The model name a role's specialists give (ADR-072 point 2): the
+      ## last one set in composition order, a child over its parents. The
+      ## operator's endpoint says what the name means, so only its shape is
+      ## checked here.
+      modelName = lib.foldl (
+        acc: node:
+        if node ? model then
+          if builtins.match "[A-Za-z0-9][A-Za-z0-9-]*" node.model != null then
+            node.model
+          else
+            throw "specialist ${node.name} names model ${node.model}, which is not a model name"
+        else
+          acc
+      ) "" order;
       prompt = lib.concatMapStrings (
         node: lib.optionalString (node ? prompt) "## ${node.name}\n\n${builtins.readFile node.prompt}\n"
       ) order;
@@ -376,6 +392,7 @@ let
           ## Where the last specialist named came from: its directory, or
           ## config.toml; what show prints as the source.
           source = (lib.last order).dir;
+          model = modelName;
           tools = lib.concatMap toolsOf order;
           skillsDescribed = map describe skills;
           servers = map (s: s.id) servers.list;
@@ -387,6 +404,9 @@ let
         cp "$promptPath" $out/share/fabriek/specialist/APPEND_SYSTEM.md
         cp "$lspJsonPath" $out/share/fabriek/specialist/lsp.json
         cp "$testsJsonPath" $out/share/fabriek/specialist/tests.json
+        ${lib.optionalString (
+          modelName != ""
+        ) "echo ${lib.escapeShellArg modelName} > $out/share/fabriek/specialist/model"}
 
         declare -A owner ownerPath
         while IFS=$'\t' read -r specialist tool; do

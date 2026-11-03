@@ -253,6 +253,36 @@ description: the first' ''
 	assert_output '[["committer","developer","java","springboot","python","django"],true,["tool-missing","tdd","ddd","solid-fp","debugging","proof-before-done","review-findings","jvm-profile","spring-boot-run","django-migrate"],true,["jdtls","basedpyright"],true]'
 }
 
+@test "a role model: a specialist's model is the last one set in composition order, and none is none" {
+	specialist fast 'model = "fast";'
+	specialist deep 'extends = [ specialists.fast ]; model = "opus";'
+	specialist plain ''
+	run catalogue_eval '{ one = (cat.compose { role = "a"; specialists = [ "fast" ]; }).model;
+	                      two = (cat.compose { role = "b"; specialists = [ "deep" ]; }).model;
+	                      none = (cat.compose { role = "c"; specialists = [ "plain" ]; }).model; }'
+	assert_success
+	run jq -c '[.one, .two, .none]' <<<"$output"
+	assert_output '["fast","opus",""]'
+}
+
+@test "a role model: a built role carries its model name beside the prompt, and none when no specialist sets one" {
+	specialist fast 'model = "fast";'
+	specialist plain ''
+	run catalogue_build '(cat.compose { role = "a"; specialists = [ "fast" ]; })'
+	assert_success
+	assert_equal "$(cat "$output/share/fabriek/specialist/model")" fast
+	run catalogue_build '(cat.compose { role = "c"; specialists = [ "plain" ]; })'
+	assert_success
+	[ ! -e "$output/share/fabriek/specialist/model" ]
+}
+
+@test "a role model: a model that is not a name is refused naming the specialist" {
+	specialist wild 'model = "not a name";'
+	run catalogue_eval '(cat.compose { role = "a"; specialists = [ "wild" ]; }).model'
+	assert_failure
+	assert_output --partial "wild"
+}
+
 @test "the catalogue lists every skill with the description pi shows for it" {
 	run catalogue_eval 'builtins.attrNames cat.skillsDescribed'
 	assert_success

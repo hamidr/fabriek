@@ -330,6 +330,16 @@ validate_example() {
 	assert_output --partial colour
 }
 
+@test "a role model is a name the operator's endpoint lists, and a role may carry one" {
+	run validate_with '.roles.backend.model = "opus"'
+	assert_success
+	run validate_with '.roles.backend.model = "not a name"'
+	assert_failure
+	assert_output --partial "role backend"
+	run validate_with '.roles.backend.model = 7'
+	assert_failure
+}
+
 @test "a named endpoint cannot be declared by a repository: the endpoints are the operator's alone" {
 	run validate_with '.endpoints = {"zd-gateway": {host: "gw.example.test", provider: "anthropic"}}'
 	assert_failure

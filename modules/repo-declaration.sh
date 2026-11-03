@@ -24,7 +24,7 @@ fabriek_declaration_program() {
 	## schema and by the clamp that meets one against the other.
 	printf 'def schema:\n  { top:       ["name", "roles", "workflows", "resources", "decider", "catalogue"]\n'
 	printf '  , decider:   ["policy"]\n'
-	printf '  , role:      ["command", "provides", "shell", "specialists", "replicas", "substrate"]\n'
+	printf '  , role:      ["command", "provides", "shell", "specialists", "replicas", "substrate", "model"]\n'
 	printf '  , workflow:  ["stages", "budget", "consults"]\n'
 	printf '  , stage:     ["needs", "ready", "done", "gate", "verdict"]\n'
 	printf '  , budget:    ["runs"]\n'
@@ -77,6 +77,13 @@ fabriek_declaration_program() {
           then ["role \($r): specialists must be a list of names from the catalogue"]
           elif ($v.specialists | map(type != "string") | any)
           then ["role \($r): specialists must be a list of names, one per element"]
+          else [] end),
+         ## A model is a name the operator offers (ADR-072 point
+         ## 2), never an id: the operator bounds which models a repository
+         ## can reach.
+         (if ($v.model? // null) == null then []
+          elif ($v.model | type) != "string" or ($v.model | test("^[A-Za-z0-9][A-Za-z0-9-]*$") | not)
+          then ["role \($r): model must be a name the operator offers, not a model id"]
           else [] end),
          ## replicas = N expands into <role>-1 .. <role>-N (ADR-053); a
          ## count of one is a copy of nothing, and a name a replica would
