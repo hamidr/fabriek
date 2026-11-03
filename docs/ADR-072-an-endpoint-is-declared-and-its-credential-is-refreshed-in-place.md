@@ -250,7 +250,7 @@ docmeta-check docs && docmeta-tracker --check docs
 - [x] T7 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T6)
 - [x] T8 `fabriek ps` prints a line per credential with its age (after: T6)
 - [x] T9 `maxAge` on an endpoint reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T6)
-- [ ] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
+- [x] T10 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T7)
 - [x] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T5)
 - [x] G2 `nix develop --command bats -f "named endpoint" tests/unit/operator_config.bats tests/unit/machine_spec.bats tests/unit/credential.bats tests/unit/repo_declaration.bats` (after: T2)
 - [x] G3 `nix develop --command bats -f "role model" tests/unit/factory_render.bats tests/unit/machine_plan.bats tests/unit/repo_declaration.bats tests/command/catalogue.bats` (after: T3)
