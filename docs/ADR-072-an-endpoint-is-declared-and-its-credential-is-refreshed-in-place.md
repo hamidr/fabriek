@@ -1,7 +1,7 @@
 ---
 id: ADR-072
 title: An endpoint is declared by the operator and its credential is refreshed in place
-status: proposed
+status: accepted
 date: 2026-11-03
 status_date: 2026-11-03
 summary: the operator declares endpoints beyond the built-in three; a changed credential file reaches the proxy, no restart
