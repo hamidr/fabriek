@@ -412,6 +412,12 @@ in
               default = null;
               description = "A path on this host holding the credential; never the value (ADR-025).";
             };
+            maxAge = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "2h";
+              description = "Past this long since the credential was filed (as 90s, 45m, 2h, 1d) the executor holds new work; unset, the age is shown and nothing reads it.";
+            };
             models = lib.mkOption {
               type = lib.types.attrsOf lib.types.str;
               description = "The model names a role may pick; `default` is where a session starts.";

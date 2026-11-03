@@ -380,6 +380,29 @@ TOML
 	assert_output '{"zd-gateway":"gw.example.test"}'
 }
 
+@test "a named endpoint's maxAge is a duration, and its row carries it in seconds" {
+	with_named_endpoint
+	sed -i.bak 's/^provider = "anthropic"$/provider = "anthropic"\nmaxAge = "2h"/' "$CONFIG"
+	run fabriek_operator_endpoints "$CONFIG"
+	assert_success
+	run jq -c '.["gw.example.test"].maxAge' <<<"$output"
+	assert_output 7200
+	sed -i.bak 's/^maxAge = .*$/maxAge = "90s"/' "$CONFIG"
+	run jq -c '.["gw.example.test"].maxAge' <<<"$(fabriek_operator_endpoints "$CONFIG")"
+	assert_output 90
+}
+
+@test "a named endpoint's maxAge that is not a number and a unit is refused" {
+	local bad
+	for bad in '2 hours' '0h' 'h' '1.5h' '2w'; do
+		with_named_endpoint
+		sed -i.bak "s/^provider = \"anthropic\"\$/provider = \"anthropic\"\nmaxAge = \"$bad\"/" "$CONFIG"
+		run fabriek_operator_endpoints "$CONFIG"
+		assert_failure
+		assert_output --partial "endpoint zd-gateway: maxAge"
+	done
+}
+
 @test "an operator declaring no named endpoint declares none" {
 	write_config
 	run fabriek_operator_endpoints "$CONFIG"

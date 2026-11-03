@@ -503,6 +503,28 @@ describe("the executor", () => {
     assert.equal(x.routing(), false);
   });
 
+  it("credential age: past its maxAge assign is refused naming the host, and routing resumes when the credential is fresh again", async () => {
+    const f = fakes();
+    let late: string | null = "gw.example.test";
+    const x = new Executor({ declaration, workflow: "ship", ...f, reconcileTimeoutMs: 10, credentials: { overdue: async () => late } });
+    await f.board.create("t", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    const held = await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    assert.match(held.ok ? "" : held.reason, /gw\.example\.test.*maxAge/);
+    assert.ok(!f.issues.get(1)?.assignee);
+    late = null;
+    const again = await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    assert.equal(again.ok, true);
+  });
+
+  it("credential age: with no limit declared the age is never asked", async () => {
+    const { x, f } = await executor();
+    await f.board.create("t", "b", "build");
+    x.heard("builder", { kind: "ready", capabilities: ["build", "test"] });
+    const r = await x.apply({ verb: "assign", issue: 1, role: "builder" });
+    assert.equal(r.ok, true);
+  });
+
   it("at the ceiling the executor says so", async () => {
     const { x, f } = await executor();
     f.setTotal(1000);

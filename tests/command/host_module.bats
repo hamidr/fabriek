@@ -154,6 +154,23 @@ host_eval() {
 	assert_output '{"c":{"file":"/var/lib/fabriek-credentials/gateway","header":"authorization"},"e":{"compat":{"supportsStrictTools":false},"models":{"default":"claude-sonnet-5","opus":"claude-opus-5"},"provider":"anthropic"},"egress":["gw.example.test"],"m":"claude-sonnet-5","n":{"gateway":"gw.example.test"}}'
 }
 
+@test "a named endpoint's maxAge is rendered, and read back in seconds" {
+	run host_eval 'endpoints.gateway = { host = "gw.example.test"; provider = "anthropic"; maxAge = "2h"; models.default = "m"; };
+	               factories.acme.path = "/srv/acme";' \
+		'c.environment.etc."fabriek/config.toml".text'
+	assert_success
+	source "$FABRIEK_ROOT/modules/names.sh"
+	source "$FABRIEK_ROOT/modules/schema.sh"
+	source "$FABRIEK_ROOT/modules/resources.sh"
+	source "$FABRIEK_ROOT/modules/repo-declaration.sh"
+	source "$FABRIEK_ROOT/modules/operator-config.sh"
+	jq -r . <<<"$output" >"$TEST_TEMP_DIR/config.toml"
+	run fabriek_operator_endpoints "$TEST_TEMP_DIR/config.toml"
+	assert_success
+	run jq -c '.["gw.example.test"].maxAge' <<<"$output"
+	assert_output 7200
+}
+
 # ADR-067: a factory is declared on the host and its services are NixOS
 # configuration. Every name the machine had as a constant is a function of
 # the factory's name here, and the bridge's index is the factory's position

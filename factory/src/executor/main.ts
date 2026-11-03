@@ -21,6 +21,7 @@ import { resumeFrom, remember } from "./cursor.js";
 import { CloneGit } from "./git.js";
 import { streamsOf } from "../bus/subjects.js";
 import { spendByRole } from "./spend.js";
+import { credentialAge } from "./credentials.js";
 
 const ETC = process.env["FABRIEK_ETC"] ?? "/etc/fabriek";
 const STATE = process.env["FABRIEK_STATE"] ?? "/var/lib/nixcage";
@@ -113,7 +114,11 @@ async function main(): Promise<void> {
     ...(machine ? { command: ["nixcage-container", "machine", "exec", machine], recordClone: clone } : {}),
   });
 
-  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed, epoch: new Date().toISOString() });
+  // The limits an endpoint declared on its credential's age, written by
+  // render beside the endpoints; none, and the age is shown and not read.
+  const limits = (JSON.parse(await readFile(`${ETC}/endpoints.json`, "utf8").catch(() => "{}")) as { maxAge?: Record<string, number> }).maxAge ?? {};
+  const credentials = Object.keys(limits).length > 0 ? credentialAge({ maxAge: limits, dir: `${STATE}/egress-age` }) : undefined;
+  const executor = new Executor({ declaration, workflow, board, bus, sessions, git, spend, streams: observed, ...(credentials ? { credentials } : {}), epoch: new Date().toISOString() });
   const roles = Object.keys(declaration.roles);
   const streams: Record<string, string> = { commands: "$", operator: "$" };
   for (const r of roles) streams[`control:${r}`] = "$";

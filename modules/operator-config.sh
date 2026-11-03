@@ -48,7 +48,7 @@ def schema:
   { top: ["caps", "factories", "credentials", "models", "endpoints", "specialists", "skills", "catalogues"]
   , factory: ["path", "roles", "workflows", "resources", "decider", "catalogue"]
   , credential: ["header", "file"]
-  , endpoint: ["host", "provider", "api", "compat", "header", "file", "models"]
+  , endpoint: ["host", "provider", "api", "compat", "header", "file", "models", "maxAge"]
   , specialist: ["extends", "tools", "skills", "prompt", "model"]
   , skill: ["tools", "skill"]
   , catalogue: ["git", "rev", "narHash", "dir"]
@@ -144,6 +144,8 @@ def names($v; $what): if ($v | type) != "array" or ($v | map(type != "string") |
             (if ($v.compat? // null) != null
                 and (($v.compat | type) != "object" or ($v.compat | [.[] | type | select(. == "object" or . == "array")] | length > 0))
              then "endpoint \($n): compat must be a table of plain values" else empty end),
+            (if ($v.maxAge? // null) != null and (($v.maxAge | type) != "string" or ($v.maxAge | test("^[1-9][0-9]*[smhd]$") | not))
+             then "endpoint \($n): maxAge is a number and a unit, as 90s, 45m, 2h or 1d" else empty end),
             (if (($v.header? // null) == null) != (($v.file? // null) == null)
              then "endpoint \($n): carries a header or a file without the other" else empty end),
             (if ($v.models? | type) != "object" or ($v.models.default? | type) != "string"
@@ -182,7 +184,8 @@ FABRIEK_OPERATOR_EXPAND='
       .names = $names
     | .credentials = ((.credentials // {}) + ([$e[] | select(.header != null) | { key: .host, value: { header: .header, file: .file } }] | from_entries))
     | .models = ((.models // {}) + ([$e[] | { key: .host, value: .models.default }] | from_entries))
-    | .endpoints = ([$e[] | { key: .host, value: del(.host, .header, .file) }] | from_entries)
+    | def seconds: (.[:-1] | tonumber) * ({ s: 1, m: 60, h: 3600, d: 86400 }[.[-1:]]);
+      .endpoints = ([$e[] | { key: .host, value: (del(.host, .header, .file) | if .maxAge then .maxAge |= seconds else . end) }] | from_entries)
     | (if .caps.egress? then .caps.egress |= map(host) else . end)
     | (if .factories then .factories |= map_values(if .resources.egress? then .resources.egress |= map(host) else . end) else . end)
     end'

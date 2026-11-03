@@ -10,6 +10,7 @@ import { capableRoles, stageOf, type Declaration } from "../declaration.js";
 import { isRoleName } from "../names.js";
 import { attemptLine, attemptsAt, isAttemptLine, tipOf } from "../thread.js";
 import { traceOf, type Entry } from "./trace.js";
+import type { Credentials } from "./credentials.js";
 
 export interface BoardIssue {
   number: number;
@@ -74,6 +75,8 @@ export interface ExecutorOptions {
   git: Git;
   spend: Spend;
   streams: Streams;
+  /** Held credentials' ages (ADR-072 point 5); absent when no endpoint declares a limit. */
+  credentials?: Credentials;
   reconcileTimeoutMs?: number;
   /** Fraction of the ceiling at which routing stops (ADR-037 point 4). */
   softFraction?: number;
@@ -258,6 +261,11 @@ export class Executor {
     const attempts = this.attemptsOf(i);
     if (attempts >= this.o.declaration.resources.taskAttempts) return refuse(`issue ${issue} has used its ${attempts} attempts`);
     if (!(await this.mayRoute())) return refuse("the soft limit is reached; nothing new is routed");
+    // Every role of a factory starts on the one endpoint (ADR-072 point 2),
+    // so a credential past its maxAge holds all new work; turns already
+    // running finish, and the next assign finds the stamp moved.
+    const late = await this.o.credentials?.overdue();
+    if (late) return refuse(`the credential for ${late} is older than its maxAge; nothing new is routed`);
 
     const attempt = attempts + 1;
     const previous = [...i.thread].reverse().find((c) => c.by === i.assignee && c.body.startsWith("outcome:"));

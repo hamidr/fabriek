@@ -166,6 +166,14 @@ teardown() {
 	assert_output '["fb-1","10.77.1.1","10.77.1.2","10.77.1.1:4222"]'
 }
 
+@test "the age a credential may reach is written beside the endpoints for the executor, in seconds, for hosts the factory reaches" {
+	printf '\n[endpoints."api.anthropic.com"]\nmaxAge = 7200\n[endpoints."api.openai.com"]\nmaxAge = 60\n' >>"$CRED"
+	run_fabriek_container factory-render
+	assert_success
+	run jq -c .maxAge "$ETC/endpoints.json"
+	assert_output '{"api.anthropic.com":7200}'
+}
+
 @test "the proxy clears pi's placeholder key for an endpoint whose credential travels in another header" {
 	sed -i.bak 's/^"api.anthropic.com" = "x-api-key"/"api.anthropic.com" = "authorization"/' "$CRED"
 	run_fabriek_container factory-render
