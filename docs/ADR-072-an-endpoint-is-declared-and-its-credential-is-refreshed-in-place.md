@@ -1,7 +1,7 @@
 ---
 id: ADR-072
 title: An endpoint is declared by the operator and its credential is refreshed in place
-status: accepted
+status: implementing
 date: 2026-11-03
 status_date: 2026-11-03
 summary: the operator declares endpoints beyond the built-in three; a changed credential file reaches the proxy, no restart
@@ -198,3 +198,21 @@ credential file.
 ```bash
 docmeta-check docs && docmeta-tracker --check docs
 ```
+
+## Tasks
+
+- [ ] T1 The render reads a merged endpoint table: defaults in `modules/endpoints.json`, `compat` and `api` in `models.json`, a declared host with no model refused, both constants deleted
+- [ ] T2 The operator's `endpoints` key reaches the render: schema, credential projection, clamp to allowed egress, `endpoints.json`; a repository's declaration carrying one is refused (after: T1)
+- [ ] T3 `services.fabriek.endpoints` renders into the operator's `config.toml` (after: T2)
+- [ ] T4 The proxy clears the incoming `x-api-key` for an endpoint whose credential header is another (after: T2)
+- [ ] T5 One credential-refresh function, used by `fabriek_up_secrets` and a `credential-refresh` verb that reaches every factory holding the host, touching a stamp on success
+- [ ] T6 A path unit per credential file watches a directory the operator owns, and runs the verb (after: T5)
+- [ ] T7 `fabriek ps` prints a line per credential with its age (after: T5)
+- [ ] T8 `credentials.<host>.maxAge` reaches the executor, which holds new work past it and resumes when the stamp moves (after: T2, T5)
+- [ ] T9 The operator's Mac pushes the token to the host's directory on a timer, in the NixOS repository (after: T6)
+- [ ] G1 `nix develop --command bats -f "an operator-declared endpoint" tests/unit/factory_render.bats` (after: T1, T4)
+- [ ] G2 `nix develop --command bats tests/command/egress_refresh.bats` (after: T5)
+- [ ] G3 `nix develop --command bats tests/command/host_module.bats` (after: T3, T6)
+- [ ] G4 `nix develop --command bash -c 'cd factory && tsc -p . && cp src/relay/fixtures.json dist/relay/ && node --test --test-name-pattern="credential age" dist/executor/*.test.js'` (after: T8)
+- [ ] G5 `FABRIEK_PROOF_DIR=/tmp/proof tests/manual/gateway.sh` on the host with a real token (after: T1, T2, T3, T4, T6, T7, T8, T9)
+- [ ] G6 `docmeta-check docs && docmeta-tracker --check docs` (after: G1, G2, G3, G4)
