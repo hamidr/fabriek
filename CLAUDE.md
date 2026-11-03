@@ -163,7 +163,8 @@ A change to what a role session is shows up there as a diff.
 - `tests/manual/`: what cannot be a bats test because it needs a NixOS host.
   `isolation.sh` is ADR-037's measurement plan; `parity.sh` is PRD-006's first
   success criterion; `stop-and-start.sh` is PRD-004 phase 2's;
-  `specialist.sh` is ADR-042's; `lib.sh` is what they share.
+  `specialist.sh` is ADR-042's; `gateway.sh` is ADR-072's; `lib.sh` is what they
+  share.
 - `models/factory-lifecycle.qnt`: a factory's lifecycle on its host; `models/tdd-guard.qnt`:
   the loop's test-first guard (ADR-044); `models/decider-ready.qnt`: who
   the decider holds ready against the executor, across restarts;
