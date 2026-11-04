@@ -363,6 +363,19 @@ One package, built through the flake, tests in its own runner.
   it, recorded in ADR-070's verification with the seven faults the runs
   before it stopped on. PRD-006's last phase.
 
+## Phase 9: declared endpoints
+
+- 9.1 ADR-072, an operator-declared endpoint and a credential refreshed in
+  place, so a role's pi reaches the company AI gateway. Built 2026-11-04,
+  gates G1 to G6 and G8 passed on this host: the endpoint table, a model
+  per role and specialist, the proxy clearing the placeholder key, the
+  in-place refresh, the path unit, the age in `fabriek ps` and `maxAge`.
+  Open: G7, `tests/manual/gateway.sh` on a NixOS host with a real token
+  pushed from the Mac. It settles four assumptions: the gateway accepts a
+  request with the key cleared, an nginx reload keeps the spend count, a
+  systemd path unit sees a rename into a directory, and launchd's ssh
+  runs without a prompt. `nix build .#factory` is not run.
+
 ## Open
 
 - 6.5, ADR-046's dependency cache beyond npm: pnpm, Maven, sbt and

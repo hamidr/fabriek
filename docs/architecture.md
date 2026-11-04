@@ -188,6 +188,23 @@ factory's resources are read); and from those, per factory:
   floor and its executor restarted, and nothing is taken down; the
   executor is not restarted by a switch, nor is the machine.
 
+An endpoint beyond the shipped three is the operator's to declare
+(ADR-072): `endpoints.<name>` in `config.toml` (`services.fabriek.endpoints`)
+names a host, the pi provider and api that answer it, a `compat` map, the
+credential's header and file, the model names a role may use and a
+`maxAge`. `modules/endpoints.json` is the shipped table and the render
+merges the declared rows into it (`endpoint-table.json`); a role's model
+is written to `roles/<role>/model`, resolved role, then last specialist,
+then the endpoint's `default`. For a credential header other than
+`x-api-key` the proxy clears pi's placeholder key. A credential file is
+re-read when it changes: `services.fabriek.credentialsDir` is watched by a
+path unit that runs `fabriek-container credential-refresh`, which renames
+the file into each factory's `egress/`, composes the headers again,
+reloads nginx (never restarts it) and touches `egress-age/<host>` last.
+`fabriek ps` shows that age, and the executor refuses new work past
+`maxAge` (`factory/src/executor/credentials.ts`). A missing stamp counts
+as overdue.
+
 Once on the host: nginx with a server per factory on its bridge, an njs
 dictionary and a ceiling per factory, the locations render writes under
 the factory's directory (`modules/host/proxy.nix`, `spend.js`); the
@@ -481,8 +498,14 @@ host is the machine, the cage, the bridge, the proxy's count and pi.
 - An attempt longer than a role's events stream holds (10000 entries) is
   traced as not observed.
 - Which model a session starts on is the operator's, per endpoint in
-  their config (`[models]`), with a table in `modules/factory-render.sh`
-  standing when they name none; a declaration cannot name one.
+  their config (`endpoints.<name>.models`, `[models]`), with the table in
+  `modules/endpoints.json` standing when they name none. A role or a
+  specialist names one in `fabriek.toml` from the endpoint's own names
+  (`model = "opus"`); a declaration names no host. `maxAge` holds new work
+  for the whole factory, since every role starts on the same endpoint.
+- A pushed credential reaches the proxy by a reload, so a request in
+  flight keeps the header it began with. `tests/manual/gateway.sh` is the
+  proof and has not been run on a host (ADR-072 G7).
 - A cage has no network, and sbt, Maven, pnpm and Metals fetch dependencies
   over one. A language specialist works only when the project's devShell
   carries the cache; otherwise the first build is a blocked outcome. No
